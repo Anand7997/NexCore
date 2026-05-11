@@ -1,0 +1,372 @@
+// Backend API types — mirrors backend Pydantic schemas
+
+export type WorkflowStatus = 'active' | 'draft' | 'archived';
+export type ExecutionStatus = 'created' | 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+export type NodeStatus =
+  | 'created' | 'queued' | 'waiting' | 'running' | 'retrying'
+  | 'completed' | 'failed' | 'cancelled' | 'skipped';
+
+export interface RetryPolicy {
+  max_attempts: number;
+  backoff_base?: number;
+  max_delay?: number;
+  jitter?: boolean;
+}
+
+export interface NodePosition {
+  x: number;
+  y: number;
+}
+
+export interface WorkflowNode {
+  id: string;
+  node_key: string;
+  type: string;
+  label: string;
+  description: string;
+  config: Record<string, unknown>;
+  position_x: number;
+  position_y: number;
+  timeout_seconds: number;
+  retry_policy: RetryPolicy;
+}
+
+export interface WorkflowEdge {
+  id: string;
+  source_key: string;
+  target_key: string;
+  condition?: string | null;
+}
+
+export interface WorkflowListItem {
+  id: string;
+  name: string;
+  description: string;
+  status: WorkflowStatus;
+  tags: string[];
+  platforms: string[];
+  created_at: string;
+  updated_at: string;
+  node_count: number;
+}
+
+export interface WorkflowDetail extends WorkflowListItem {
+  variables: Record<string, unknown>;
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+}
+
+export interface WorkflowNodeInput {
+  node_key: string;
+  type: string;
+  label: string;
+  description?: string;
+  config?: Record<string, unknown>;
+  position: NodePosition;
+  timeout_seconds?: number;
+  retry_policy?: Partial<RetryPolicy>;
+}
+
+export interface WorkflowEdgeInput {
+  source_key: string;
+  target_key: string;
+  condition?: string;
+}
+
+export interface WorkflowCreateInput {
+  name: string;
+  description?: string;
+  tags?: string[];
+  platforms?: string[];
+  variables?: Record<string, unknown>;
+  nodes: WorkflowNodeInput[];
+  edges: WorkflowEdgeInput[];
+}
+
+export interface WorkflowUpdateInput {
+  name?: string;
+  description?: string;
+  status?: WorkflowStatus;
+  tags?: string[];
+  platforms?: string[];
+  variables?: Record<string, unknown>;
+  nodes?: WorkflowNodeInput[];
+  edges?: WorkflowEdgeInput[];
+}
+
+export interface ExecutionNode {
+  id: string;
+  node_key: string;
+  node_label: string;
+  node_type: string;
+  status: NodeStatus;
+  attempt_count: number;
+  started_at?: string | null;
+  completed_at?: string | null;
+  duration_ms?: number | null;
+  output: Record<string, unknown>;
+  error?: string | null;
+}
+
+export interface TimelineEntry {
+  id: string;
+  node_key: string;
+  phase: string;
+  metadata_: Record<string, unknown>;
+  timestamp: string;
+}
+
+export interface ExecutionListItem {
+  id: string;
+  workflow_id: string;
+  status: ExecutionStatus;
+  trigger: string;
+  environment: string;
+  platform: string;
+  error?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+  created_at: string;
+  node_count: number;
+  completed_nodes: number;
+}
+
+export interface ExecutionDetail extends ExecutionListItem {
+  variables: Record<string, unknown>;
+  nodes: ExecutionNode[];
+  timeline: TimelineEntry[];
+}
+
+export interface TriggerExecutionInput {
+  workflow_id: string;
+  trigger?: string;
+  environment?: string;
+  platform?: string;
+  variables?: Record<string, unknown>;
+}
+
+export interface TriggerExecutionResponse {
+  execution_id: string;
+  status: string;
+}
+
+export interface TestTagCatalogDimension {
+  key: string;
+  label: string;
+  values: string[];
+}
+
+export interface TestStep {
+  id: string;
+  step_order: number;
+  name: string;
+  description: string;
+  intent: string;
+  target: string;
+  expected_result: string;
+  test_data: Record<string, unknown>;
+  tags: string[];
+  bindings: Record<string, Record<string, unknown>>;
+  is_enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TestCase {
+  id: string;
+  module_id: string;
+  name: string;
+  description: string;
+  status: string;
+  test_type: string;
+  priority: string;
+  execution_mode: string;
+  platforms: string[];
+  tags: string[];
+  default_variables: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  test_steps: TestStep[];
+}
+
+export interface TestModule {
+  id: string;
+  project_id: string;
+  name: string;
+  description: string;
+  status: string;
+  tags: string[];
+  created_at: string;
+  updated_at: string;
+  test_cases: TestCase[];
+}
+
+export interface TestProject {
+  id: string;
+  name: string;
+  description: string;
+  status: string;
+  tags: string[];
+  created_at: string;
+  updated_at: string;
+  modules: TestModule[];
+}
+
+export interface TestProjectListItem {
+  id: string;
+  name: string;
+  description: string;
+  status: string;
+  tags: string[];
+  module_count: number;
+  case_count: number;
+  step_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TestConfigurationTree {
+  projects: TestProject[];
+  tag_catalog: TestTagCatalogDimension[];
+}
+
+export interface TestProjectCreateInput {
+  name: string;
+  description?: string;
+  status?: string;
+  tags?: string[];
+}
+
+export interface TestProjectUpdateInput {
+  name?: string;
+  description?: string;
+  status?: string;
+  tags?: string[];
+}
+
+export interface TestModuleCreateInput {
+  name: string;
+  description?: string;
+  status?: string;
+  tags?: string[];
+}
+
+export interface TestModuleUpdateInput {
+  name?: string;
+  description?: string;
+  status?: string;
+  tags?: string[];
+}
+
+export interface TestCaseCreateInput {
+  name: string;
+  description?: string;
+  status?: string;
+  test_type?: string;
+  priority?: string;
+  execution_mode?: string;
+  platforms?: string[];
+  tags?: string[];
+  default_variables?: Record<string, unknown>;
+}
+
+export interface TestCaseUpdateInput {
+  name?: string;
+  description?: string;
+  status?: string;
+  test_type?: string;
+  priority?: string;
+  execution_mode?: string;
+  platforms?: string[];
+  tags?: string[];
+  default_variables?: Record<string, unknown>;
+}
+
+export interface TestStepCreateInput {
+  name: string;
+  description?: string;
+  step_order?: number | null;
+  intent?: string;
+  target?: string;
+  expected_result?: string;
+  test_data?: Record<string, unknown>;
+  tags?: string[];
+  bindings?: Record<string, Record<string, unknown>>;
+  is_enabled?: boolean;
+}
+
+export interface TestStepUpdateInput {
+  name?: string;
+  description?: string;
+  step_order?: number | null;
+  intent?: string;
+  target?: string;
+  expected_result?: string;
+  test_data?: Record<string, unknown>;
+  tags?: string[];
+  bindings?: Record<string, Record<string, unknown>>;
+  is_enabled?: boolean;
+}
+
+// ── Plugin / artifact types ─────────────────────────────────────────────────
+
+export type ArtifactKind =
+  | 'screenshot' | 'video' | 'trace' | 'dom_snapshot'
+  | 'network_log' | 'har' | 'http_request' | 'http_response'
+  | 'log' | 'json' | 'text' | 'binary';
+
+export interface Artifact {
+  id: string;
+  execution_id: string;
+  node_key?: string | null;
+  kind: ArtifactKind;
+  name: string;
+  content_type: string;
+  size_bytes: number;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface PluginNodeSpec {
+  type: string;
+  plugin: string;
+  label: string;
+  category: string;
+  description: string;
+  icon: string;
+  color: string;
+  config_schema: Record<string, unknown>;
+  output_schema: Record<string, unknown>;
+  supports_retry: boolean;
+}
+
+export interface PluginInfo {
+  name: string;
+  version: string;
+  description: string;
+  node_types: PluginNodeSpec[];
+}
+
+// WebSocket message types from backend
+export interface WsConnected {
+  type: 'connected';
+  client_id: string;
+}
+
+export interface WsSubscribed {
+  type: 'subscribed';
+  execution_id: string;
+}
+
+export interface WsPong {
+  type: 'pong';
+}
+
+export interface WsHeartbeat {
+  type: 'heartbeat';
+}
+
+export interface WsEvent {
+  type: string;
+  [key: string]: unknown;
+}

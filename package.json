@@ -1,0 +1,9 @@
+{
+  "name": "nexcore",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "start": "scripts\\start.bat",
+    "dev": "scripts\\start.bat"
+  }
+}
