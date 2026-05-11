@@ -10,21 +10,50 @@ This repository already contains a partial implementation spanning parts of late
 - Plugin abstraction exists with API and Web execution plugins.
 - Frontend workspace shell and multiple dashboards exist.
 - Workflow and execution persistence models already exist.
+- Current implementation is split across:
+  - `nexus-qa`: Next.js product UI.
+  - `nexus-api`: Python FastAPI prototype for orchestration, execution, runtime adapters, and enterprise scaffolding.
+  - `nexus-backend`: early NestJS foundation for the target TypeScript control plane.
+- Target ownership remains: TypeScript/NestJS owns product orchestration, realtime, execution control, contracts, auth, tenancy, and scheduling. Python owns AI, OCR, CV, ML, Pytest, and intelligent analysis workers.
 
 ### Phase Readiness Snapshot
 
 | Phase | Status in repo | Control Decision |
 |---|---|---|
-| 1 Product Foundation | Partially implicit in code, not formally specified | Formalize now as source of truth |
-| 2 Frontend Design System | Partially implemented | Normalize and document boundaries |
-| 3 Workflow Builder UX | Partially present | Re-align to strict UX contract |
-| 4 Orchestration Engine | Substantially present | Harden with strict lifecycle contracts |
-| 5 Web and API Plugins | Partially real | Standardize node contracts and artifacts |
-| 6 Execution Intelligence | Early UI scaffolding only | Defer real intelligence until phase entry criteria met |
-| 7 Intent Layer | Not implemented | Keep isolated from phase 1 to 6 |
-| 8 Mobile and Desktop | Not implemented | Block until phase 7 done |
-| 9 Distributed Execution | Implemented as backend control-plane foundation | Harden with real remote agent runners |
-| 10 Enterprise Platform | Implemented as enterprise backend foundation | Harden SSO token verification and secret manager integration |
+| 1 Product Foundation | Documentation and contracts complete | Keep as source of truth |
+| 2 Frontend Design System | Foundation implemented in Next.js | Continue hardening during touched UI work |
+| 3 Workflow Builder UX | Prototype/foundation implemented | Production node config UX still needs hardening |
+| 4 Orchestration Engine | Python prototype plus NestJS control-plane scaffold implemented | Temporal workflow ownership pending |
+| 5 Web and API Plugins | Python plugin foundation implemented | Verify and harden real Playwright/httpx execution |
+| 6 Execution Intelligence | Heuristic prototype plus AI gateway/worker boundary implemented | LangGraph and vector memory pending |
+| 7 Intent Layer | Basic registry/compiler implemented | Contract hardening and NestJS migration pending |
+| 8 Mobile and Desktop | Adapter/plugin foundation implemented | Real Appium/WinAppDriver device verification pending |
+| 9 Distributed Execution | NestJS scheduler plus external agent scaffold implemented | Real fleet dispatch/load verification pending |
+| 10 Enterprise Platform | Enterprise scaffolding and Kubernetes manifests implemented | Production SSO, secrets, policy, and deployment hardening pending |
+
+### Implementation Truth Table
+
+| Status Label | Meaning |
+|---|---|
+| Complete | Fully implemented and verified for the current target scope. |
+| Foundation Implemented | Code/contracts exist and can guide product work, but production verification or migration remains. |
+| Prototype Implemented | Works as a local/prototype implementation, but not the final architecture owner. |
+| Pending | Not implemented beyond documentation or placeholders. |
+
+### Current Completion Summary
+
+| Phase | Honest Completion State |
+|---|---|
+| Phase 1 | Complete as documentation/contracts. |
+| Phase 2 | Foundation implemented. |
+| Phase 3 | Prototype/foundation implemented. |
+| Phase 4 | Python prototype and NestJS orchestration API scaffold implemented; Temporal migration pending. |
+| Phase 5 | Python plugin foundation and NestJS execution contracts implemented; CI/runtime hardening pending. |
+| Phase 6 | Heuristic prototype, NestJS AI gateway, and Python worker boundary implemented; LangGraph/Qdrant pending. |
+| Phase 7 | Basic intent compiler implemented; versioned NestJS contract ownership pending. |
+| Phase 8 | Adapter foundation implemented; real device/application verification pending. |
+| Phase 9 | Distributed control-plane and external agent scaffold implemented; real fleet dispatch/load verification pending. |
+| Phase 10 | Enterprise scaffolding and Kubernetes manifests implemented; production SSO/secrets/tenant/deployment hardening pending. |
 
 ---
 
@@ -187,6 +216,9 @@ Phase 3 deliverable files:
 - [x] Finalize event bus contracts and websocket stream behavior.
 - [x] Finalize timeline and variable propagation models.
 - [x] Implement execution replay model with simulated nodes.
+- [x] Add NestJS orchestration control-plane module and execution contract boundary.
+- [ ] Migrate durable orchestration ownership from Python prototype to Temporal workflows.
+- [ ] Replace in-process background execution with Temporal workflow execution.
 
 ### Deliverables
 
@@ -204,7 +236,8 @@ Phase 4 deliverable files:
 
 ### Exit Criteria
 
-- Simulated execution is deterministic, observable, and replayable.
+- Python prototype execution is deterministic, observable, and replayable.
+- Production exit remains pending until NestJS/Temporal owns orchestration.
 
 ---
 
@@ -222,6 +255,9 @@ Phase 4 deliverable files:
 - [x] Implement artifact capture and indexing.
 - [x] Implement streaming logs and node-level evidence events.
 - [x] Finalize first real MVP node set.
+- [ ] Verify Playwright execution against stable target applications in CI.
+- [ ] Verify API plugin behavior with contract tests and failure fixtures.
+- [x] Move execution-control contracts to NestJS while keeping runtime execution isolated.
 
 ### Deliverables
 
@@ -240,7 +276,8 @@ Phase 5 deliverable files:
 
 ### Exit Criteria
 
-- End-to-end real execution works with observability and reproducible artifacts.
+- Plugin foundation exists for end-to-end web/API execution.
+- Production exit remains pending until CI verification and TypeScript control-plane migration are complete.
 
 ---
 
@@ -252,12 +289,17 @@ Phase 5 deliverable files:
 
 ### Execution Checklist
 
-- [x] Build log and artifact correlation layer.
-- [x] Implement root cause heuristics.
-- [x] Implement flaky pattern detection.
-- [x] Implement retry recommendation logic.
-- [x] Implement anomaly detection over execution graph.
-- [x] Implement selector failure analysis.
+- [x] Build log and artifact correlation foundation.
+- [x] Implement root cause heuristic prototype.
+- [x] Implement flaky pattern detection prototype.
+- [x] Implement retry recommendation prototype.
+- [x] Implement anomaly detection prototype over execution graph.
+- [x] Implement selector failure analysis prototype.
+- [x] Implement Python AI investigation worker boundary.
+- [ ] Implement Python LangGraph workflow for evidence-grounded RCA.
+- [ ] Implement Qdrant-backed execution/failure memory.
+- [x] Add NestJS AI gateway for job dispatch and result validation.
+- [ ] Add realtime AI result streaming over Socket.IO/NATS.
 
 ### Deliverables
 
@@ -274,7 +316,8 @@ Phase 6 deliverable files:
 
 ### Exit Criteria
 
-- Intelligence outputs are explainable and linked to raw evidence.
+- Prototype intelligence outputs are explainable and linked to raw evidence.
+- Production exit remains pending until Python AI workers and NestJS AI gateway are implemented.
 
 ---
 
@@ -291,6 +334,9 @@ Phase 6 deliverable files:
 - [x] Implement capability matrix by platform.
 - [x] Implement platform mapping contracts.
 - [x] Implement adapter contract validation.
+- [ ] Migrate intent contracts and compiler authority to NestJS.
+- [ ] Add versioned intent schemas with compatibility tests.
+- [ ] Add production validation fixtures for cross-platform mappings.
 
 ### Deliverables
 
@@ -307,7 +353,8 @@ Phase 7 deliverable files:
 
 ### Exit Criteria
 
-- Same intent can compile into platform-specific executable plans through adapters.
+- Basic intent can compile into platform-specific executable plans through adapters.
+- Production exit remains pending until versioned schemas and NestJS ownership are complete.
 
 ---
 
@@ -323,7 +370,11 @@ Phase 7 deliverable files:
 - [x] Implement Android and iOS execution support.
 - [x] Integrate WinAppDriver desktop adapter.
 - [x] Implement environment isolation patterns.
-- [x] Validate cross-platform parity for target intents.
+- [x] Validate cross-platform parity at compiler/adapter-contract level.
+- [ ] Validate Appium Android execution against a real emulator/device.
+- [ ] Validate Appium iOS execution against a real simulator/device.
+- [ ] Validate WinAppDriver execution against a real Windows application.
+- [ ] Run cross-platform parity tests against target business flows.
 
 ### Deliverables
 
@@ -339,7 +390,8 @@ Phase 8 progress files:
 
 ### Exit Criteria
 
-- Verified intent parity across supported platforms.
+- Adapter-level intent parity exists across supported platforms.
+- Production exit remains pending until real mobile and desktop runtimes are installed, configured, and tested.
 
 ---
 
@@ -355,7 +407,11 @@ Phase 8 progress files:
 - [x] Build queue orchestration.
 - [x] Build agent health monitoring.
 - [x] Build worker scheduling and shard strategy.
-- [x] Build cloud execution topology.
+- [x] Document cloud execution topology.
+- [x] Implement external long-running runtime agent scaffold.
+- [x] Implement agent command polling scaffold.
+- [x] Move scheduling authority to NestJS target control plane.
+- [ ] Add load test for horizontal worker scaling.
 
 ### Deliverables
 
@@ -371,7 +427,8 @@ Phase 9 deliverable files:
 
 ### Exit Criteria
 
-- Horizontal execution scale with controlled reliability behavior.
+- Distributed execution control-plane foundation exists.
+- Production exit remains pending until external agents execute work outside the API process.
 
 ---
 
@@ -389,6 +446,11 @@ Phase 9 deliverable files:
 - [x] Implement CI and CD integrations.
 - [x] Implement reporting and analytics.
 - [x] Implement cloud and Kubernetes production deployment patterns.
+- [ ] Replace trusted-header auth with real Keycloak JWT verification in production path.
+- [ ] Integrate encrypted secret storage or external secret manager.
+- [ ] Enforce tenant isolation across all product queries.
+- [x] Add Kubernetes manifests or Helm chart.
+- [ ] Add audit retention/export policy.
 
 ### Deliverables
 
@@ -405,7 +467,8 @@ Phase 10 deliverable files:
 
 ### Exit Criteria
 
-- Enterprise readiness controls pass security and operations gates.
+- Enterprise scaffolding exists for RBAC, tenancy, audit, integrations, reports, and readiness checks.
+- Production exit remains pending until real SSO verification, secrets, tenant enforcement, and deployment manifests are complete.
 
 ---
 

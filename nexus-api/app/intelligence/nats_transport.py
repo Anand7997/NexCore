@@ -1,0 +1,129 @@
+"""NATS transport layer — connects the Python AI worker to the NestJS AI gateway.
+
+Subjects
+--------
+ai.jobs         — NestJS publishes job payloads here; Python subscribes
+ai.results      — Python publishes completed results here; NestJS subscribes
+ai.progress     — Python publishes incremental progress events for streaming
+
+The transport is optional: when NATS is unavailable the worker can still be
+called directly via the REST fallback in the AI gateway.
+"""
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+from typing import Any, Callable, Coroutine
+
+logger = logging.getLogger(__name__)
+
+ResultHandler = Callable[[dict[str, Any]], Coroutine[Any, Any, None]]
+
+# NATS subjects
+SUBJECT_JOBS = "ai.jobs"
+SUBJECT_RESULTS = "ai.results"
+SUBJECT_PROGRESS = "ai.progress"
+
+
+class NATSAITransport:
+    """Bridges the Python AI worker with the NestJS AI gateway over NATS."""
+
+    def __init__(self, nats_url: str = "nats://localhost:4222") -> None:
+        self._nats_url = nats_url
+        self._nc: Any = None
+        self._sub: Any = None
+
+    # ── Lifecycle ─────────────────────────────────────────────────────────────
+
+    async def connect(self) -> None:
+        try:
+            import nats
+            self._nc = await nats.connect(
+                self._nats_url,
+                error_cb=self._on_error,
+                disconnected_cb=self._on_disconnected,
+                reconnected_cb=self._on_reconnected,
+            )
+            logger.info("NATS transport connected: %s", self._nats_url)
+        except Exception as exc:
+            raise RuntimeError(f"NATS connect failed ({self._nats_url}): {exc}") from exc
+
+    async def disconnect(self) -> None:
+        if self._sub is not None:
+            try:
+                await self._sub.unsubscribe()
+            except Exception:
+                pass
+        if self._nc is not None:
+            try:
+                await self._nc.drain()
+            except Exception:
+                pass
+        logger.info("NATS transport disconnected")
+
+    # ── Subscription ─────────────────────────────────────────────────────────
+
+    async def subscribe_jobs(self, handler: ResultHandler) -> None:
+        """Subscribe to AI job requests published by NestJS."""
+        if self._nc is None:
+            raise RuntimeError("Not connected — call connect() first")
+
+        async def _on_message(msg: Any) -> None:
+            try:
+                data = json.loads(msg.data.decode())
+                await handler(data)
+            except json.JSONDecodeError:
+                logger.error("Received non-JSON NATS message on %s", SUBJECT_JOBS)
+            except Exception as exc:
+                logger.exception("Error handling NATS job: %s", exc)
+
+        self._sub = await self._nc.subscribe(SUBJECT_JOBS, cb=_on_message)
+        logger.info("Subscribed to NATS subject: %s", SUBJECT_JOBS)
+
+    # ── Publishing ────────────────────────────────────────────────────────────
+
+    async def publish_result(self, result: dict[str, Any]) -> None:
+        """Publish a completed AI job result to NestJS."""
+        if self._nc is None:
+            logger.warning("NATS not connected — skipping result publish for job %s", result.get("jobId"))
+            return
+        await self._nc.publish(SUBJECT_RESULTS, json.dumps(result).encode())
+
+    async def publish_progress(
+        self, job_id: str, step: str, progress: float, detail: str = ""
+    ) -> None:
+        """Publish incremental progress for real-time streaming to the frontend."""
+        if self._nc is None:
+            return
+        payload = {
+            "jobId": job_id,
+            "step": step,
+            "progress": round(max(0.0, min(1.0, progress)), 2),
+            "detail": detail,
+        }
+        await self._nc.publish(SUBJECT_PROGRESS, json.dumps(payload).encode())
+
+    # ── NATS callbacks ────────────────────────────────────────────────────────
+
+    async def _on_error(self, exc: Exception) -> None:
+        logger.error("NATS error: %s", exc)
+
+    async def _on_disconnected(self) -> None:
+        logger.warning("NATS disconnected")
+
+    async def _on_reconnected(self) -> None:
+        logger.info("NATS reconnected")
+
+
+# ── Singleton ────────────────────────────────────────────────────────────────
+
+_nats_transport: NATSAITransport | None = None
+
+
+def get_nats_transport() -> NATSAITransport:
+    global _nats_transport
+    if _nats_transport is None:
+        from app.config import settings
+        _nats_transport = NATSAITransport(nats_url=settings.nats_url)
+    return _nats_transport

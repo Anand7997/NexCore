@@ -24,6 +24,9 @@ export class AppConfigService {
 
   get aiServiceUrl(): string { return this.config.get('AI_SERVICE_URL', { infer: true }); }
 
+  get temporalAddress(): string { return this.config.get('TEMPORAL_ADDRESS', { infer: true }); }
+  get temporalNamespace(): string { return this.config.get('TEMPORAL_NAMESPACE', { infer: true }); }
+
   get keycloakJwksUri(): string {
     return `${this.keycloakUrl}/realms/${this.keycloakRealm}/protocol/openid-connect/certs`;
   }

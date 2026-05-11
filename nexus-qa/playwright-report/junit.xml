@@ -1,0 +1,1046 @@
+<testsuites id="" name="" tests="249" failures="0" skipped="249" errors="0" time="0.5504499999999998">
+<testsuite name="api\api-contract.spec.ts" timestamp="2026-05-11T10:06:51.277Z" hostname="chromium" tests="20" failures="0" skipped="20" time="0" errors="0">
+<testcase name="success › GET /plugins returns 200 and response body is displayed" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="success › GET /workflows returns 200 and response body is displayed" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="success › response body contains expected keys" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="success › request is logged after successful call" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="failure – client error › 400 response sets status to error" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="failure – client error › 401 unauthorized sets status to error" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="failure – client error › 404 not found sets status to error" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="failure – server error › 500 response sets status to error" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="failure – server error › error response body is rendered in response panel" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="timeout › response delay beyond abort limit sets status to timeout" classname="api\api-contract.spec.ts">
+<properties>
+<property name="slow" value="">
+</property>
+</properties>
+<skipped>
+</skipped>
+</testcase>
+<testcase name="timeout › timeout entry is appended to request log" classname="api\api-contract.spec.ts">
+<properties>
+<property name="slow" value="">
+</property>
+</properties>
+<skipped>
+</skipped>
+</testcase>
+<testcase name="retry then pass › page succeeds after a transient 503 on first attempt" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="retry then pass › accumulates multiple log entries across retried calls" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="schema mismatch › 200 with wrong schema is still displayed (no crash)" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="schema mismatch › schema mismatch payload does not contain required plugin fields" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="network failure › aborted request sets status to error" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="network failure › network failure logs an error entry" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="request and response log inspection › Playwright captures the outgoing request URL" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="request and response log inspection › Playwright captures the response status code" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="request and response log inspection › clears log between separate requests" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="artifacts\artifact-validation.spec.ts" timestamp="2026-05-11T10:06:51.277Z" hostname="chromium" tests="13" failures="0" skipped="13" time="0" errors="0">
+<testcase name="screenshot artifacts › full-page screenshot is non-empty bytes" classname="artifacts\artifact-validation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="screenshot artifacts › element screenshot of hero section is non-empty bytes" classname="artifacts\artifact-validation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="screenshot artifacts › viewport screenshot is non-empty bytes" classname="artifacts\artifact-validation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="screenshot artifacts › screenshot captures updated DOM after counter click" classname="artifacts\artifact-validation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="trace artifacts › trace archive is written to disk and is non-empty" classname="artifacts\artifact-validation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="trace artifacts › trace captures navigation and click events" classname="artifacts\artifact-validation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="HAR artifacts › HAR file is written and contains recorded entries" classname="artifacts\artifact-validation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="HAR artifacts › HAR contains page navigation entries" classname="artifacts\artifact-validation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="HAR artifacts › HAR records API proxy calls" classname="artifacts\artifact-validation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="request and response log artifacts › logs all outgoing requests during a session" classname="artifacts\artifact-validation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="request and response log artifacts › logs all responses including status codes" classname="artifacts\artifact-validation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="request and response log artifacts › captures request headers on API calls" classname="artifacts\artifact-validation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="request and response log artifacts › captures response body for API calls" classname="artifacts\artifact-validation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="regression\failure-regression.spec.ts" timestamp="2026-05-11T10:06:51.277Z" hostname="chromium" tests="20" failures="0" skipped="20" time="0" errors="0">
+<testcase name="404 and missing pages › non-existent route does not hard-crash the app shell" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="404 and missing pages › navigating back from a 404 page restores the previous page" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="network failure recovery › app stays interactive after a failed API call" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="network failure recovery › subsequent request succeeds after a previous network failure" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="network failure recovery › no unhandled JS exceptions on network failure" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="form validation failure regressions › empty submit shows errors for all required fields" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="form validation failure regressions › invalid email address shows email error" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="form validation failure regressions › unchecked agreement shows agreement error" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="form validation failure regressions › form shows server-side failure for reserved username &quot;fail&quot;" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="form validation failure regressions › errors clear when reset is clicked" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="form validation failure regressions › no duplicate error messages after repeated submit clicks" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="API error display regressions › 500 error does not leave status as &quot;loading&quot;" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="API error display regressions › 400 error shows response panel with error body" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="API error display regressions › timeout error does not leave status as &quot;loading&quot;" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="empty state rendering › request log shows empty message before any requests" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="empty state rendering › empty plugin response does not crash the response panel" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="rapid repeated actions › clicking counter rapidly does not desync counter value" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="rapid repeated actions › rapid API calls do not leave app in loading state" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="stale data recovery › clear button resets response panel and log" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="large payload rendering › page handles a 500-item JSON response without hanging" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="web\web-plugin.spec.ts" timestamp="2026-05-11T10:06:51.277Z" hostname="chromium" tests="30" failures="0" skipped="30" time="0" errors="0">
+<testcase name="web.navigate › navigates to demo landing page and receives 200" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.navigate › page title is set correctly" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.navigate › navigates to /demo/form via link click" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.navigate › navigates to /demo/api via link click" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.navigate › navigates to /demo/upload via link click" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.assert_text › demo heading text is present" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.assert_text › demo subtitle text is present" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.assert_text › status cards show &quot;ready&quot;" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.assert_text › form heading text on form fixture page" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.extract_text › extracts heading text value" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.extract_text › extracts card label text" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.click › counter increments on button click" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.click › clicking submit without filling form shows validation errors" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.click › reset button clears the form" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.fill › fills all form fields and submits successfully" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.fill › fill with special characters is handled" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.fill › fill clears previous value" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.select › selects Admin role" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.select › selects Engineer role" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.select › selects Viewer role" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.wait › waits for async form-success after submit" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.wait › waits for API status update after button click" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.screenshot › captures full-page screenshot" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.screenshot › captures element screenshot of hero section" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.screenshot › captures form fixture page screenshot" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.upload › uploads a text file and shows success" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.upload › upload button is disabled before file selection" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.execute_js › executes JavaScript to read document title" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.execute_js › executes JavaScript to scroll to bottom" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.execute_js › executes JavaScript to inject and read a custom attribute" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="api\api-contract.spec.ts" timestamp="2026-05-11T10:06:51.277Z" hostname="firefox" tests="20" failures="0" skipped="20" time="0" errors="0">
+<testcase name="success › GET /plugins returns 200 and response body is displayed" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="success › GET /workflows returns 200 and response body is displayed" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="success › response body contains expected keys" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="success › request is logged after successful call" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="failure – client error › 400 response sets status to error" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="failure – client error › 401 unauthorized sets status to error" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="failure – client error › 404 not found sets status to error" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="failure – server error › 500 response sets status to error" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="failure – server error › error response body is rendered in response panel" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="timeout › response delay beyond abort limit sets status to timeout" classname="api\api-contract.spec.ts">
+<properties>
+<property name="slow" value="">
+</property>
+</properties>
+<skipped>
+</skipped>
+</testcase>
+<testcase name="timeout › timeout entry is appended to request log" classname="api\api-contract.spec.ts">
+<properties>
+<property name="slow" value="">
+</property>
+</properties>
+<skipped>
+</skipped>
+</testcase>
+<testcase name="retry then pass › page succeeds after a transient 503 on first attempt" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="retry then pass › accumulates multiple log entries across retried calls" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="schema mismatch › 200 with wrong schema is still displayed (no crash)" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="schema mismatch › schema mismatch payload does not contain required plugin fields" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="network failure › aborted request sets status to error" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="network failure › network failure logs an error entry" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="request and response log inspection › Playwright captures the outgoing request URL" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="request and response log inspection › Playwright captures the response status code" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="request and response log inspection › clears log between separate requests" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="artifacts\artifact-validation.spec.ts" timestamp="2026-05-11T10:06:51.277Z" hostname="firefox" tests="13" failures="0" skipped="13" time="0" errors="0">
+<testcase name="screenshot artifacts › full-page screenshot is non-empty bytes" classname="artifacts\artifact-validation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="screenshot artifacts › element screenshot of hero section is non-empty bytes" classname="artifacts\artifact-validation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="screenshot artifacts › viewport screenshot is non-empty bytes" classname="artifacts\artifact-validation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="screenshot artifacts › screenshot captures updated DOM after counter click" classname="artifacts\artifact-validation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="trace artifacts › trace archive is written to disk and is non-empty" classname="artifacts\artifact-validation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="trace artifacts › trace captures navigation and click events" classname="artifacts\artifact-validation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="HAR artifacts › HAR file is written and contains recorded entries" classname="artifacts\artifact-validation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="HAR artifacts › HAR contains page navigation entries" classname="artifacts\artifact-validation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="HAR artifacts › HAR records API proxy calls" classname="artifacts\artifact-validation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="request and response log artifacts › logs all outgoing requests during a session" classname="artifacts\artifact-validation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="request and response log artifacts › logs all responses including status codes" classname="artifacts\artifact-validation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="request and response log artifacts › captures request headers on API calls" classname="artifacts\artifact-validation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="request and response log artifacts › captures response body for API calls" classname="artifacts\artifact-validation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="regression\failure-regression.spec.ts" timestamp="2026-05-11T10:06:51.277Z" hostname="firefox" tests="20" failures="0" skipped="20" time="0" errors="0">
+<testcase name="404 and missing pages › non-existent route does not hard-crash the app shell" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="404 and missing pages › navigating back from a 404 page restores the previous page" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="network failure recovery › app stays interactive after a failed API call" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="network failure recovery › subsequent request succeeds after a previous network failure" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="network failure recovery › no unhandled JS exceptions on network failure" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="form validation failure regressions › empty submit shows errors for all required fields" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="form validation failure regressions › invalid email address shows email error" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="form validation failure regressions › unchecked agreement shows agreement error" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="form validation failure regressions › form shows server-side failure for reserved username &quot;fail&quot;" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="form validation failure regressions › errors clear when reset is clicked" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="form validation failure regressions › no duplicate error messages after repeated submit clicks" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="API error display regressions › 500 error does not leave status as &quot;loading&quot;" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="API error display regressions › 400 error shows response panel with error body" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="API error display regressions › timeout error does not leave status as &quot;loading&quot;" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="empty state rendering › request log shows empty message before any requests" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="empty state rendering › empty plugin response does not crash the response panel" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="rapid repeated actions › clicking counter rapidly does not desync counter value" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="rapid repeated actions › rapid API calls do not leave app in loading state" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="stale data recovery › clear button resets response panel and log" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="large payload rendering › page handles a 500-item JSON response without hanging" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="web\web-plugin.spec.ts" timestamp="2026-05-11T10:06:51.277Z" hostname="firefox" tests="30" failures="0" skipped="30" time="0" errors="0">
+<testcase name="web.navigate › navigates to demo landing page and receives 200" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.navigate › page title is set correctly" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.navigate › navigates to /demo/form via link click" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.navigate › navigates to /demo/api via link click" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.navigate › navigates to /demo/upload via link click" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.assert_text › demo heading text is present" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.assert_text › demo subtitle text is present" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.assert_text › status cards show &quot;ready&quot;" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.assert_text › form heading text on form fixture page" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.extract_text › extracts heading text value" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.extract_text › extracts card label text" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.click › counter increments on button click" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.click › clicking submit without filling form shows validation errors" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.click › reset button clears the form" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.fill › fills all form fields and submits successfully" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.fill › fill with special characters is handled" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.fill › fill clears previous value" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.select › selects Admin role" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.select › selects Engineer role" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.select › selects Viewer role" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.wait › waits for async form-success after submit" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.wait › waits for API status update after button click" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.screenshot › captures full-page screenshot" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.screenshot › captures element screenshot of hero section" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.screenshot › captures form fixture page screenshot" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.upload › uploads a text file and shows success" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.upload › upload button is disabled before file selection" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.execute_js › executes JavaScript to read document title" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.execute_js › executes JavaScript to scroll to bottom" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.execute_js › executes JavaScript to inject and read a custom attribute" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="api\api-contract.spec.ts" timestamp="2026-05-11T10:06:51.277Z" hostname="webkit" tests="20" failures="0" skipped="20" time="0" errors="0">
+<testcase name="success › GET /plugins returns 200 and response body is displayed" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="success › GET /workflows returns 200 and response body is displayed" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="success › response body contains expected keys" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="success › request is logged after successful call" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="failure – client error › 400 response sets status to error" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="failure – client error › 401 unauthorized sets status to error" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="failure – client error › 404 not found sets status to error" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="failure – server error › 500 response sets status to error" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="failure – server error › error response body is rendered in response panel" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="timeout › response delay beyond abort limit sets status to timeout" classname="api\api-contract.spec.ts">
+<properties>
+<property name="slow" value="">
+</property>
+</properties>
+<skipped>
+</skipped>
+</testcase>
+<testcase name="timeout › timeout entry is appended to request log" classname="api\api-contract.spec.ts">
+<properties>
+<property name="slow" value="">
+</property>
+</properties>
+<skipped>
+</skipped>
+</testcase>
+<testcase name="retry then pass › page succeeds after a transient 503 on first attempt" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="retry then pass › accumulates multiple log entries across retried calls" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="schema mismatch › 200 with wrong schema is still displayed (no crash)" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="schema mismatch › schema mismatch payload does not contain required plugin fields" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="network failure › aborted request sets status to error" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="network failure › network failure logs an error entry" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="request and response log inspection › Playwright captures the outgoing request URL" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="request and response log inspection › Playwright captures the response status code" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="request and response log inspection › clears log between separate requests" classname="api\api-contract.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="artifacts\artifact-validation.spec.ts" timestamp="2026-05-11T10:06:51.277Z" hostname="webkit" tests="13" failures="0" skipped="13" time="0" errors="0">
+<testcase name="screenshot artifacts › full-page screenshot is non-empty bytes" classname="artifacts\artifact-validation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="screenshot artifacts › element screenshot of hero section is non-empty bytes" classname="artifacts\artifact-validation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="screenshot artifacts › viewport screenshot is non-empty bytes" classname="artifacts\artifact-validation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="screenshot artifacts › screenshot captures updated DOM after counter click" classname="artifacts\artifact-validation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="trace artifacts › trace archive is written to disk and is non-empty" classname="artifacts\artifact-validation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="trace artifacts › trace captures navigation and click events" classname="artifacts\artifact-validation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="HAR artifacts › HAR file is written and contains recorded entries" classname="artifacts\artifact-validation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="HAR artifacts › HAR contains page navigation entries" classname="artifacts\artifact-validation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="HAR artifacts › HAR records API proxy calls" classname="artifacts\artifact-validation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="request and response log artifacts › logs all outgoing requests during a session" classname="artifacts\artifact-validation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="request and response log artifacts › logs all responses including status codes" classname="artifacts\artifact-validation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="request and response log artifacts › captures request headers on API calls" classname="artifacts\artifact-validation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="request and response log artifacts › captures response body for API calls" classname="artifacts\artifact-validation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="regression\failure-regression.spec.ts" timestamp="2026-05-11T10:06:51.277Z" hostname="webkit" tests="20" failures="0" skipped="20" time="0" errors="0">
+<testcase name="404 and missing pages › non-existent route does not hard-crash the app shell" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="404 and missing pages › navigating back from a 404 page restores the previous page" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="network failure recovery › app stays interactive after a failed API call" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="network failure recovery › subsequent request succeeds after a previous network failure" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="network failure recovery › no unhandled JS exceptions on network failure" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="form validation failure regressions › empty submit shows errors for all required fields" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="form validation failure regressions › invalid email address shows email error" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="form validation failure regressions › unchecked agreement shows agreement error" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="form validation failure regressions › form shows server-side failure for reserved username &quot;fail&quot;" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="form validation failure regressions › errors clear when reset is clicked" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="form validation failure regressions › no duplicate error messages after repeated submit clicks" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="API error display regressions › 500 error does not leave status as &quot;loading&quot;" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="API error display regressions › 400 error shows response panel with error body" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="API error display regressions › timeout error does not leave status as &quot;loading&quot;" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="empty state rendering › request log shows empty message before any requests" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="empty state rendering › empty plugin response does not crash the response panel" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="rapid repeated actions › clicking counter rapidly does not desync counter value" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="rapid repeated actions › rapid API calls do not leave app in loading state" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="stale data recovery › clear button resets response panel and log" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="large payload rendering › page handles a 500-item JSON response without hanging" classname="regression\failure-regression.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="web\web-plugin.spec.ts" timestamp="2026-05-11T10:06:51.277Z" hostname="webkit" tests="30" failures="0" skipped="30" time="0" errors="0">
+<testcase name="web.navigate › navigates to demo landing page and receives 200" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.navigate › page title is set correctly" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.navigate › navigates to /demo/form via link click" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.navigate › navigates to /demo/api via link click" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.navigate › navigates to /demo/upload via link click" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.assert_text › demo heading text is present" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.assert_text › demo subtitle text is present" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.assert_text › status cards show &quot;ready&quot;" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.assert_text › form heading text on form fixture page" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.extract_text › extracts heading text value" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.extract_text › extracts card label text" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.click › counter increments on button click" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.click › clicking submit without filling form shows validation errors" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.click › reset button clears the form" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.fill › fills all form fields and submits successfully" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.fill › fill with special characters is handled" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.fill › fill clears previous value" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.select › selects Admin role" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.select › selects Engineer role" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.select › selects Viewer role" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.wait › waits for async form-success after submit" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.wait › waits for API status update after button click" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.screenshot › captures full-page screenshot" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.screenshot › captures element screenshot of hero section" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.screenshot › captures form fixture page screenshot" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.upload › uploads a text file and shows success" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.upload › upload button is disabled before file selection" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.execute_js › executes JavaScript to read document title" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.execute_js › executes JavaScript to scroll to bottom" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="web.execute_js › executes JavaScript to inject and read a custom attribute" classname="web\web-plugin.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+</testsuites>

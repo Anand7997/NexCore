@@ -1,0 +1,361 @@
+---
+# PostgreSQL backup CronJob
+# Runs daily at 2:00 AM, uploads to S3/MinIO, retains 30 days
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-backup
+  namespace: nexus-qa
+spec:
+  schedule: "0 2 * * *" # 2:00 AM daily
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: postgres-backup
+        spec:
+          serviceAccountName: nexus-backup
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 999
+            fsGroup: 999
+          containers:
+            - name: backup
+              image: postgres:15-alpine
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -e
+                  BACKUP_FILE="postgres-backup-$(date +%Y%m%d-%H%M%S).sql.gz"
+                  echo "Starting PostgreSQL backup: $BACKUP_FILE"
+                  
+                  # Create compressed dump
+                  PGPASSWORD=$POSTGRES_PASSWORD pg_dump \
+                    -h $POSTGRES_HOST \
+                    -U $POSTGRES_USER \
+                    -d $POSTGRES_DB \
+                    --no-owner --no-acl \
+                    | gzip > /tmp/$BACKUP_FILE
+                  
+                  # Upload to S3/MinIO using mc (MinIO client)
+                  mc alias set backup $S3_ENDPOINT $S3_ACCESS_KEY $S3_SECRET_KEY
+                  mc cp /tmp/$BACKUP_FILE backup/$S3_BUCKET/postgres/$BACKUP_FILE
+                  
+                  # Clean up old backups (retain 30 days)
+                  mc rm --recursive --force --older-than 30d backup/$S3_BUCKET/postgres/
+                  
+                  echo "Backup completed: $BACKUP_FILE"
+              env:
+                - name: POSTGRES_HOST
+                  value: postgres
+                - name: POSTGRES_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-credentials
+                      key: username
+                - name: POSTGRES_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-credentials
+                      key: password
+                - name: POSTGRES_DB
+                  value: nexus
+                - name: S3_ENDPOINT
+                  value: http://minio:9000
+                - name: S3_BUCKET
+                  value: nexus-backups
+                - name: S3_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: minio-credentials
+                      key: accessKey
+                - name: S3_SECRET_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: minio-credentials
+                      key: secretKey
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  cpu: 1000m
+                  memory: 2Gi
+---
+# ClickHouse backup CronJob
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: clickhouse-backup
+  namespace: nexus-qa
+spec:
+  schedule: "0 3 * * *" # 3:00 AM daily
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: clickhouse-backup
+        spec:
+          serviceAccountName: nexus-backup
+          restartPolicy: OnFailure
+          containers:
+            - name: backup
+              image: clickhouse/clickhouse-server:latest
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -e
+                  BACKUP_NAME="clickhouse-$(date +%Y%m%d-%H%M%S)"
+                  echo "Starting ClickHouse backup: $BACKUP_NAME"
+                  
+                  # Create backup using clickhouse-backup tool
+                  clickhouse-backup create $BACKUP_NAME
+                  clickhouse-backup upload $BACKUP_NAME
+                  
+                  # Clean up local backup
+                  clickhouse-backup delete local $BACKUP_NAME
+                  
+                  # Retain only 30 days of backups
+                  clickhouse-backup delete remote --age 30
+                  
+                  echo "Backup completed: $BACKUP_NAME"
+              env:
+                - name: CLICKHOUSE_HOST
+                  value: clickhouse
+                - name: CLICKHOUSE_PORT
+                  value: "9000"
+              resources:
+                requests:
+                  cpu: 500m
+                  memory: 1Gi
+                limits:
+                  cpu: 2000m
+                  memory: 4Gi
+---
+# Neo4j backup CronJob
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: neo4j-backup
+  namespace: nexus-qa
+spec:
+  schedule: "0 4 * * *" # 4:00 AM daily
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: neo4j-backup
+        spec:
+          serviceAccountName: nexus-backup
+          restartPolicy: OnFailure
+          containers:
+            - name: backup
+              image: neo4j:5-enterprise
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -e
+                  BACKUP_FILE="neo4j-backup-$(date +%Y%m%d-%H%M%S).dump"
+                  echo "Starting Neo4j backup: $BACKUP_FILE"
+                  
+                  # Create backup using neo4j-admin
+                  neo4j-admin database dump neo4j --to-path=/tmp --verbose
+                  
+                  # Upload to S3/MinIO
+                  mc alias set backup $S3_ENDPOINT $S3_ACCESS_KEY $S3_SECRET_KEY
+                  mc cp /tmp/neo4j.dump backup/$S3_BUCKET/neo4j/$BACKUP_FILE
+                  
+                  # Clean up old backups
+                  mc rm --recursive --force --older-than 30d backup/$S3_BUCKET/neo4j/
+                  
+                  echo "Backup completed: $BACKUP_FILE"
+              env:
+                - name: NEO4J_HOST
+                  value: neo4j
+                - name: S3_ENDPOINT
+                  value: http://minio:9000
+                - name: S3_BUCKET
+                  value: nexus-backups
+                - name: S3_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: minio-credentials
+                      key: accessKey
+                - name: S3_SECRET_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: minio-credentials
+                      key: secretKey
+              resources:
+                requests:
+                  cpu: 500m
+                  memory: 1Gi
+                limits:
+                  cpu: 2000m
+                  memory: 4Gi
+---
+# Qdrant backup CronJob
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: qdrant-backup
+  namespace: nexus-qa
+spec:
+  schedule: "0 5 * * *" # 5:00 AM daily
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: qdrant-backup
+        spec:
+          serviceAccountName: nexus-backup
+          restartPolicy: OnFailure
+          containers:
+            - name: backup
+              image: curlimages/curl:latest
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -e
+                  SNAPSHOT_NAME="qdrant-$(date +%Y%m%d-%H%M%S)"
+                  echo "Starting Qdrant backup: $SNAPSHOT_NAME"
+                  
+                  # Create snapshot via Qdrant API
+                  curl -X POST "http://qdrant:6333/collections/nexus_vectors/snapshots?snapshot_name=$SNAPSHOT_NAME"
+                  
+                  # Download snapshot
+                  curl -o /tmp/$SNAPSHOT_NAME.snapshot \
+                    "http://qdrant:6333/collections/nexus_vectors/snapshots/$SNAPSHOT_NAME"
+                  
+                  # Upload to S3/MinIO
+                  mc alias set backup $S3_ENDPOINT $S3_ACCESS_KEY $S3_SECRET_KEY
+                  mc cp /tmp/$SNAPSHOT_NAME.snapshot backup/$S3_BUCKET/qdrant/$SNAPSHOT_NAME.snapshot
+                  
+                  # Clean up old backups
+                  mc rm --recursive --force --older-than 30d backup/$S3_BUCKET/qdrant/
+                  
+                  echo "Backup completed: $SNAPSHOT_NAME"
+              env:
+                - name: QDRANT_HOST
+                  value: qdrant
+                - name: S3_ENDPOINT
+                  value: http://minio:9000
+                - name: S3_BUCKET
+                  value: nexus-backups
+                - name: S3_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: minio-credentials
+                      key: accessKey
+                - name: S3_SECRET_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: minio-credentials
+                      key: secretKey
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  cpu: 500m
+                  memory: 1Gi
+---
+# MinIO bucket replication CronJob
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: minio-sync
+  namespace: nexus-qa
+spec:
+  schedule: "0 6 * * *" # 6:00 AM daily
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: minio-sync
+        spec:
+          serviceAccountName: nexus-backup
+          restartPolicy: OnFailure
+          containers:
+            - name: sync
+              image: minio/mc:latest
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -e
+                  echo "Starting MinIO bucket sync"
+                  
+                  # Configure source and destination
+                  mc alias set source $SOURCE_ENDPOINT $SOURCE_ACCESS_KEY $SOURCE_SECRET_KEY
+                  mc alias set dest $DEST_ENDPOINT $DEST_ACCESS_KEY $DEST_SECRET_KEY
+                  
+                  # Mirror primary bucket to backup bucket
+                  mc mirror --preserve --overwrite source/$SOURCE_BUCKET dest/$DEST_BUCKET
+                  
+                  echo "MinIO sync completed"
+              env:
+                - name: SOURCE_ENDPOINT
+                  value: http://minio:9000
+                - name: SOURCE_BUCKET
+                  value: nexus-artifacts
+                - name: SOURCE_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: minio-credentials
+                      key: accessKey
+                - name: SOURCE_SECRET_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: minio-credentials
+                      key: secretKey
+                - name: DEST_ENDPOINT
+                  value: http://minio-backup:9000
+                - name: DEST_BUCKET
+                  value: nexus-artifacts-backup
+                - name: DEST_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: minio-backup-credentials
+                      key: accessKey
+                - name: DEST_SECRET_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: minio-backup-credentials
+                      key: secretKey
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  cpu: 1000m
+                  memory: 2Gi
+---
+# Service account for backup jobs
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: nexus-backup
+  namespace: nexus-qa
+  labels:
+    app: nexus-backup

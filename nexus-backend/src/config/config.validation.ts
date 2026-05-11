@@ -16,6 +16,9 @@ export const configSchema = z.object({
   OTEL_EXPORTER_OTLP_ENDPOINT: z.string().optional(),
 
   AI_SERVICE_URL: z.string().url().default('http://localhost:8000'),
+
+  TEMPORAL_ADDRESS: z.string().default('localhost:7233'),
+  TEMPORAL_NAMESPACE: z.string().default('default'),
 });
 
 export type AppConfig = z.infer<typeof configSchema>;

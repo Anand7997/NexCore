@@ -1,0 +1,270 @@
+name: Playwright Tests – Phase 5 Web/API Verification
+
+on:
+  push:
+    branches: [main, develop, 'feature/**']
+    paths:
+      - 'nexus-qa/**'
+      - '.github/workflows/playwright.yml'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'nexus-qa/**'
+      - '.github/workflows/playwright.yml'
+
+defaults:
+  run:
+    working-directory: nexus-qa
+
+env:
+  NODE_VERSION: '20'
+  CI: 'true'
+  BASE_URL: 'http://localhost:3000'
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Job 1: Chromium (primary – runs first, gates cross-browser jobs)
+# ──────────────────────────────────────────────────────────────────────────────
+jobs:
+  test-chromium:
+    name: 'E2E – Chromium'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: nexus-qa/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright tests (Chromium)
+        run: npx playwright test --project=chromium
+        env:
+          BASE_URL: ${{ env.BASE_URL }}
+
+      - name: Upload Playwright report (Chromium)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-chromium
+          path: |
+            nexus-qa/playwright-report/
+            nexus-qa/playwright-artifacts/
+          retention-days: 30
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Job 2: Firefox
+# ──────────────────────────────────────────────────────────────────────────────
+  test-firefox:
+    name: 'E2E – Firefox'
+    needs: test-chromium
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: nexus-qa/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Firefox
+        run: npx playwright install --with-deps firefox
+
+      - name: Run Playwright tests (Firefox)
+        run: npx playwright test --project=firefox
+        env:
+          BASE_URL: ${{ env.BASE_URL }}
+
+      - name: Upload Playwright report (Firefox)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-firefox
+          path: |
+            nexus-qa/playwright-report/
+            nexus-qa/playwright-artifacts/
+          retention-days: 30
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Job 3: WebKit
+# ──────────────────────────────────────────────────────────────────────────────
+  test-webkit:
+    name: 'E2E – WebKit'
+    needs: test-chromium
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: nexus-qa/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright WebKit
+        run: npx playwright install --with-deps webkit
+
+      - name: Run Playwright tests (WebKit)
+        run: npx playwright test --project=webkit
+        env:
+          BASE_URL: ${{ env.BASE_URL }}
+
+      - name: Upload Playwright report (WebKit)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-webkit
+          path: |
+            nexus-qa/playwright-report/
+            nexus-qa/playwright-artifacts/
+          retention-days: 30
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Job 4: API contract tests (all browsers, parallel)
+# ──────────────────────────────────────────────────────────────────────────────
+  test-api-contracts:
+    name: 'API Contract Tests'
+    needs: test-chromium
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      matrix:
+        browser: [chromium, firefox, webkit]
+      fail-fast: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: nexus-qa/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright (${{ matrix.browser }})
+        run: npx playwright install --with-deps ${{ matrix.browser }}
+
+      - name: Run API contract tests (${{ matrix.browser }})
+        run: npx playwright test tests/api/ --project=${{ matrix.browser }}
+        env:
+          BASE_URL: ${{ env.BASE_URL }}
+
+      - name: Upload API contract report (${{ matrix.browser }})
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-api-contracts-${{ matrix.browser }}
+          path: nexus-qa/playwright-report/
+          retention-days: 30
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Job 5: Artifact validation
+# ──────────────────────────────────────────────────────────────────────────────
+  test-artifacts:
+    name: 'Artifact Validation'
+    needs: [test-chromium]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: nexus-qa/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run artifact validation tests
+        run: npx playwright test tests/artifacts/ --project=chromium
+        env:
+          BASE_URL: ${{ env.BASE_URL }}
+
+      - name: Upload artifacts report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-artifact-validation
+          path: |
+            nexus-qa/playwright-report/
+            nexus-qa/playwright-artifacts/
+          retention-days: 30
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Job 6: Failure regression tests
+# ──────────────────────────────────────────────────────────────────────────────
+  test-regression:
+    name: 'Failure Regression'
+    needs: [test-chromium]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: nexus-qa/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run regression tests
+        run: npx playwright test tests/regression/ --project=chromium
+        env:
+          BASE_URL: ${{ env.BASE_URL }}
+
+      - name: Upload regression report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-regression
+          path: |
+            nexus-qa/playwright-report/
+            nexus-qa/playwright-artifacts/
+          retention-days: 30

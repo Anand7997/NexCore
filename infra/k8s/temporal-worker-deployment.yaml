@@ -1,0 +1,159 @@
+---
+# Temporal worker deployment for nexus-backend execution workflows.
+# Runs npm run start:worker (ts-node temporal-worker.ts in dev, or
+# node dist/temporal-worker.js in production).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nexus-temporal-worker
+  labels:
+    app: nexus-temporal-worker
+    component: temporal-worker
+    version: v1
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: nexus-temporal-worker
+  template:
+    metadata:
+      labels:
+        app: nexus-temporal-worker
+        component: temporal-worker
+        version: v1
+    spec:
+      serviceAccountName: nexus-temporal-worker
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: temporal-worker
+          image: nexus-backend:latest
+          imagePullPolicy: IfNotPresent
+          command: ["node", "dist/temporal-worker.js"]
+          envFrom:
+            - secretRef:
+                name: nexus-backend-env
+          env:
+            - name: TEMPORAL_ADDRESS
+              value: "temporal-frontend:7233"
+            - name: TEMPORAL_NAMESPACE
+              value: "default"
+            - name: NODE_ENV
+              value: production
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: 2000m
+              memory: 2Gi
+          livenessProbe:
+            exec:
+              # Worker exits with non-zero on fatal error; liveness checks process health
+              command: ["sh", "-c", "kill -0 1"]
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: cache
+              mountPath: /app/.cache
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: cache
+          emptyDir: {}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: nexus-temporal-worker
+  labels:
+    app: nexus-temporal-worker
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: nexus-temporal-worker-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: nexus-temporal-worker
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: nexus-temporal-worker-pdb
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: nexus-temporal-worker
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: nexus-temporal-worker-netpol
+spec:
+  podSelector:
+    matchLabels:
+      app: nexus-temporal-worker
+  policyTypes:
+    - Egress
+  egress:
+    # Allow DNS
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+    # Allow Temporal
+    - to:
+        - podSelector:
+            matchLabels:
+              app: temporal
+      ports:
+        - protocol: TCP
+          port: 7233
+    # Allow Postgres
+    - to:
+        - podSelector:
+            matchLabels:
+              app: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+    # Allow NATS
+    - to:
+        - podSelector:
+            matchLabels:
+              app: nats
+      ports:
+        - protocol: TCP
+          port: 4222

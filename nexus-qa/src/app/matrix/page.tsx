@@ -1,8 +1,9 @@
 'use client';
 import { useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { Grid3X3, CheckCircle, XCircle, MinusCircle, Globe, Smartphone, Monitor } from 'lucide-react';
+import { Grid3X3, CheckCircle, XCircle, MinusCircle, Globe, Smartphone, Monitor, Zap, Database } from 'lucide-react';
 import { useIntentCapabilityMatrix, type IntentCapabilityRow, type IntentSupportStatus } from '@/lib/api/intents';
+import PlatformParityReport from '@/components/matrix/PlatformParityReport';
 import type { PlatformCapability } from '@/types';
 
 const PLATFORM_CONFIG = [
@@ -10,6 +11,8 @@ const PLATFORM_CONFIG = [
   { key: 'android', label: 'Android', icon: Smartphone, color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/20', glow: 'rgba(16,185,129,0.1)' },
   { key: 'ios', label: 'iOS', icon: Smartphone, color: 'text-violet-400', bg: 'bg-violet-500/10 border-violet-500/20', glow: 'rgba(139,92,246,0.1)' },
   { key: 'desktop', label: 'Desktop', icon: Monitor, color: 'text-cyan-400', bg: 'bg-cyan-500/10 border-cyan-500/20', glow: 'rgba(6,182,212,0.1)' },
+  { key: 'api', label: 'API', icon: Zap, color: 'text-orange-400', bg: 'bg-orange-500/10 border-orange-500/20', glow: 'rgba(249,115,22,0.1)' },
+  { key: 'db', label: 'DB', icon: Database, color: 'text-rose-400', bg: 'bg-rose-500/10 border-rose-500/20', glow: 'rgba(244,63,94,0.1)' },
 ] as const;
 
 function CapabilityCell({ value }: { value: boolean | 'partial' }) {
@@ -108,6 +111,8 @@ function matrixToCapabilities(rows: IntentCapabilityRow[]): PlatformCapability[]
     android: supportToCell(row.android),
     ios: supportToCell(row.ios),
     desktop: supportToCell(row.desktop),
+    api: supportToCell(row.api),
+    db: supportToCell(row.db),
   }));
 }
 
@@ -136,7 +141,7 @@ export default function MatrixPage() {
               Platform Matrix
             </h1>
             <p className="mt-2 text-[11px] font-mono text-fg-subtle">
-              {sourceLabel} - Web · Android · iOS · Desktop
+              {sourceLabel} - Web · Android · iOS · Desktop · API · DB
             </p>
           </div>
           <Grid3X3 size={18} className="text-fg-subtle" />
@@ -209,6 +214,23 @@ export default function MatrixPage() {
           </div>
         ))}
       </div>
+
+      {/* ── Platform Parity Analysis ── */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, delay: 0.18 }}
+      >
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-[18px] font-bold tracking-tight gradient-text leading-none">
+            Platform Parity Analysis
+          </h2>
+          <p className="text-[10px] font-mono uppercase tracking-[0.16em] text-fg-subtle">
+            Intent coverage by adapter
+          </p>
+        </div>
+        <PlatformParityReport />
+      </motion.div>
     </div>
   );
 }

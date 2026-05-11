@@ -1,0 +1,5425 @@
+{
+  "config": {
+    "configFile": "C:\\Users\\VAnand\\Downloads\\NexCore\\nexus-qa\\playwright.config.ts",
+    "rootDir": "C:/Users/VAnand/Downloads/NexCore/nexus-qa/tests",
+    "forbidOnly": false,
+    "fullyParallel": true,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {},
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "C:/Users/VAnand/Downloads/NexCore/nexus-qa/playwright-artifacts",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {},
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "C:/Users/VAnand/Downloads/NexCore/nexus-qa/tests",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      },
+      {
+        "outputDir": "C:/Users/VAnand/Downloads/NexCore/nexus-qa/playwright-artifacts",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {},
+        "id": "firefox",
+        "name": "firefox",
+        "testDir": "C:/Users/VAnand/Downloads/NexCore/nexus-qa/tests",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      },
+      {
+        "outputDir": "C:/Users/VAnand/Downloads/NexCore/nexus-qa/playwright-artifacts",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {},
+        "id": "webkit",
+        "name": "webkit",
+        "testDir": "C:/Users/VAnand/Downloads/NexCore/nexus-qa/tests",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "html",
+        {
+          "open": "never",
+          "outputFolder": "playwright-report"
+        }
+      ],
+      [
+        "json",
+        {
+          "outputFile": "playwright-report/results.json"
+        }
+      ],
+      [
+        "junit",
+        {
+          "outputFile": "playwright-report/junit.xml"
+        }
+      ],
+      [
+        "list",
+        null
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.59.1",
+    "workers": 7,
+    "webServer": {
+      "command": "npm run dev",
+      "url": "http://localhost:3000",
+      "reuseExistingServer": true,
+      "timeout": 120000,
+      "stdout": "pipe",
+      "stderr": "pipe"
+    }
+  },
+  "suites": [
+    {
+      "title": "api\\api-contract.spec.ts",
+      "file": "api/api-contract.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "success",
+          "file": "api/api-contract.spec.ts",
+          "line": 49,
+          "column": 6,
+          "specs": [
+            {
+              "title": "GET /plugins returns 200 and response body is displayed",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-e2a7a9f26481a2c357ca",
+              "file": "api/api-contract.spec.ts",
+              "line": 50,
+              "column": 7
+            },
+            {
+              "title": "GET /workflows returns 200 and response body is displayed",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-3bb3e0562219a07218bd",
+              "file": "api/api-contract.spec.ts",
+              "line": 62,
+              "column": 7
+            },
+            {
+              "title": "response body contains expected keys",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-c67b0787549743af8d1d",
+              "file": "api/api-contract.spec.ts",
+              "line": 72,
+              "column": 7
+            },
+            {
+              "title": "request is logged after successful call",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-d0d83cd4e9272dfd8951",
+              "file": "api/api-contract.spec.ts",
+              "line": 86,
+              "column": 7
+            },
+            {
+              "title": "GET /plugins returns 200 and response body is displayed",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-bd19fd8030673061bb83",
+              "file": "api/api-contract.spec.ts",
+              "line": 50,
+              "column": 7
+            },
+            {
+              "title": "GET /workflows returns 200 and response body is displayed",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-389e5c1d81194ee8af13",
+              "file": "api/api-contract.spec.ts",
+              "line": 62,
+              "column": 7
+            },
+            {
+              "title": "response body contains expected keys",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-4da89f846c86b0137025",
+              "file": "api/api-contract.spec.ts",
+              "line": 72,
+              "column": 7
+            },
+            {
+              "title": "request is logged after successful call",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-6cedef6d1d235d6a06ae",
+              "file": "api/api-contract.spec.ts",
+              "line": 86,
+              "column": 7
+            },
+            {
+              "title": "GET /plugins returns 200 and response body is displayed",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-cff77ac4d8cb19946546",
+              "file": "api/api-contract.spec.ts",
+              "line": 50,
+              "column": 7
+            },
+            {
+              "title": "GET /workflows returns 200 and response body is displayed",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-3e7c4d247560ee74e8f7",
+              "file": "api/api-contract.spec.ts",
+              "line": 62,
+              "column": 7
+            },
+            {
+              "title": "response body contains expected keys",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-27d722b6a06923950a95",
+              "file": "api/api-contract.spec.ts",
+              "line": 72,
+              "column": 7
+            },
+            {
+              "title": "request is logged after successful call",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-766126eb2cff4cba3013",
+              "file": "api/api-contract.spec.ts",
+              "line": 86,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "failure – client error",
+          "file": "api/api-contract.spec.ts",
+          "line": 102,
+          "column": 6,
+          "specs": [
+            {
+              "title": "400 response sets status to error",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-8088870830d9ad7083ec",
+              "file": "api/api-contract.spec.ts",
+              "line": 103,
+              "column": 7
+            },
+            {
+              "title": "401 unauthorized sets status to error",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-e5e35bae45a6f937d9de",
+              "file": "api/api-contract.spec.ts",
+              "line": 113,
+              "column": 7
+            },
+            {
+              "title": "404 not found sets status to error",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-0c0612f6197b9617b11e",
+              "file": "api/api-contract.spec.ts",
+              "line": 123,
+              "column": 7
+            },
+            {
+              "title": "400 response sets status to error",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-64377490dc32aaecc9e9",
+              "file": "api/api-contract.spec.ts",
+              "line": 103,
+              "column": 7
+            },
+            {
+              "title": "401 unauthorized sets status to error",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-f8f43c634d070e5b6205",
+              "file": "api/api-contract.spec.ts",
+              "line": 113,
+              "column": 7
+            },
+            {
+              "title": "404 not found sets status to error",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-3415f5c3f6d804278487",
+              "file": "api/api-contract.spec.ts",
+              "line": 123,
+              "column": 7
+            },
+            {
+              "title": "400 response sets status to error",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-a3200b3b637b3e332cd4",
+              "file": "api/api-contract.spec.ts",
+              "line": 103,
+              "column": 7
+            },
+            {
+              "title": "401 unauthorized sets status to error",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-250062f13b83b5ee8ca4",
+              "file": "api/api-contract.spec.ts",
+              "line": 113,
+              "column": 7
+            },
+            {
+              "title": "404 not found sets status to error",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-5109b3faa073a8c01388",
+              "file": "api/api-contract.spec.ts",
+              "line": 123,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "failure – server error",
+          "file": "api/api-contract.spec.ts",
+          "line": 137,
+          "column": 6,
+          "specs": [
+            {
+              "title": "500 response sets status to error",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-8478fcc9244146a55584",
+              "file": "api/api-contract.spec.ts",
+              "line": 138,
+              "column": 7
+            },
+            {
+              "title": "error response body is rendered in response panel",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-1a3b2a3ae3d9d3d36eb7",
+              "file": "api/api-contract.spec.ts",
+              "line": 148,
+              "column": 7
+            },
+            {
+              "title": "500 response sets status to error",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-e2ae5efa06382946e012",
+              "file": "api/api-contract.spec.ts",
+              "line": 138,
+              "column": 7
+            },
+            {
+              "title": "error response body is rendered in response panel",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-fb179e4142c39faa2e1b",
+              "file": "api/api-contract.spec.ts",
+              "line": 148,
+              "column": 7
+            },
+            {
+              "title": "500 response sets status to error",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-f4b56310dd31c9824b36",
+              "file": "api/api-contract.spec.ts",
+              "line": 138,
+              "column": 7
+            },
+            {
+              "title": "error response body is rendered in response panel",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-dcaef82d0c2722619116",
+              "file": "api/api-contract.spec.ts",
+              "line": 148,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "timeout",
+          "file": "api/api-contract.spec.ts",
+          "line": 163,
+          "column": 6,
+          "specs": [
+            {
+              "title": "response delay beyond abort limit sets status to timeout",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [
+                    {
+                      "type": "slow",
+                      "location": {
+                        "file": "C:\\Users\\VAnand\\Downloads\\NexCore\\nexus-qa\\tests\\api\\api-contract.spec.ts",
+                        "line": 164,
+                        "column": 8
+                      }
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-5b951073a600c836e27d",
+              "file": "api/api-contract.spec.ts",
+              "line": 166,
+              "column": 7
+            },
+            {
+              "title": "timeout entry is appended to request log",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [
+                    {
+                      "type": "slow",
+                      "location": {
+                        "file": "C:\\Users\\VAnand\\Downloads\\NexCore\\nexus-qa\\tests\\api\\api-contract.spec.ts",
+                        "line": 164,
+                        "column": 8
+                      }
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-9834b75603b46e29d748",
+              "file": "api/api-contract.spec.ts",
+              "line": 179,
+              "column": 7
+            },
+            {
+              "title": "response delay beyond abort limit sets status to timeout",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [
+                    {
+                      "type": "slow",
+                      "location": {
+                        "file": "C:\\Users\\VAnand\\Downloads\\NexCore\\nexus-qa\\tests\\api\\api-contract.spec.ts",
+                        "line": 164,
+                        "column": 8
+                      }
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-c71a9c01edcf75415e74",
+              "file": "api/api-contract.spec.ts",
+              "line": 166,
+              "column": 7
+            },
+            {
+              "title": "timeout entry is appended to request log",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [
+                    {
+                      "type": "slow",
+                      "location": {
+                        "file": "C:\\Users\\VAnand\\Downloads\\NexCore\\nexus-qa\\tests\\api\\api-contract.spec.ts",
+                        "line": 164,
+                        "column": 8
+                      }
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-60c01cc7d8c1f2305728",
+              "file": "api/api-contract.spec.ts",
+              "line": 179,
+              "column": 7
+            },
+            {
+              "title": "response delay beyond abort limit sets status to timeout",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [
+                    {
+                      "type": "slow",
+                      "location": {
+                        "file": "C:\\Users\\VAnand\\Downloads\\NexCore\\nexus-qa\\tests\\api\\api-contract.spec.ts",
+                        "line": 164,
+                        "column": 8
+                      }
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-def9e2ca26d88ed72ee3",
+              "file": "api/api-contract.spec.ts",
+              "line": 166,
+              "column": 7
+            },
+            {
+              "title": "timeout entry is appended to request log",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [
+                    {
+                      "type": "slow",
+                      "location": {
+                        "file": "C:\\Users\\VAnand\\Downloads\\NexCore\\nexus-qa\\tests\\api\\api-contract.spec.ts",
+                        "line": 164,
+                        "column": 8
+                      }
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-85c6cedf94ae7b82da75",
+              "file": "api/api-contract.spec.ts",
+              "line": 179,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "retry then pass",
+          "file": "api/api-contract.spec.ts",
+          "line": 197,
+          "column": 6,
+          "specs": [
+            {
+              "title": "page succeeds after a transient 503 on first attempt",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-15506f3542a1ce86484b",
+              "file": "api/api-contract.spec.ts",
+              "line": 198,
+              "column": 7
+            },
+            {
+              "title": "accumulates multiple log entries across retried calls",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-4c5be4bdf42df20429bc",
+              "file": "api/api-contract.spec.ts",
+              "line": 213,
+              "column": 7
+            },
+            {
+              "title": "page succeeds after a transient 503 on first attempt",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-c0bf414013baba11208e",
+              "file": "api/api-contract.spec.ts",
+              "line": 198,
+              "column": 7
+            },
+            {
+              "title": "accumulates multiple log entries across retried calls",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-dfcfe638be2837d7bbb0",
+              "file": "api/api-contract.spec.ts",
+              "line": 213,
+              "column": 7
+            },
+            {
+              "title": "page succeeds after a transient 503 on first attempt",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-cc2c6e2b5154ddbf0178",
+              "file": "api/api-contract.spec.ts",
+              "line": 198,
+              "column": 7
+            },
+            {
+              "title": "accumulates multiple log entries across retried calls",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-01fb7292d6fb41a4e83e",
+              "file": "api/api-contract.spec.ts",
+              "line": 213,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "schema mismatch",
+          "file": "api/api-contract.spec.ts",
+          "line": 232,
+          "column": 6,
+          "specs": [
+            {
+              "title": "200 with wrong schema is still displayed (no crash)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-54bae86ec428134e5448",
+              "file": "api/api-contract.spec.ts",
+              "line": 233,
+              "column": 7
+            },
+            {
+              "title": "schema mismatch payload does not contain required plugin fields",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-732fe872fe09a9929b75",
+              "file": "api/api-contract.spec.ts",
+              "line": 251,
+              "column": 7
+            },
+            {
+              "title": "200 with wrong schema is still displayed (no crash)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-0d892dd3db36507a59e8",
+              "file": "api/api-contract.spec.ts",
+              "line": 233,
+              "column": 7
+            },
+            {
+              "title": "schema mismatch payload does not contain required plugin fields",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-d46981a1dc26fa807046",
+              "file": "api/api-contract.spec.ts",
+              "line": 251,
+              "column": 7
+            },
+            {
+              "title": "200 with wrong schema is still displayed (no crash)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-41a5ed35010200197b8d",
+              "file": "api/api-contract.spec.ts",
+              "line": 233,
+              "column": 7
+            },
+            {
+              "title": "schema mismatch payload does not contain required plugin fields",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-e6555a026d1e648bf29d",
+              "file": "api/api-contract.spec.ts",
+              "line": 251,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "network failure",
+          "file": "api/api-contract.spec.ts",
+          "line": 270,
+          "column": 6,
+          "specs": [
+            {
+              "title": "aborted request sets status to error",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-2c991b2df7cfaf19f278",
+              "file": "api/api-contract.spec.ts",
+              "line": 271,
+              "column": 7
+            },
+            {
+              "title": "network failure logs an error entry",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-0064d89ae3ff853b44c4",
+              "file": "api/api-contract.spec.ts",
+              "line": 281,
+              "column": 7
+            },
+            {
+              "title": "aborted request sets status to error",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-df7cb2ed0b6055cfbc3b",
+              "file": "api/api-contract.spec.ts",
+              "line": 271,
+              "column": 7
+            },
+            {
+              "title": "network failure logs an error entry",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-acb4eebc9b1664126371",
+              "file": "api/api-contract.spec.ts",
+              "line": 281,
+              "column": 7
+            },
+            {
+              "title": "aborted request sets status to error",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-72339ded555633ebf812",
+              "file": "api/api-contract.spec.ts",
+              "line": 271,
+              "column": 7
+            },
+            {
+              "title": "network failure logs an error entry",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-191baf77af38b10594cf",
+              "file": "api/api-contract.spec.ts",
+              "line": 281,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "request and response log inspection",
+          "file": "api/api-contract.spec.ts",
+          "line": 297,
+          "column": 6,
+          "specs": [
+            {
+              "title": "Playwright captures the outgoing request URL",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-7a95b0e913b992690961",
+              "file": "api/api-contract.spec.ts",
+              "line": 298,
+              "column": 7
+            },
+            {
+              "title": "Playwright captures the response status code",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-8bd3239512172b3311f3",
+              "file": "api/api-contract.spec.ts",
+              "line": 312,
+              "column": 7
+            },
+            {
+              "title": "clears log between separate requests",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-d4af29f3ac48b936450e",
+              "file": "api/api-contract.spec.ts",
+              "line": 330,
+              "column": 7
+            },
+            {
+              "title": "Playwright captures the outgoing request URL",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-f3c62af11ec423b0f729",
+              "file": "api/api-contract.spec.ts",
+              "line": 298,
+              "column": 7
+            },
+            {
+              "title": "Playwright captures the response status code",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-a6dbcc0acd6df1c89795",
+              "file": "api/api-contract.spec.ts",
+              "line": 312,
+              "column": 7
+            },
+            {
+              "title": "clears log between separate requests",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-820f666b0230b8388c6b",
+              "file": "api/api-contract.spec.ts",
+              "line": 330,
+              "column": 7
+            },
+            {
+              "title": "Playwright captures the outgoing request URL",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-99aedb84aebf429d61ac",
+              "file": "api/api-contract.spec.ts",
+              "line": 298,
+              "column": 7
+            },
+            {
+              "title": "Playwright captures the response status code",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-461910c5994d1463a1e2",
+              "file": "api/api-contract.spec.ts",
+              "line": 312,
+              "column": 7
+            },
+            {
+              "title": "clears log between separate requests",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "a5a50c703a808f4dc192-d26ffa8196fabeb70308",
+              "file": "api/api-contract.spec.ts",
+              "line": 330,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "artifacts\\artifact-validation.spec.ts",
+      "file": "artifacts/artifact-validation.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "screenshot artifacts",
+          "file": "artifacts/artifact-validation.spec.ts",
+          "line": 28,
+          "column": 6,
+          "specs": [
+            {
+              "title": "full-page screenshot is non-empty bytes",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fd6b76430b4070db4a20-4b446a8b8e57919e942e",
+              "file": "artifacts/artifact-validation.spec.ts",
+              "line": 29,
+              "column": 7
+            },
+            {
+              "title": "element screenshot of hero section is non-empty bytes",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fd6b76430b4070db4a20-851883e1ef3f5362e81c",
+              "file": "artifacts/artifact-validation.spec.ts",
+              "line": 42,
+              "column": 7
+            },
+            {
+              "title": "viewport screenshot is non-empty bytes",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fd6b76430b4070db4a20-07bf748908f5281a01be",
+              "file": "artifacts/artifact-validation.spec.ts",
+              "line": 55,
+              "column": 7
+            },
+            {
+              "title": "screenshot captures updated DOM after counter click",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fd6b76430b4070db4a20-7e0459dc8ab3dddf6912",
+              "file": "artifacts/artifact-validation.spec.ts",
+              "line": 67,
+              "column": 7
+            },
+            {
+              "title": "full-page screenshot is non-empty bytes",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fd6b76430b4070db4a20-9fd3c2a8aca43e2fc474",
+              "file": "artifacts/artifact-validation.spec.ts",
+              "line": 29,
+              "column": 7
+            },
+            {
+              "title": "element screenshot of hero section is non-empty bytes",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fd6b76430b4070db4a20-b4f5409d971c1cd02220",
+              "file": "artifacts/artifact-validation.spec.ts",
+              "line": 42,
+              "column": 7
+            },
+            {
+              "title": "viewport screenshot is non-empty bytes",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fd6b76430b4070db4a20-9fb9f3a6562fff737bc1",
+              "file": "artifacts/artifact-validation.spec.ts",
+              "line": 55,
+              "column": 7
+            },
+            {
+              "title": "screenshot captures updated DOM after counter click",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fd6b76430b4070db4a20-08ca8473e1c33d1cb734",
+              "file": "artifacts/artifact-validation.spec.ts",
+              "line": 67,
+              "column": 7
+            },
+            {
+              "title": "full-page screenshot is non-empty bytes",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fd6b76430b4070db4a20-a1aa8dbca998e9f39be3",
+              "file": "artifacts/artifact-validation.spec.ts",
+              "line": 29,
+              "column": 7
+            },
+            {
+              "title": "element screenshot of hero section is non-empty bytes",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fd6b76430b4070db4a20-e7577fbaab7e69fefdad",
+              "file": "artifacts/artifact-validation.spec.ts",
+              "line": 42,
+              "column": 7
+            },
+            {
+              "title": "viewport screenshot is non-empty bytes",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fd6b76430b4070db4a20-8b60661f775d28a0fc5c",
+              "file": "artifacts/artifact-validation.spec.ts",
+              "line": 55,
+              "column": 7
+            },
+            {
+              "title": "screenshot captures updated DOM after counter click",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fd6b76430b4070db4a20-fcc5f04ff0bb5d8d9881",
+              "file": "artifacts/artifact-validation.spec.ts",
+              "line": 67,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "trace artifacts",
+          "file": "artifacts/artifact-validation.spec.ts",
+          "line": 84,
+          "column": 6,
+          "specs": [
+            {
+              "title": "trace archive is written to disk and is non-empty",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fd6b76430b4070db4a20-a335b7d09517b0d93854",
+              "file": "artifacts/artifact-validation.spec.ts",
+              "line": 85,
+              "column": 7
+            },
+            {
+              "title": "trace captures navigation and click events",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fd6b76430b4070db4a20-1d35f3b9fd73ee601c96",
+              "file": "artifacts/artifact-validation.spec.ts",
+              "line": 105,
+              "column": 7
+            },
+            {
+              "title": "trace archive is written to disk and is non-empty",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fd6b76430b4070db4a20-5de14aac56eafbb1ddb7",
+              "file": "artifacts/artifact-validation.spec.ts",
+              "line": 85,
+              "column": 7
+            },
+            {
+              "title": "trace captures navigation and click events",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fd6b76430b4070db4a20-848c67951e6a22cc7116",
+              "file": "artifacts/artifact-validation.spec.ts",
+              "line": 105,
+              "column": 7
+            },
+            {
+              "title": "trace archive is written to disk and is non-empty",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fd6b76430b4070db4a20-3e819676fa7fdf676ebe",
+              "file": "artifacts/artifact-validation.spec.ts",
+              "line": 85,
+              "column": 7
+            },
+            {
+              "title": "trace captures navigation and click events",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fd6b76430b4070db4a20-c79a736bcd093f4d6fec",
+              "file": "artifacts/artifact-validation.spec.ts",
+              "line": 105,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "HAR artifacts",
+          "file": "artifacts/artifact-validation.spec.ts",
+          "line": 129,
+          "column": 6,
+          "specs": [
+            {
+              "title": "HAR file is written and contains recorded entries",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fd6b76430b4070db4a20-3e9e3f289306c77ae310",
+              "file": "artifacts/artifact-validation.spec.ts",
+              "line": 130,
+              "column": 7
+            },
+            {
+              "title": "HAR contains page navigation entries",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fd6b76430b4070db4a20-074a28d405142fd13460",
+              "file": "artifacts/artifact-validation.spec.ts",
+              "line": 156,
+              "column": 7
+            },
+            {
+              "title": "HAR records API proxy calls",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fd6b76430b4070db4a20-cf4ad1178d69f8eb9c9a",
+              "file": "artifacts/artifact-validation.spec.ts",
+              "line": 181,
+              "column": 7
+            },
+            {
+              "title": "HAR file is written and contains recorded entries",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fd6b76430b4070db4a20-950301617c3da0f56a91",
+              "file": "artifacts/artifact-validation.spec.ts",
+              "line": 130,
+              "column": 7
+            },
+            {
+              "title": "HAR contains page navigation entries",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fd6b76430b4070db4a20-f01f14228ac5c7ad86ae",
+              "file": "artifacts/artifact-validation.spec.ts",
+              "line": 156,
+              "column": 7
+            },
+            {
+              "title": "HAR records API proxy calls",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fd6b76430b4070db4a20-6a42840d5a69bb85a443",
+              "file": "artifacts/artifact-validation.spec.ts",
+              "line": 181,
+              "column": 7
+            },
+            {
+              "title": "HAR file is written and contains recorded entries",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fd6b76430b4070db4a20-d05da80ab7627631ac63",
+              "file": "artifacts/artifact-validation.spec.ts",
+              "line": 130,
+              "column": 7
+            },
+            {
+              "title": "HAR contains page navigation entries",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fd6b76430b4070db4a20-5694ab2c1f33b52851f3",
+              "file": "artifacts/artifact-validation.spec.ts",
+              "line": 156,
+              "column": 7
+            },
+            {
+              "title": "HAR records API proxy calls",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fd6b76430b4070db4a20-ae60f92303dc486fe0eb",
+              "file": "artifacts/artifact-validation.spec.ts",
+              "line": 181,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "request and response log artifacts",
+          "file": "artifacts/artifact-validation.spec.ts",
+          "line": 209,
+          "column": 6,
+          "specs": [
+            {
+              "title": "logs all outgoing requests during a session",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fd6b76430b4070db4a20-aaa857451801e290f80f",
+              "file": "artifacts/artifact-validation.spec.ts",
+              "line": 210,
+              "column": 7
+            },
+            {
+              "title": "logs all responses including status codes",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fd6b76430b4070db4a20-3853b23adc01d870043e",
+              "file": "artifacts/artifact-validation.spec.ts",
+              "line": 225,
+              "column": 7
+            },
+            {
+              "title": "captures request headers on API calls",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fd6b76430b4070db4a20-b257c1d5bc6c078a7064",
+              "file": "artifacts/artifact-validation.spec.ts",
+              "line": 241,
+              "column": 7
+            },
+            {
+              "title": "captures response body for API calls",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fd6b76430b4070db4a20-eaf9fd8e2145a6df6c4f",
+              "file": "artifacts/artifact-validation.spec.ts",
+              "line": 259,
+              "column": 7
+            },
+            {
+              "title": "logs all outgoing requests during a session",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fd6b76430b4070db4a20-73dabd3eafa9a55d1818",
+              "file": "artifacts/artifact-validation.spec.ts",
+              "line": 210,
+              "column": 7
+            },
+            {
+              "title": "logs all responses including status codes",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fd6b76430b4070db4a20-d872aeb07974a1329f7f",
+              "file": "artifacts/artifact-validation.spec.ts",
+              "line": 225,
+              "column": 7
+            },
+            {
+              "title": "captures request headers on API calls",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fd6b76430b4070db4a20-da93f97a5d9261842039",
+              "file": "artifacts/artifact-validation.spec.ts",
+              "line": 241,
+              "column": 7
+            },
+            {
+              "title": "captures response body for API calls",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fd6b76430b4070db4a20-a0d148af64a500cab63b",
+              "file": "artifacts/artifact-validation.spec.ts",
+              "line": 259,
+              "column": 7
+            },
+            {
+              "title": "logs all outgoing requests during a session",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fd6b76430b4070db4a20-6d3ccdad32d3aace92a8",
+              "file": "artifacts/artifact-validation.spec.ts",
+              "line": 210,
+              "column": 7
+            },
+            {
+              "title": "logs all responses including status codes",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fd6b76430b4070db4a20-7e9058a5a03d689e7f83",
+              "file": "artifacts/artifact-validation.spec.ts",
+              "line": 225,
+              "column": 7
+            },
+            {
+              "title": "captures request headers on API calls",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fd6b76430b4070db4a20-fa29247c8062cbf7027a",
+              "file": "artifacts/artifact-validation.spec.ts",
+              "line": 241,
+              "column": 7
+            },
+            {
+              "title": "captures response body for API calls",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fd6b76430b4070db4a20-183ccef6d5b1acdf74ae",
+              "file": "artifacts/artifact-validation.spec.ts",
+              "line": 259,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "regression\\failure-regression.spec.ts",
+      "file": "regression/failure-regression.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "404 and missing pages",
+          "file": "regression/failure-regression.spec.ts",
+          "line": 27,
+          "column": 6,
+          "specs": [
+            {
+              "title": "non-existent route does not hard-crash the app shell",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-e1692268c4fe1053c474",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 28,
+              "column": 7
+            },
+            {
+              "title": "navigating back from a 404 page restores the previous page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-9d53c567733589a45de9",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 41,
+              "column": 7
+            },
+            {
+              "title": "non-existent route does not hard-crash the app shell",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-5933a442c308bfbfd820",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 28,
+              "column": 7
+            },
+            {
+              "title": "navigating back from a 404 page restores the previous page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-71719389119cbb344ae2",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 41,
+              "column": 7
+            },
+            {
+              "title": "non-existent route does not hard-crash the app shell",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-8a8240e1710069cbe529",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 28,
+              "column": 7
+            },
+            {
+              "title": "navigating back from a 404 page restores the previous page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-1fe8986396e4c06495c3",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 41,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "network failure recovery",
+          "file": "regression/failure-regression.spec.ts",
+          "line": 53,
+          "column": 6,
+          "specs": [
+            {
+              "title": "app stays interactive after a failed API call",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-029afd9bbf3e72d8b5c4",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 54,
+              "column": 7
+            },
+            {
+              "title": "subsequent request succeeds after a previous network failure",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-f0bd70cc1fbe8263ed09",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 68,
+              "column": 7
+            },
+            {
+              "title": "no unhandled JS exceptions on network failure",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-7c9ec05a34f19a720857",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 94,
+              "column": 7
+            },
+            {
+              "title": "app stays interactive after a failed API call",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-57c6adae1eacab7d30db",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 54,
+              "column": 7
+            },
+            {
+              "title": "subsequent request succeeds after a previous network failure",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-bc250525604097cd264a",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 68,
+              "column": 7
+            },
+            {
+              "title": "no unhandled JS exceptions on network failure",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-ead684974ccc10120386",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 94,
+              "column": 7
+            },
+            {
+              "title": "app stays interactive after a failed API call",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-9c3c0ccebb6b96075daf",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 54,
+              "column": 7
+            },
+            {
+              "title": "subsequent request succeeds after a previous network failure",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-fae1b380d3e9c19ec0b1",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 68,
+              "column": 7
+            },
+            {
+              "title": "no unhandled JS exceptions on network failure",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-c364b6310392d3978488",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 94,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "form validation failure regressions",
+          "file": "regression/failure-regression.spec.ts",
+          "line": 110,
+          "column": 6,
+          "specs": [
+            {
+              "title": "empty submit shows errors for all required fields",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-937a27081b0bdd4684fc",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 111,
+              "column": 7
+            },
+            {
+              "title": "invalid email address shows email error",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-0317328aba9af68a1d86",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 119,
+              "column": 7
+            },
+            {
+              "title": "unchecked agreement shows agreement error",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-125e9e140422e02d2dbe",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 130,
+              "column": 7
+            },
+            {
+              "title": "form shows server-side failure for reserved username \"fail\"",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-af9773580ecd1337ce08",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 140,
+              "column": 7
+            },
+            {
+              "title": "errors clear when reset is clicked",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-f7ea9a8faaf8a7e76c0d",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 150,
+              "column": 7
+            },
+            {
+              "title": "no duplicate error messages after repeated submit clicks",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-17c501b9fe074d71565a",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 157,
+              "column": 7
+            },
+            {
+              "title": "empty submit shows errors for all required fields",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-8e57ea24e3ba4208ff7a",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 111,
+              "column": 7
+            },
+            {
+              "title": "invalid email address shows email error",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-59268d18b9416eaf2e4a",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 119,
+              "column": 7
+            },
+            {
+              "title": "unchecked agreement shows agreement error",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-c310e3c3fe1d6532062a",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 130,
+              "column": 7
+            },
+            {
+              "title": "form shows server-side failure for reserved username \"fail\"",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-55fc91e61b53670d9d75",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 140,
+              "column": 7
+            },
+            {
+              "title": "errors clear when reset is clicked",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-b9bfea3ccf51d6ba6f09",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 150,
+              "column": 7
+            },
+            {
+              "title": "no duplicate error messages after repeated submit clicks",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-246a6a369a55a3377398",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 157,
+              "column": 7
+            },
+            {
+              "title": "empty submit shows errors for all required fields",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-83c5a68b6851c797df16",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 111,
+              "column": 7
+            },
+            {
+              "title": "invalid email address shows email error",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-13258779276becbb8d26",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 119,
+              "column": 7
+            },
+            {
+              "title": "unchecked agreement shows agreement error",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-ec8c26accd019e730b59",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 130,
+              "column": 7
+            },
+            {
+              "title": "form shows server-side failure for reserved username \"fail\"",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-9d41bc35d7c7fda559c4",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 140,
+              "column": 7
+            },
+            {
+              "title": "errors clear when reset is clicked",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-58f3aa13d1b9ce0d8787",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 150,
+              "column": 7
+            },
+            {
+              "title": "no duplicate error messages after repeated submit clicks",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-88c8aeb37a53ff8e0db7",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 157,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "API error display regressions",
+          "file": "regression/failure-regression.spec.ts",
+          "line": 168,
+          "column": 6,
+          "specs": [
+            {
+              "title": "500 error does not leave status as \"loading\"",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-de45c0a088ab1968c421",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 169,
+              "column": 7
+            },
+            {
+              "title": "400 error shows response panel with error body",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-6025aed82f8ba0ee1161",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 180,
+              "column": 7
+            },
+            {
+              "title": "timeout error does not leave status as \"loading\"",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-fd3105df0bc191508601",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 189,
+              "column": 7
+            },
+            {
+              "title": "500 error does not leave status as \"loading\"",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-d0e2d582e38f015af38f",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 169,
+              "column": 7
+            },
+            {
+              "title": "400 error shows response panel with error body",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-1082b378b15f2501e59e",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 180,
+              "column": 7
+            },
+            {
+              "title": "timeout error does not leave status as \"loading\"",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-2e7a4b77f7bb0a47f2e4",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 189,
+              "column": 7
+            },
+            {
+              "title": "500 error does not leave status as \"loading\"",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-e9d838dc612e43baeff7",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 169,
+              "column": 7
+            },
+            {
+              "title": "400 error shows response panel with error body",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-9a393e1d6a6b861f1f67",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 180,
+              "column": 7
+            },
+            {
+              "title": "timeout error does not leave status as \"loading\"",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-384f6c0162e520221b0d",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 189,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "empty state rendering",
+          "file": "regression/failure-regression.spec.ts",
+          "line": 207,
+          "column": 6,
+          "specs": [
+            {
+              "title": "request log shows empty message before any requests",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-e8c0985f147d2a3a6c66",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 208,
+              "column": 7
+            },
+            {
+              "title": "empty plugin response does not crash the response panel",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-ced2bc120edbf2f630bb",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 213,
+              "column": 7
+            },
+            {
+              "title": "request log shows empty message before any requests",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-06173fb95c03064ed3bf",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 208,
+              "column": 7
+            },
+            {
+              "title": "empty plugin response does not crash the response panel",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-c3c5a8d0d09471046cfc",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 213,
+              "column": 7
+            },
+            {
+              "title": "request log shows empty message before any requests",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-d3317c8d5e371dc87c86",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 208,
+              "column": 7
+            },
+            {
+              "title": "empty plugin response does not crash the response panel",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-7d84ca4371cca8f70835",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 213,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "rapid repeated actions",
+          "file": "regression/failure-regression.spec.ts",
+          "line": 233,
+          "column": 6,
+          "specs": [
+            {
+              "title": "clicking counter rapidly does not desync counter value",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-1b6a98bf17aecede5ffb",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 234,
+              "column": 7
+            },
+            {
+              "title": "rapid API calls do not leave app in loading state",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-decc648f74da55f48312",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 244,
+              "column": 7
+            },
+            {
+              "title": "clicking counter rapidly does not desync counter value",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-0c1c3fa2023ad0da6af4",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 234,
+              "column": 7
+            },
+            {
+              "title": "rapid API calls do not leave app in loading state",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-ae4bcb9d3d3ce830ee5a",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 244,
+              "column": 7
+            },
+            {
+              "title": "clicking counter rapidly does not desync counter value",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-d13ae415ca02a84eef7d",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 234,
+              "column": 7
+            },
+            {
+              "title": "rapid API calls do not leave app in loading state",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-d3516db1203714d2600d",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 244,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "stale data recovery",
+          "file": "regression/failure-regression.spec.ts",
+          "line": 271,
+          "column": 6,
+          "specs": [
+            {
+              "title": "clear button resets response panel and log",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-9284bb399c208a29b332",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 272,
+              "column": 7
+            },
+            {
+              "title": "clear button resets response panel and log",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-fa30696738c35f65b58a",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 272,
+              "column": 7
+            },
+            {
+              "title": "clear button resets response panel and log",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-7f25f6ed2a680f85c759",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 272,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "large payload rendering",
+          "file": "regression/failure-regression.spec.ts",
+          "line": 294,
+          "column": 6,
+          "specs": [
+            {
+              "title": "page handles a 500-item JSON response without hanging",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-ec2f7d4ac77090be5119",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 295,
+              "column": 7
+            },
+            {
+              "title": "page handles a 500-item JSON response without hanging",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-8c677a882fa632c2bb05",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 295,
+              "column": 7
+            },
+            {
+              "title": "page handles a 500-item JSON response without hanging",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ec8146df1acac9e1f0a-5ba4933bc80e760d9130",
+              "file": "regression/failure-regression.spec.ts",
+              "line": 295,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "web\\web-plugin.spec.ts",
+      "file": "web/web-plugin.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "web.navigate",
+          "file": "web/web-plugin.spec.ts",
+          "line": 15,
+          "column": 6,
+          "specs": [
+            {
+              "title": "navigates to demo landing page and receives 200",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-f4c8eeacf444138412f9",
+              "file": "web/web-plugin.spec.ts",
+              "line": 16,
+              "column": 7
+            },
+            {
+              "title": "page title is set correctly",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-7d0655a43d1113b3acde",
+              "file": "web/web-plugin.spec.ts",
+              "line": 21,
+              "column": 7
+            },
+            {
+              "title": "navigates to /demo/form via link click",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-aa5b4640b645cfdb6698",
+              "file": "web/web-plugin.spec.ts",
+              "line": 25,
+              "column": 7
+            },
+            {
+              "title": "navigates to /demo/api via link click",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-00b77401da43059cfc57",
+              "file": "web/web-plugin.spec.ts",
+              "line": 31,
+              "column": 7
+            },
+            {
+              "title": "navigates to /demo/upload via link click",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-6eb781d7c62f72f3c24d",
+              "file": "web/web-plugin.spec.ts",
+              "line": 37,
+              "column": 7
+            },
+            {
+              "title": "navigates to demo landing page and receives 200",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-38d5072c97c7fa97666c",
+              "file": "web/web-plugin.spec.ts",
+              "line": 16,
+              "column": 7
+            },
+            {
+              "title": "page title is set correctly",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-b3e84a31569bfe42c47a",
+              "file": "web/web-plugin.spec.ts",
+              "line": 21,
+              "column": 7
+            },
+            {
+              "title": "navigates to /demo/form via link click",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-b58fb9f2663075b8ebae",
+              "file": "web/web-plugin.spec.ts",
+              "line": 25,
+              "column": 7
+            },
+            {
+              "title": "navigates to /demo/api via link click",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-fe7bcef17b316b536eda",
+              "file": "web/web-plugin.spec.ts",
+              "line": 31,
+              "column": 7
+            },
+            {
+              "title": "navigates to /demo/upload via link click",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-e1107523d2dd1d70bbf4",
+              "file": "web/web-plugin.spec.ts",
+              "line": 37,
+              "column": 7
+            },
+            {
+              "title": "navigates to demo landing page and receives 200",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-97600517662885fbd885",
+              "file": "web/web-plugin.spec.ts",
+              "line": 16,
+              "column": 7
+            },
+            {
+              "title": "page title is set correctly",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-9fa230979e8270e89256",
+              "file": "web/web-plugin.spec.ts",
+              "line": 21,
+              "column": 7
+            },
+            {
+              "title": "navigates to /demo/form via link click",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-93d0fa8fa8b949d03964",
+              "file": "web/web-plugin.spec.ts",
+              "line": 25,
+              "column": 7
+            },
+            {
+              "title": "navigates to /demo/api via link click",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-f4f1de464812fa5ca80c",
+              "file": "web/web-plugin.spec.ts",
+              "line": 31,
+              "column": 7
+            },
+            {
+              "title": "navigates to /demo/upload via link click",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-641c1667f43b1909fe0b",
+              "file": "web/web-plugin.spec.ts",
+              "line": 37,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "web.assert_text",
+          "file": "web/web-plugin.spec.ts",
+          "line": 47,
+          "column": 6,
+          "specs": [
+            {
+              "title": "demo heading text is present",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-f76550e6fc2dd20441e1",
+              "file": "web/web-plugin.spec.ts",
+              "line": 48,
+              "column": 7
+            },
+            {
+              "title": "demo subtitle text is present",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-81ce53addc3aa33c962f",
+              "file": "web/web-plugin.spec.ts",
+              "line": 52,
+              "column": 7
+            },
+            {
+              "title": "status cards show \"ready\"",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-9fd8deb5d483853ea0b4",
+              "file": "web/web-plugin.spec.ts",
+              "line": 58,
+              "column": 7
+            },
+            {
+              "title": "form heading text on form fixture page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-658b9d29147c4b84a4d9",
+              "file": "web/web-plugin.spec.ts",
+              "line": 64,
+              "column": 7
+            },
+            {
+              "title": "demo heading text is present",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-f06f872852faab980248",
+              "file": "web/web-plugin.spec.ts",
+              "line": 48,
+              "column": 7
+            },
+            {
+              "title": "demo subtitle text is present",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-46160e1db0dde3dc6564",
+              "file": "web/web-plugin.spec.ts",
+              "line": 52,
+              "column": 7
+            },
+            {
+              "title": "status cards show \"ready\"",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-0d91b01118c383f8e3fd",
+              "file": "web/web-plugin.spec.ts",
+              "line": 58,
+              "column": 7
+            },
+            {
+              "title": "form heading text on form fixture page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-cce81adf29328bc6b0ed",
+              "file": "web/web-plugin.spec.ts",
+              "line": 64,
+              "column": 7
+            },
+            {
+              "title": "demo heading text is present",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-fe7502b9186d8da7efa1",
+              "file": "web/web-plugin.spec.ts",
+              "line": 48,
+              "column": 7
+            },
+            {
+              "title": "demo subtitle text is present",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-eba52f44721285c5b747",
+              "file": "web/web-plugin.spec.ts",
+              "line": 52,
+              "column": 7
+            },
+            {
+              "title": "status cards show \"ready\"",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-a90419aeddaf1ebebf19",
+              "file": "web/web-plugin.spec.ts",
+              "line": 58,
+              "column": 7
+            },
+            {
+              "title": "form heading text on form fixture page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-d610e3f180e82523101f",
+              "file": "web/web-plugin.spec.ts",
+              "line": 64,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "web.extract_text",
+          "file": "web/web-plugin.spec.ts",
+          "line": 72,
+          "column": 6,
+          "specs": [
+            {
+              "title": "extracts heading text value",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-e0d6d6348a6ec6d51840",
+              "file": "web/web-plugin.spec.ts",
+              "line": 73,
+              "column": 7
+            },
+            {
+              "title": "extracts card label text",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-2a50c0fbffae7a07365e",
+              "file": "web/web-plugin.spec.ts",
+              "line": 78,
+              "column": 7
+            },
+            {
+              "title": "extracts heading text value",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-b760c80fee4b8f2319c6",
+              "file": "web/web-plugin.spec.ts",
+              "line": 73,
+              "column": 7
+            },
+            {
+              "title": "extracts card label text",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-648bee74acab4b4dcab4",
+              "file": "web/web-plugin.spec.ts",
+              "line": 78,
+              "column": 7
+            },
+            {
+              "title": "extracts heading text value",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-457a0823f37cfa5c18d0",
+              "file": "web/web-plugin.spec.ts",
+              "line": 73,
+              "column": 7
+            },
+            {
+              "title": "extracts card label text",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-354ca292eb39646db28c",
+              "file": "web/web-plugin.spec.ts",
+              "line": 78,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "web.click",
+          "file": "web/web-plugin.spec.ts",
+          "line": 87,
+          "column": 6,
+          "specs": [
+            {
+              "title": "counter increments on button click",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-33de4b2647a6c7adb1b6",
+              "file": "web/web-plugin.spec.ts",
+              "line": 88,
+              "column": 7
+            },
+            {
+              "title": "clicking submit without filling form shows validation errors",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-5f01bc629527cbb357ee",
+              "file": "web/web-plugin.spec.ts",
+              "line": 102,
+              "column": 7
+            },
+            {
+              "title": "reset button clears the form",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-65cd39d04f896832ff24",
+              "file": "web/web-plugin.spec.ts",
+              "line": 108,
+              "column": 7
+            },
+            {
+              "title": "counter increments on button click",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-c4fd6c064976b44f22fb",
+              "file": "web/web-plugin.spec.ts",
+              "line": 88,
+              "column": 7
+            },
+            {
+              "title": "clicking submit without filling form shows validation errors",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-81224005c6d0170f1d10",
+              "file": "web/web-plugin.spec.ts",
+              "line": 102,
+              "column": 7
+            },
+            {
+              "title": "reset button clears the form",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-8a0fc0eebd669a00b04b",
+              "file": "web/web-plugin.spec.ts",
+              "line": 108,
+              "column": 7
+            },
+            {
+              "title": "counter increments on button click",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-48eb20ef3c3f468d2458",
+              "file": "web/web-plugin.spec.ts",
+              "line": 88,
+              "column": 7
+            },
+            {
+              "title": "clicking submit without filling form shows validation errors",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-d3ab140f601c2236125b",
+              "file": "web/web-plugin.spec.ts",
+              "line": 102,
+              "column": 7
+            },
+            {
+              "title": "reset button clears the form",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-a3955eae37beef854383",
+              "file": "web/web-plugin.spec.ts",
+              "line": 108,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "web.fill",
+          "file": "web/web-plugin.spec.ts",
+          "line": 118,
+          "column": 6,
+          "specs": [
+            {
+              "title": "fills all form fields and submits successfully",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-918cbd98effc4ee16732",
+              "file": "web/web-plugin.spec.ts",
+              "line": 119,
+              "column": 7
+            },
+            {
+              "title": "fill with special characters is handled",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-c60992cd56f6b77b0289",
+              "file": "web/web-plugin.spec.ts",
+              "line": 130,
+              "column": 7
+            },
+            {
+              "title": "fill clears previous value",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-7fd0bba5e68c78790dc9",
+              "file": "web/web-plugin.spec.ts",
+              "line": 137,
+              "column": 7
+            },
+            {
+              "title": "fills all form fields and submits successfully",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-6e7f490f2b288582a431",
+              "file": "web/web-plugin.spec.ts",
+              "line": 119,
+              "column": 7
+            },
+            {
+              "title": "fill with special characters is handled",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-84fc9f95b3085e2e2ffd",
+              "file": "web/web-plugin.spec.ts",
+              "line": 130,
+              "column": 7
+            },
+            {
+              "title": "fill clears previous value",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-3f4574be4ee242a13995",
+              "file": "web/web-plugin.spec.ts",
+              "line": 137,
+              "column": 7
+            },
+            {
+              "title": "fills all form fields and submits successfully",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-eadb46ac467ebf56a484",
+              "file": "web/web-plugin.spec.ts",
+              "line": 119,
+              "column": 7
+            },
+            {
+              "title": "fill with special characters is handled",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-ee62991035a970ee2893",
+              "file": "web/web-plugin.spec.ts",
+              "line": 130,
+              "column": 7
+            },
+            {
+              "title": "fill clears previous value",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-59a560d0637cdb88342b",
+              "file": "web/web-plugin.spec.ts",
+              "line": 137,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "web.select",
+          "file": "web/web-plugin.spec.ts",
+          "line": 147,
+          "column": 6,
+          "specs": [
+            {
+              "title": "selects Admin role",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-168e13a5d8df093a5c7e",
+              "file": "web/web-plugin.spec.ts",
+              "line": 148,
+              "column": 7
+            },
+            {
+              "title": "selects Engineer role",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-fdbc630a6a477e84bf3c",
+              "file": "web/web-plugin.spec.ts",
+              "line": 153,
+              "column": 7
+            },
+            {
+              "title": "selects Viewer role",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-095cc2ae82d38041d324",
+              "file": "web/web-plugin.spec.ts",
+              "line": 158,
+              "column": 7
+            },
+            {
+              "title": "selects Admin role",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-08cf1ec45eb4c1f1194b",
+              "file": "web/web-plugin.spec.ts",
+              "line": 148,
+              "column": 7
+            },
+            {
+              "title": "selects Engineer role",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-f9a16f568b79ae3f62c4",
+              "file": "web/web-plugin.spec.ts",
+              "line": 153,
+              "column": 7
+            },
+            {
+              "title": "selects Viewer role",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-0b2b991e6b1fbb9ca4a8",
+              "file": "web/web-plugin.spec.ts",
+              "line": 158,
+              "column": 7
+            },
+            {
+              "title": "selects Admin role",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-2f65db742d0c80c55da1",
+              "file": "web/web-plugin.spec.ts",
+              "line": 148,
+              "column": 7
+            },
+            {
+              "title": "selects Engineer role",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-0e7f97542b708fd04ae6",
+              "file": "web/web-plugin.spec.ts",
+              "line": 153,
+              "column": 7
+            },
+            {
+              "title": "selects Viewer role",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-465ec6a850f87a9a22e7",
+              "file": "web/web-plugin.spec.ts",
+              "line": 158,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "web.wait",
+          "file": "web/web-plugin.spec.ts",
+          "line": 167,
+          "column": 6,
+          "specs": [
+            {
+              "title": "waits for async form-success after submit",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-ea02a02ee504e16e785b",
+              "file": "web/web-plugin.spec.ts",
+              "line": 168,
+              "column": 7
+            },
+            {
+              "title": "waits for API status update after button click",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-67eb8a82e3b410f7fd12",
+              "file": "web/web-plugin.spec.ts",
+              "line": 179,
+              "column": 7
+            },
+            {
+              "title": "waits for async form-success after submit",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-8e54fad5376d95bab950",
+              "file": "web/web-plugin.spec.ts",
+              "line": 168,
+              "column": 7
+            },
+            {
+              "title": "waits for API status update after button click",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-99ebcfc7d305622f7f0e",
+              "file": "web/web-plugin.spec.ts",
+              "line": 179,
+              "column": 7
+            },
+            {
+              "title": "waits for async form-success after submit",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-2acadb8537ca4cc39384",
+              "file": "web/web-plugin.spec.ts",
+              "line": 168,
+              "column": 7
+            },
+            {
+              "title": "waits for API status update after button click",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-1f2e9d5d542fc790d412",
+              "file": "web/web-plugin.spec.ts",
+              "line": 179,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "web.screenshot",
+          "file": "web/web-plugin.spec.ts",
+          "line": 206,
+          "column": 6,
+          "specs": [
+            {
+              "title": "captures full-page screenshot",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-0ee857b1c606e51842e3",
+              "file": "web/web-plugin.spec.ts",
+              "line": 207,
+              "column": 7
+            },
+            {
+              "title": "captures element screenshot of hero section",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-08d621a7e2616703bf50",
+              "file": "web/web-plugin.spec.ts",
+              "line": 214,
+              "column": 7
+            },
+            {
+              "title": "captures form fixture page screenshot",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-a99a20098aa05cb7bb0a",
+              "file": "web/web-plugin.spec.ts",
+              "line": 221,
+              "column": 7
+            },
+            {
+              "title": "captures full-page screenshot",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-09640653595399ed38de",
+              "file": "web/web-plugin.spec.ts",
+              "line": 207,
+              "column": 7
+            },
+            {
+              "title": "captures element screenshot of hero section",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-7d1ba8827a1b54c15e4c",
+              "file": "web/web-plugin.spec.ts",
+              "line": 214,
+              "column": 7
+            },
+            {
+              "title": "captures form fixture page screenshot",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-99bd56afc531f253313a",
+              "file": "web/web-plugin.spec.ts",
+              "line": 221,
+              "column": 7
+            },
+            {
+              "title": "captures full-page screenshot",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-e2491d58967d96a1bb33",
+              "file": "web/web-plugin.spec.ts",
+              "line": 207,
+              "column": 7
+            },
+            {
+              "title": "captures element screenshot of hero section",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-12bd7598dbd3acaf44c3",
+              "file": "web/web-plugin.spec.ts",
+              "line": 214,
+              "column": 7
+            },
+            {
+              "title": "captures form fixture page screenshot",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-a3b0e82480c7064e6279",
+              "file": "web/web-plugin.spec.ts",
+              "line": 221,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "web.upload",
+          "file": "web/web-plugin.spec.ts",
+          "line": 232,
+          "column": 6,
+          "specs": [
+            {
+              "title": "uploads a text file and shows success",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-de0186ce2d424bcbf415",
+              "file": "web/web-plugin.spec.ts",
+              "line": 233,
+              "column": 7
+            },
+            {
+              "title": "upload button is disabled before file selection",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-53076337b3097c4b7d36",
+              "file": "web/web-plugin.spec.ts",
+              "line": 240,
+              "column": 7
+            },
+            {
+              "title": "uploads a text file and shows success",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-0e72697329706afbdd3f",
+              "file": "web/web-plugin.spec.ts",
+              "line": 233,
+              "column": 7
+            },
+            {
+              "title": "upload button is disabled before file selection",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-0e40b46a9ca8bf91a313",
+              "file": "web/web-plugin.spec.ts",
+              "line": 240,
+              "column": 7
+            },
+            {
+              "title": "uploads a text file and shows success",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-52019bcf1c025aa7f5eb",
+              "file": "web/web-plugin.spec.ts",
+              "line": 233,
+              "column": 7
+            },
+            {
+              "title": "upload button is disabled before file selection",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-22650e270626b8cfe511",
+              "file": "web/web-plugin.spec.ts",
+              "line": 240,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "web.execute_js",
+          "file": "web/web-plugin.spec.ts",
+          "line": 248,
+          "column": 6,
+          "specs": [
+            {
+              "title": "executes JavaScript to read document title",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-f6732e5899418349496e",
+              "file": "web/web-plugin.spec.ts",
+              "line": 249,
+              "column": 7
+            },
+            {
+              "title": "executes JavaScript to scroll to bottom",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-53f8d51932552fbe51c0",
+              "file": "web/web-plugin.spec.ts",
+              "line": 255,
+              "column": 7
+            },
+            {
+              "title": "executes JavaScript to inject and read a custom attribute",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-5d47ee2f44ea9f80d8ed",
+              "file": "web/web-plugin.spec.ts",
+              "line": 261,
+              "column": 7
+            },
+            {
+              "title": "executes JavaScript to read document title",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-52a81cd5766f2e39a48f",
+              "file": "web/web-plugin.spec.ts",
+              "line": 249,
+              "column": 7
+            },
+            {
+              "title": "executes JavaScript to scroll to bottom",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-1c308498d2d9edf035fa",
+              "file": "web/web-plugin.spec.ts",
+              "line": 255,
+              "column": 7
+            },
+            {
+              "title": "executes JavaScript to inject and read a custom attribute",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-51c919347531825850c7",
+              "file": "web/web-plugin.spec.ts",
+              "line": 261,
+              "column": 7
+            },
+            {
+              "title": "executes JavaScript to read document title",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-e4a913d3ca50439d6096",
+              "file": "web/web-plugin.spec.ts",
+              "line": 249,
+              "column": 7
+            },
+            {
+              "title": "executes JavaScript to scroll to bottom",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-c5bb324e1f68aa3b1f4b",
+              "file": "web/web-plugin.spec.ts",
+              "line": 255,
+              "column": 7
+            },
+            {
+              "title": "executes JavaScript to inject and read a custom attribute",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0a1009e6c17a5e1f172c-6ee53872f2c18ef6b3bc",
+              "file": "web/web-plugin.spec.ts",
+              "line": 261,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-05-11T10:06:50.738Z",
+    "duration": 550.4499999999998,
+    "expected": 0,
+    "skipped": 249,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}

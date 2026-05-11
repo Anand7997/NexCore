@@ -1,0 +1,146 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nexus-python-workers
+  labels:
+    app: nexus-python-workers
+    version: v1
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: nexus-python-workers
+  template:
+    metadata:
+      labels:
+        app: nexus-python-workers
+        version: v1
+    spec:
+      serviceAccountName: nexus-python-workers
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: worker
+          image: nexus-python-workers:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: CONTROL_PLANE_URL
+              value: http://nexus-backend
+            - name: WORKER_CAPABILITIES
+              value: ai,ocr,cv,ml,pytest
+            - name: PYTHONUNBUFFERED
+              value: "1"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 1000m
+              memory: 2Gi
+            limits:
+              cpu: 4000m
+              memory: 8Gi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: cache
+              mountPath: /home/worker/.cache
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: cache
+          emptyDir: {}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: nexus-python-workers
+  labels:
+    app: nexus-python-workers
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: nexus-python-workers-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: nexus-python-workers
+  minReplicas: 2
+  maxReplicas: 20
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: nexus-python-workers-pdb
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: nexus-python-workers
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: nexus-python-workers-netpol
+spec:
+  podSelector:
+    matchLabels:
+      app: nexus-python-workers
+  policyTypes:
+    - Egress
+  egress:
+    # Allow DNS
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+    # Allow backend API
+    - to:
+        - podSelector:
+            matchLabels:
+              app: nexus-backend
+      ports:
+        - protocol: TCP
+          port: 3000
+    # Allow NATS
+    - to:
+        - podSelector:
+            matchLabels:
+              app: nats
+      ports:
+        - protocol: TCP
+          port: 4222
+    # Allow external HTTPS (AI APIs, external services)
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 80

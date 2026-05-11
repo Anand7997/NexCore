@@ -168,7 +168,7 @@ function LiveClock() {
     return () => clearInterval(id);
   }, []);
   return (
-    <div className="flex items-center gap-2 rounded-full border border-[var(--color-line-default)] bg-[var(--color-surface-2)] px-3 py-1">
+    <div className="flex items-center gap-2 rounded-full border border-(--color-line-default) bg-(--color-surface-2) px-3 py-1">
       <Clock size={11} style={{ color: 'var(--color-fg-subtle)' }} />
       <span className="font-mono text-[11px]" style={{ color: 'var(--color-fg-muted)' }}>{time}</span>
     </div>
@@ -192,7 +192,7 @@ function MetricCardComponent({ card, index }: { card: MetricCard; index: number 
     >
       {/* Animated bottom border */}
       <div
-        className="absolute bottom-0 left-0 right-0 h-[2px]"
+        className="absolute bottom-0 left-0 right-0 h-0.5"
         style={{ background: `linear-gradient(90deg, transparent, ${card.colorClass}, transparent)`, opacity: 0.6 }}
       />
       <div className="flex items-start justify-between">
@@ -275,7 +275,7 @@ function ProjectCard({ project, index }: { project: ProjectItem; index: number }
         <span className="text-[10px]" style={{ color: 'var(--color-fg-subtle)' }}>Last run: {project.lastRun}</span>
         <Link
           href={project.href}
-          className="flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-medium transition-all hover:border-[var(--color-accent-default)] hover:text-[var(--color-accent-default)]"
+          className="flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-medium transition-all hover:border-(--color-accent-default) hover:text-(--color-accent-default)"
           style={{ borderColor: 'var(--color-line-default)', color: 'var(--color-fg-muted)' }}
         >
           Open <ArrowUpRight size={10} />
@@ -648,7 +648,7 @@ export default function CommandCenterPage() {
               </h2>
               <Link
                 href="/test-configuration"
-                className="flex items-center gap-1 text-[10px] font-mono transition-colors hover:text-[var(--color-accent-default)]"
+                className="flex items-center gap-1 text-[10px] font-mono transition-colors hover:text-(--color-accent-default)"
                 style={{ color: 'var(--color-fg-subtle)' }}
               >
                 View all <ChevronRight size={10} />
@@ -735,7 +735,7 @@ export default function CommandCenterPage() {
                 <Link
                   key={href}
                   href={href}
-                  className="group flex items-center gap-2.5 rounded-lg border px-3 py-2.5 transition-all hover:border-[var(--color-accent-default)]/30"
+                  className="group flex items-center gap-2.5 rounded-lg border px-3 py-2.5 transition-all hover:border-(--color-accent-default)/30"
                   style={{ background: `${color}08`, borderColor: `${color}20` }}
                 >
                   <Icon size={13} style={{ color }} />

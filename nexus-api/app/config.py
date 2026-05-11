@@ -38,6 +38,20 @@ class Settings(BaseSettings):
     keycloak_client_id: str = "nexus-qa"
     keycloak_audience: str = "nexus-qa-api"
 
+    # ── Phase 6: AI Intelligence ──────────────────────────────────────────────
+    # NATS transport (Python worker ↔ NestJS AI gateway)
+    nats_url: str = "nats://localhost:4222"
+
+    # Qdrant vector store
+    qdrant_url: str = "http://localhost:6333"
+    qdrant_api_key: str = ""
+
+    # Embedding model
+    embedding_model: str = "all-MiniLM-L6-v2"
+    embedding_dim: int = 384
+    use_openai_embeddings: bool = False
+    openai_api_key: str = ""
+
     @field_validator("debug", mode="before")
     @classmethod
     def parse_debug_mode(cls, value: Any) -> Any:

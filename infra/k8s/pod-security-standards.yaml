@@ -1,0 +1,95 @@
+---
+# Pod Security Standards for Nexus QA namespace.
+# Enforces baseline security requirements for all pods.
+#
+# Apply with:
+#   kubectl label namespace nexus-qa pod-security.kubernetes.io/enforce=restricted
+#   kubectl label namespace nexus-qa pod-security.kubernetes.io/audit=restricted
+#   kubectl label namespace nexus-qa pod-security.kubernetes.io/warn=restricted
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: nexus-qa
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
+---
+# RBAC: Limit service account permissions
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: nexus-backend-role
+  namespace: nexus-qa
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: nexus-backend-rolebinding
+  namespace: nexus-qa
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: nexus-backend-role
+subjects:
+  - kind: ServiceAccount
+    name: nexus-backend
+    namespace: nexus-qa
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: nexus-python-workers-role
+  namespace: nexus-qa
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: nexus-python-workers-rolebinding
+  namespace: nexus-qa
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: nexus-python-workers-role
+subjects:
+  - kind: ServiceAccount
+    name: nexus-python-workers
+    namespace: nexus-qa
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: nexus-temporal-worker-role
+  namespace: nexus-qa
+rules:
+  - apiGroups: [""]
+    resources: ["secrets", "configmaps"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: nexus-temporal-worker-rolebinding
+  namespace: nexus-qa
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: nexus-temporal-worker-role
+subjects:
+  - kind: ServiceAccount
+    name: nexus-temporal-worker
+    namespace: nexus-qa

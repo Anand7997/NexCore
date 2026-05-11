@@ -6,7 +6,17 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:e2e": "playwright test",
+    "test:e2e:chromium": "playwright test --project=chromium",
+    "test:e2e:firefox": "playwright test --project=firefox",
+    "test:e2e:webkit": "playwright test --project=webkit",
+    "test:e2e:ci": "CI=true playwright test",
+    "test:e2e:web": "playwright test tests/web/",
+    "test:e2e:api": "playwright test tests/api/",
+    "test:e2e:artifacts": "playwright test tests/artifacts/",
+    "test:e2e:regression": "playwright test tests/regression/",
+    "test:e2e:report": "playwright show-report playwright-report"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.15",
@@ -36,6 +46,7 @@
     "zustand": "^5.0.13"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
