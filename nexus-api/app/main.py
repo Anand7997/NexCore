@@ -10,6 +10,7 @@ Startup sequence:
 from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
+from typing import Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -41,6 +42,80 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+async def _init_intelligence() -> None:
+    """Initialise Phase-6 intelligence services on startup.
+
+    All failures are non-fatal so the API boots even when Qdrant or the
+    sentence-transformers model is unavailable (CI, lightweight dev machines).
+    """
+    # Qdrant vector store — create collections if missing
+    try:
+        from app.intelligence.vector_store import get_vector_store
+        await get_vector_store().ensure_collections()
+        logger.info("Qdrant: collections ready")
+    except Exception as exc:
+        logger.warning("Qdrant init skipped (unavailable): %s", exc)
+
+    # Embedding model — trigger lazy load so first real request isn't slow
+    try:
+        from app.intelligence.embeddings import get_embedding_service
+        svc = get_embedding_service()
+        await svc.embed("warmup")
+        logger.info("Embedding model ready (%s)", getattr(svc, "_model_name", "unknown"))
+    except Exception as exc:
+        logger.warning("Embedding warmup skipped: %s", exc)
+
+
+async def _start_nats_bridge(bus: Any) -> None:
+    """Bridge NATS ``ai.progress`` and ``ai.results`` subjects to the event bus.
+
+    Only starts when NATS is reachable.  Lets jobs triggered by NestJS stream
+    their progress to FastAPI WebSocket clients as well.
+    """
+    import json
+    from app.events.types import AIJobCompleted, AIJobProgress
+
+    try:
+        import nats as nats_lib
+        from app.config import settings
+        nc = await nats_lib.connect(settings.nats_url)
+
+        async def _on_progress(msg: Any) -> None:
+            try:
+                data = json.loads(msg.data.decode())
+                await bus.publish(AIJobProgress(
+                    job_id=data.get("jobId", ""),
+                    execution_id=data.get("executionId", ""),
+                    step=data.get("step", ""),
+                    progress=float(data.get("progress", 0.0)),
+                    detail=data.get("detail", ""),
+                ))
+            except Exception:
+                pass
+
+        async def _on_result(msg: Any) -> None:
+            try:
+                data = json.loads(msg.data.decode())
+                if data.get("status") == "completed":
+                    await bus.publish(AIJobCompleted(
+                        job_id=data.get("jobId", ""),
+                        execution_id=data.get("executionId", ""),
+                        job_type=data.get("jobType", ""),
+                        confidence=float(data.get("confidence", 0.0)),
+                        summary=data.get("summary", ""),
+                        findings=data.get("findings", []),
+                        recommendations=data.get("recommendations", []),
+                    ))
+            except Exception:
+                pass
+
+        await nc.subscribe("ai.progress", cb=_on_progress)
+        await nc.subscribe("ai.results", cb=_on_result)
+        logger.info("NATS AI bridge active (bridging ai.progress + ai.results → event bus)")
+    except Exception as exc:
+        logger.info("NATS bridge skipped: %s", exc)
+
 
 def _register_execution_plugins() -> None:
     """
@@ -104,6 +179,10 @@ async def lifespan(app: FastAPI):
         await gateway.broadcast_event(event)
 
     bus.on_any(_broadcast_to_ws)
+
+    # ── Phase 6: AI Intelligence ──────────────────────────────────────────────
+    await _init_intelligence()
+    await _start_nats_bridge(bus)
 
     logger.info("NEXUS QA API ready.")
 

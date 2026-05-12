@@ -23,7 +23,7 @@ locator_healing, anomaly_analysis) by branching logic inside nodes.
 from __future__ import annotations
 
 import logging
-from typing import Any, TypedDict
+from typing import Any, Awaitable, Callable, Optional, TypedDict
 
 logger = logging.getLogger(__name__)
 
@@ -365,14 +365,13 @@ def get_rca_graph() -> Any:
     return _rca_graph
 
 
-async def run_rca(
+def _make_initial_state(
     job_id: str,
     job_type: str,
     tenant_id: str,
     evidence: dict[str, Any],
-) -> dict[str, Any]:
-    """Execute the RCA LangGraph workflow and return the completed state."""
-    initial: RCAState = {
+) -> RCAState:
+    return {
         "job_id": job_id,
         "job_type": job_type,
         "tenant_id": tenant_id,
@@ -390,9 +389,64 @@ async def run_rca(
         "summary": "",
         "artifacts": [],
     }
+
+
+async def run_rca(
+    job_id: str,
+    job_type: str,
+    tenant_id: str,
+    evidence: dict[str, Any],
+) -> dict[str, Any]:
+    """Execute the RCA LangGraph workflow and return the completed state."""
+    initial = _make_initial_state(job_id, job_type, tenant_id, evidence)
     graph = get_rca_graph()
     result: dict[str, Any] = await graph.ainvoke(initial)
     return result
+
+
+async def run_rca_streaming(
+    job_id: str,
+    job_type: str,
+    tenant_id: str,
+    evidence: dict[str, Any],
+    on_node_complete: Optional[Callable[[str, dict[str, Any]], Awaitable[None]]] = None,
+) -> dict[str, Any]:
+    """Execute the RCA workflow with per-node progress callbacks.
+
+    Uses ``graph.astream()`` so ``on_node_complete`` is awaited after every
+    LangGraph node, enabling real-time event publishing before the full result
+    is ready.  Falls back to ``ainvoke`` if streaming is unavailable.
+
+    Args:
+        on_node_complete: async callable(node_name, state_delta).  Errors
+            inside the callback are logged and swallowed so they never abort
+            the analysis.
+    """
+    initial = _make_initial_state(job_id, job_type, tenant_id, evidence)
+    graph = get_rca_graph()
+
+    # Accumulate state deltas across all nodes
+    final_state: dict[str, Any] = dict(initial)
+
+    try:
+        async for chunk in graph.astream(initial):
+            # chunk: {node_name: state_delta_dict}
+            node_name = next(iter(chunk))
+            delta: dict[str, Any] = chunk[node_name]
+            final_state.update(delta)
+
+            if on_node_complete is not None:
+                try:
+                    await on_node_complete(node_name, delta)
+                except Exception:
+                    logger.exception("on_node_complete callback raised for node %s", node_name)
+
+    except Exception as exc:
+        # astream may not be available in older LangGraph builds — fall back.
+        logger.warning("astream failed (%s), falling back to ainvoke", exc)
+        final_state = await graph.ainvoke(initial)
+
+    return final_state
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

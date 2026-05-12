@@ -18,6 +18,10 @@ import { defineConfig, devices } from '@playwright/test';
  */
 export default defineConfig({
   testDir: './tests',
+  // Use the Playwright-specific tsconfig so @nestjs/common resolves to the
+  // local shim and NestJS service files can be imported without the full
+  // @nestjs/common package being installed in nexus-qa.
+  tsconfig: './playwright.tsconfig.json',
   fullyParallel: true,
   /* Fail the build on test.only left in source in CI */
   forbidOnly: !!process.env.CI,

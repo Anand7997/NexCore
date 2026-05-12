@@ -408,3 +408,31 @@ class TestStepModel(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
     test_case: Mapped[TestCaseModel] = relationship("TestCaseModel", back_populates="test_steps")
+
+
+# ── AI Intelligence ───────────────────────────────────────────────────────────
+
+class IntelligenceJobModel(Base):
+    """Tracks a single AI analysis job from submission through completion.
+
+    One row per POST /intelligence/executions/{id}/analyze request.
+    The evidence snapshot is stored here so replay is always possible even
+    after the execution record changes.
+    """
+    __tablename__ = "intelligence_jobs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    execution_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    # root_cause_analysis | flaky_detection | locator_healing | anomaly_analysis
+    job_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    # queued → running → completed | failed
+    status: Mapped[str] = mapped_column(String(20), default="queued", index=True)
+    evidence: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    result: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    progress: Mapped[float] = mapped_column(Float, default=0.0)
+    current_step: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

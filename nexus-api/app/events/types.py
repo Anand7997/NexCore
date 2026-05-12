@@ -206,6 +206,37 @@ class AIAnalysisGenerated(BaseEvent):
     severity: str = "info"
 
 
+@dataclass
+class AIJobQueued(BaseEvent):
+    """Fired the moment a new AI analysis job is accepted."""
+    job_id: str = ""
+    execution_id: str = ""
+    job_type: str = ""
+    tenant_id: str = ""
+
+
+@dataclass
+class AIJobProgress(BaseEvent):
+    """Fired after each LangGraph node completes — drives the frontend progress bar."""
+    job_id: str = ""
+    execution_id: str = ""
+    step: str = ""          # gather_evidence | classify_failure | … | completed | failed
+    progress: float = 0.0   # 0.0 → 1.0
+    detail: str = ""        # last analysis_steps entry or human-readable description
+
+
+@dataclass
+class AIJobCompleted(BaseEvent):
+    """Fired when all LangGraph nodes finish and the result is persisted."""
+    job_id: str = ""
+    execution_id: str = ""
+    job_type: str = ""
+    confidence: float = 0.0
+    summary: str = ""
+    findings: list[dict[str, Any]] = field(default_factory=list)
+    recommendations: list[dict[str, Any]] = field(default_factory=list)
+
+
 # ── Terminal / realtime events ───────────────────────────────────────────────
 
 @dataclass
@@ -308,7 +339,8 @@ EVENT_REGISTRY: dict[str, type[BaseEvent]] = {
         RuntimeAgentRegistered, RuntimeAgentHeartbeat, ExecutionQueued,
         ExecutionDispatched, RuntimeLeaseReleased,
         NodeQueued, NodeStarted, NodeCompleted, NodeFailed, NodeRetrying, NodeSkipped,
-        AIAnalysisGenerated, TerminalLog, WebSocketConnected, WebSocketDisconnected,
+        AIAnalysisGenerated, AIJobQueued, AIJobProgress, AIJobCompleted,
+        TerminalLog, WebSocketConnected, WebSocketDisconnected,
         BrowserAction, ApiCall, MobileAction, DesktopAction, ArtifactCaptured, VariableSet,
     ]
 }
