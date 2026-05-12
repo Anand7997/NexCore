@@ -57,5 +57,8 @@
     "eslint-config-next": "16.2.5",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "overrides": {
+    "picomatch": "^4.0.4"
   }
 }
