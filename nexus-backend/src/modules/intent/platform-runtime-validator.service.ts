@@ -45,7 +45,23 @@ const ADAPTER_CAPABILITIES: Record<string, readonly string[]> = {
 
 @Injectable()
 export class PlatformRuntimeValidatorService {
-  private readonly logger = new Logger(PlatformRuntimeValidatorService.name);
+  private readonly logger: Logger;
+
+  constructor() {
+    // Handle case where service is instantiated outside NestJS context (e.g., tests)
+    try {
+      this.logger = new Logger(PlatformRuntimeValidatorService.name);
+    } catch {
+      // Fallback to console-based logger for testing environments
+      this.logger = {
+        log: console.log.bind(console),
+        error: console.error.bind(console),
+        warn: console.warn.bind(console),
+        debug: console.debug.bind(console),
+        verbose: console.log.bind(console),
+      } as Logger;
+    }
+  }
 
   // ── Public API ──────────────────────────────────────────────────────────────
 
