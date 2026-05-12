@@ -15,6 +15,28 @@
 
 export const INTENT_SCHEMA_VERSION = '1.0' as const;
 export type IntentSchemaVersion = `${number}.${number}`;
+export type IntentSchemaStatus = 'current' | 'deprecated';
+
+export interface IntentSchemaDescriptor {
+  version: IntentSchemaVersion;
+  status: IntentSchemaStatus;
+  notes: string;
+}
+
+export const INTENT_SCHEMA_HISTORY: readonly IntentSchemaDescriptor[] = [
+  {
+    version: '0.9',
+    status: 'deprecated',
+    notes:
+      'Legacy Python-owned intent contract before NestJS became the compiler authority.',
+  },
+  {
+    version: INTENT_SCHEMA_VERSION,
+    status: 'current',
+    notes:
+      'NestJS-owned intent schema with six platform mappings and compatibility negotiation.',
+  },
+] as const;
 
 // ── Platform keys ─────────────────────────────────────────────────────────────
 
@@ -146,6 +168,13 @@ export interface IntentCapabilityMatrix {
   schemaVersion: IntentSchemaVersion;
   platforms: readonly ExecutionPlatformKey[];
   capabilities: IntentCapabilityMatrixRow[];
+}
+
+export interface IntentSchemaManifest {
+  currentVersion: IntentSchemaVersion;
+  versions: readonly IntentSchemaDescriptor[];
+  compatibilityPolicy: string;
+  migrationGuide: Record<string, string>;
 }
 
 // ── Schema compatibility ──────────────────────────────────────────────────────

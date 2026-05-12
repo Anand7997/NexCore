@@ -68,6 +68,15 @@ export class IntentController {
   }
 
   /**
+   * GET /intent/schema
+   * Returns the current schema manifest and compatibility policy.
+   */
+  @Get('schema')
+  getSchemaManifest() {
+    return this.intentService.schemaManifest();
+  }
+
+  /**
    * GET /intent/schema/migration-guide
    * Returns migration guidance for schema version upgrades.
    */

@@ -12,6 +12,7 @@ import type {
   IntentCapabilityMatrix,
   IntentCapabilityMatrixRow,
   IntentDefinition,
+  IntentSchemaManifest,
 } from '../../contracts/intent-contracts';
 import { EXECUTION_PLATFORM_KEYS, INTENT_SCHEMA_VERSION } from '../../contracts/intent-contracts';
 import { listIntents } from './intent-registry';
@@ -74,5 +75,9 @@ export class IntentService {
   /** Returns the schema compatibility migration guide. */
   migrationGuide(): Record<string, string> {
     return this.compat.migrationGuide();
+  }
+
+  schemaManifest(): IntentSchemaManifest {
+    return this.compat.manifest();
   }
 }

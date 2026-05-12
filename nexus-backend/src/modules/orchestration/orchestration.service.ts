@@ -15,11 +15,10 @@ import { executionRuns } from '../../infrastructure/postgres/schema';
 import { TemporalClientService } from '../../infrastructure/temporal/temporal-client.service';
 import { EXECUTION_TASK_QUEUE } from '../../infrastructure/temporal/temporal.constants';
 import {
-  executionWorkflow,
-  cancelExecutionSignal,
-  agentHeartbeatSignal,
-  getExecutionStatusQuery,
-} from '../../temporal/workflows/execution.workflow';
+  dagExecutionWorkflow,
+  cancelDagExecutionSignal,
+  getDagExecutionStatusQuery,
+} from '../../temporal/workflows/dag-execution.workflow';
 
 @Injectable()
 export class OrchestrationService {
@@ -36,10 +35,10 @@ export class OrchestrationService {
   ): Promise<ExecutionRunView> {
     const id = prefixedId('exec');
     const tenantId = principal.tenantId ?? 'default';
-    const temporalWorkflowId = `exec-${id}`;
+    const temporalWorkflowId = `dag-exec-${id}`;
 
-    // Persist initial record before starting the workflow so we have a row to
-    // update with the Temporal run ID once the handle is returned.
+    // Persist the initial record before starting the workflow so the row exists
+    // when the first activity (loadDagDefinition) queries it.
     await this.drizzle.db.insert(executionRuns).values({
       id,
       tenantId,
@@ -50,8 +49,7 @@ export class OrchestrationService {
       temporalWorkflowId,
     });
 
-    // Start the Temporal workflow
-    const handle = await this.temporal.client.workflow.start(executionWorkflow, {
+    const handle = await this.temporal.client.workflow.start(dagExecutionWorkflow, {
       taskQueue: EXECUTION_TASK_QUEUE,
       workflowId: temporalWorkflowId,
       args: [
@@ -60,13 +58,11 @@ export class OrchestrationService {
           tenantId,
           platform: command.platform,
           workflowDefinitionId: command.workflowId,
-          requiredCapabilities: command.requiredCapabilities ?? [command.platform],
           variables: command.variables ?? {},
         },
       ],
     });
 
-    // Persist the Temporal run ID (first run ID, useful for replay)
     await this.drizzle.db
       .update(executionRuns)
       .set({ temporalRunId: handle.firstExecutionRunId })
@@ -74,7 +70,7 @@ export class OrchestrationService {
 
     this.logger.info(
       { executionId: id, temporalWorkflowId, runId: handle.firstExecutionRunId },
-      'Execution workflow started',
+      'DAG execution workflow started',
     );
 
     return {
@@ -96,7 +92,7 @@ export class OrchestrationService {
     }
     try {
       const handle = this.temporal.getWorkflowHandle(run.temporalWorkflowId);
-      await handle.signal(cancelExecutionSignal, { reason: cmd.reason });
+      await handle.signal(cancelDagExecutionSignal, { reason: cmd.reason });
       this.logger.info({ executionId: id, reason: cmd.reason }, 'Cancel signal sent');
     } catch (err) {
       if (err instanceof WorkflowNotFoundError) {
@@ -113,23 +109,27 @@ export class OrchestrationService {
     }
     try {
       const handle = this.temporal.getWorkflowHandle(run.temporalWorkflowId);
-      return await handle.query(getExecutionStatusQuery);
+      return await handle.query(getDagExecutionStatusQuery);
     } catch (err) {
       if (err instanceof WorkflowNotFoundError) {
-        // Workflow already completed – return DB status
         return run.status as ExecutionStatus;
       }
       throw err;
     }
   }
 
-  async sendAgentHeartbeat(id: string, progress: number): Promise<void> {
+  /**
+   * Kept for backward compatibility with runtime agents that POST progress via
+   * HTTP.  The DAG workflow receives heartbeats through Temporal activity
+   * heartbeats directly; this HTTP path is no longer used by the orchestrator
+   * but must not be removed until all agents are updated.
+   */
+  async sendAgentHeartbeat(id: string, _progress: number): Promise<void> {
     const run = await this.getExecutionRecord(id);
-    if (!run.temporalWorkflowId) {
-      throw new NotFoundException(`Execution ${id} has no associated Temporal workflow`);
-    }
-    const handle = this.temporal.getWorkflowHandle(run.temporalWorkflowId);
-    await handle.signal(agentHeartbeatSignal, { progress });
+    this.logger.debug(
+      { executionId: id, temporalWorkflowId: run.temporalWorkflowId },
+      'Agent heartbeat received (DAG workflow — HTTP heartbeats not consumed)',
+    );
   }
 
   async listExecutions(): Promise<ExecutionRunView[]> {
@@ -167,4 +167,3 @@ export class OrchestrationService {
     };
   }
 }
-

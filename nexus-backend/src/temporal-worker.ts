@@ -4,8 +4,9 @@
  * Run with:
  *   npm run start:worker
  *
- * The worker registers the execution workflow and its activities, then
- * connects to the Temporal server and begins polling the task queue.
+ * Registers:
+ *  - executionWorkflow   (legacy single-agent orchestration)
+ *  - dagExecutionWorkflow (Phase 4: durable DAG-level orchestration)
  *
  * Environment variables (same as NestJS API):
  *   DATABASE_URL        – PostgreSQL connection string
@@ -19,6 +20,7 @@ import { Pool } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import * as schema from './infrastructure/postgres/schema';
 import { createExecutionActivities } from './temporal/activities/execution.activities';
+import { createDagActivities } from './temporal/activities/dag.activities';
 import { EXECUTION_TASK_QUEUE } from './infrastructure/temporal/temporal.constants';
 
 async function run(): Promise<void> {
@@ -30,7 +32,6 @@ async function run(): Promise<void> {
     throw new Error('DATABASE_URL environment variable is required');
   }
 
-  // Bootstrap a DB connection for activities
   const pool = new Pool({ connectionString: databaseUrl, max: 5 });
   const db = drizzle(pool, { schema });
 
@@ -40,16 +41,19 @@ async function run(): Promise<void> {
     connection,
     namespace: temporalNamespace,
     taskQueue: EXECUTION_TASK_QUEUE,
-    // Resolve the compiled workflow bundle relative to this file
-    workflowsPath: path.resolve(__dirname, './temporal/workflows/execution.workflow'),
-    activities: createExecutionActivities(db),
+    // Point at the workflows folder so both executionWorkflow and
+    // dagExecutionWorkflow are picked up from the compiled bundle.
+    workflowsPath: path.resolve(__dirname, './temporal/workflows'),
+    activities: {
+      ...createExecutionActivities(db),
+      ...createDagActivities(db),
+    },
   });
 
   console.log(
     `[temporal-worker] Connected to ${temporalAddress} (namespace=${temporalNamespace}), polling queue "${EXECUTION_TASK_QUEUE}"`,
   );
 
-  // Graceful shutdown
   const shutdown = async (signal: string) => {
     console.log(`[temporal-worker] ${signal} received – shutting down…`);
     worker.shutdown();

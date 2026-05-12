@@ -1,4 +1,5 @@
 import { integer, jsonb, pgTable, timestamp, varchar } from 'drizzle-orm/pg-core';
+import { uniqueIndex } from 'drizzle-orm/pg-core';
 
 // TypeScript-owned control-plane schemas. Python workers may only write back
 // through NestJS APIs; they do not mutate these tables directly.
@@ -79,6 +80,49 @@ export const auditLogs = pgTable('audit_logs', {
   action: varchar('action', { length: 120 }).notNull(),
   resourceType: varchar('resource_type', { length: 80 }).notNull(),
   resourceId: varchar('resource_id', { length: 120 }),
+  metadata: jsonb('metadata').$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// ─── DAG execution node tracking ─────────────────────────────────────────────
+// Mirrors Python ExecutionNodeModel — one row per workflow node per execution.
+// Temporal activities own all writes; Python workers must not mutate these rows.
+
+export const executionNodes = pgTable(
+  'execution_nodes',
+  {
+    id: varchar('id', { length: 36 }).primaryKey(),
+    executionId: varchar('execution_id', { length: 36 }).notNull(),
+    nodeKey: varchar('node_key', { length: 255 }).notNull(),
+    nodeLabel: varchar('node_label', { length: 255 }).notNull().default(''),
+    nodeType: varchar('node_type', { length: 64 }).notNull().default('action'),
+    // created → queued → running → completed | failed | skipped | retrying
+    status: varchar('status', { length: 32 }).notNull().default('created'),
+    attemptCount: integer('attempt_count').notNull().default(0),
+    startedAt: timestamp('started_at'),
+    completedAt: timestamp('completed_at'),
+    durationMs: integer('duration_ms'),
+    output: jsonb('output').$type<Record<string, unknown>>(),
+    error: varchar('error', { length: 2048 }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (t) => ({
+    executionNodeUnique: uniqueIndex('execution_nodes_exec_key_uidx').on(
+      t.executionId,
+      t.nodeKey,
+    ),
+  }),
+);
+
+// ─── DAG execution timeline ────────────────────────────────────────────────────
+// Append-only audit trail for each phase transition of each node.
+// Used for debugging, replay analysis, and the frontend timeline view.
+
+export const executionTimeline = pgTable('execution_timeline', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  executionId: varchar('execution_id', { length: 36 }).notNull(),
+  nodeKey: varchar('node_key', { length: 255 }).notNull(),
+  phase: varchar('phase', { length: 64 }).notNull(),
   metadata: jsonb('metadata').$type<Record<string, unknown>>().notNull().default({}),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });

@@ -48,9 +48,9 @@ This repository already contains a partial implementation spanning parts of late
 | Phase 2 | Foundation implemented. |
 | Phase 3 | Prototype/foundation implemented. |
 | Phase 4 | Python prototype and NestJS orchestration API scaffold implemented; Temporal migration pending. |
-| Phase 5 | Python plugin foundation and NestJS execution contracts implemented; CI/runtime hardening pending. |
+| Phase 5 | Python plugin foundation and NestJS execution contracts implemented; local Playwright/API verification complete, GitHub Actions rerun pending. |
 | Phase 6 | Heuristic prototype, NestJS AI gateway, and Python worker boundary implemented; LangGraph/Qdrant pending. |
-| Phase 7 | Basic intent compiler implemented; versioned NestJS contract ownership pending. |
+| Phase 7 | NestJS now owns intent contracts/compiler, schema compatibility, and production validation fixtures; real runtime/device verification remains pending in later phases. |
 | Phase 8 | Adapter foundation implemented; real device/application verification pending. |
 | Phase 9 | Distributed control-plane and external agent scaffold implemented; real fleet dispatch/load verification pending. |
 | Phase 10 | Enterprise scaffolding and Kubernetes manifests implemented; production SSO/secrets/tenant/deployment hardening pending. |
@@ -255,8 +255,9 @@ Phase 4 deliverable files:
 - [x] Implement artifact capture and indexing.
 - [x] Implement streaming logs and node-level evidence events.
 - [x] Finalize first real MVP node set.
-- [ ] Verify Playwright execution against stable target applications in CI.
-- [ ] Verify API plugin behavior with contract tests and failure fixtures.
+- [x] Verify Playwright execution against stable target applications locally and remove missing-baseline screenshot failures.
+- [x] Verify API plugin behavior with contract tests and failure fixtures locally.
+- [ ] Re-run GitHub Actions Playwright matrix and confirm Chromium/Firefox/WebKit jobs pass.
 - [x] Move execution-control contracts to NestJS while keeping runtime execution isolated.
 
 ### Deliverables
@@ -277,7 +278,7 @@ Phase 5 deliverable files:
 ### Exit Criteria
 
 - Plugin foundation exists for end-to-end web/API execution.
-- Production exit remains pending until CI verification and TypeScript control-plane migration are complete.
+- Production exit remains pending until the GitHub Actions rerun passes and TypeScript control-plane migration is complete.
 
 ---
 
@@ -334,9 +335,9 @@ Phase 6 deliverable files:
 - [x] Implement capability matrix by platform.
 - [x] Implement platform mapping contracts.
 - [x] Implement adapter contract validation.
-- [ ] Migrate intent contracts and compiler authority to NestJS.
-- [ ] Add versioned intent schemas with compatibility tests.
-- [ ] Add production validation fixtures for cross-platform mappings.
+- [x] Migrate intent contracts and compiler authority to NestJS.
+- [x] Add versioned intent schemas with compatibility tests.
+- [x] Add production validation fixtures for cross-platform mappings.
 
 ### Deliverables
 
@@ -354,7 +355,7 @@ Phase 7 deliverable files:
 ### Exit Criteria
 
 - Basic intent can compile into platform-specific executable plans through adapters.
-- Production exit remains pending until versioned schemas and NestJS ownership are complete.
+- Production exit remains pending until later-phase runtime/device verification is complete.
 
 ---
 

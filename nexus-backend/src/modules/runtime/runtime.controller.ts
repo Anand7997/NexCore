@@ -55,7 +55,7 @@ export class RuntimeController {
       variables?: Record<string, unknown>;
     },
   ) {
-    return this.scheduler.enqueue(command);
+    return this.scheduler.enqueue({ ...command, tenantId: command.tenantId ?? 'default' });
   }
 
   @Get('queue')

@@ -1,7 +1,19 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { api } from './client';
+
+const CONTROL_API_BASE = '/api/control';
+
+async function controlRequest<T>(path: string): Promise<T> {
+  const res = await fetch(`${CONTROL_API_BASE}${path}`, {
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(text || `Control API request failed with status ${res.status}`);
+  }
+  return res.json() as Promise<T>;
+}
 
 export type IntentSupportStatus = 'supported' | 'partial' | 'unsupported';
 export type IntentPlatform = 'web' | 'android' | 'ios' | 'desktop' | 'api' | 'db';
@@ -107,7 +119,7 @@ export const intentKeys = {
 export function useIntentCapabilityMatrix() {
   return useQuery({
     queryKey: intentKeys.matrix,
-    queryFn: () => api.get<IntentCapabilityMatrix>('/intent/capability-matrix'),
+    queryFn: () => controlRequest<IntentCapabilityMatrix>('/intent/capability-matrix'),
     staleTime: 60_000,
     retry: false,
   });
@@ -116,7 +128,7 @@ export function useIntentCapabilityMatrix() {
 export function useIntentParityReport() {
   return useQuery({
     queryKey: intentKeys.parityReport,
-    queryFn: () => api.get<IntentParityReport>('/intent/parity-report'),
+    queryFn: () => controlRequest<IntentParityReport>('/intent/parity-report'),
     staleTime: 60_000,
     retry: false,
   });
@@ -125,7 +137,8 @@ export function useIntentParityReport() {
 export function useIntentParitySummary() {
   return useQuery({
     queryKey: intentKeys.paritySummary,
-    queryFn: () => api.get<IntentParitySummary>('/intent/parity-report/summary'),
+    queryFn: () =>
+      controlRequest<IntentParitySummary>('/intent/parity-report/summary'),
     staleTime: 60_000,
     retry: false,
   });
@@ -134,7 +147,7 @@ export function useIntentParitySummary() {
 export function useRuntimeValidation() {
   return useQuery({
     queryKey: intentKeys.runtimeValidation,
-    queryFn: () => api.get<RuntimeValidationSummary>('/intent/runtime/validate'),
+    queryFn: () => controlRequest<RuntimeValidationSummary>('/intent/runtime/validate'),
     staleTime: 15_000,
     retry: false,
   });
@@ -143,9 +156,9 @@ export function useRuntimeValidation() {
 export function usePlatformRuntime(platform: 'android' | 'ios' | 'desktop') {
   return useQuery({
     queryKey: intentKeys.platformRuntime(platform),
-    queryFn: () => api.get<RuntimeStatus>(`/intent/runtime/validate/${platform}`),
+    queryFn: () =>
+      controlRequest<RuntimeStatus>(`/intent/runtime/validate/${platform}`),
     staleTime: 15_000,
     retry: false,
   });
 }
-

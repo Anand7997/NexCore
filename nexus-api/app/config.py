@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     web_plugin_record_video: bool = False  # enables MP4 capture per session
     web_plugin_record_trace: bool = True   # Playwright trace.zip per session
     api_plugin_default_timeout: float = 30.0
+    control_plane_url: str = "http://localhost:3001"
     appium_server_url: str = "http://127.0.0.1:4723"
     winappdriver_url: str = "http://127.0.0.1:4723"
     keycloak_issuer_url: str = ""

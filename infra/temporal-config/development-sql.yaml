@@ -1,0 +1,47 @@
+# Temporal Development Configuration
+# This file configures Temporal for local development with PostgreSQL
+
+frontend:
+  # Enable workflow update feature (experimental)
+  enableUpdateWorkflowExecution: true
+  
+  # Allow scheduling workflows in the past (for testing)
+  enableSchedules: true
+
+persistence:
+  defaultStore: default
+  visibilityStore: visibility
+  numHistoryShards: 4
+  
+  # Advanced settings for better local performance
+  historyArchivalState: disabled
+  visibilityArchivalState: disabled
+
+# Workflow execution limits
+limit:
+  maxIDLength: 1000
+  
+  # Blob size limits (in bytes)
+  blobSizeLimitError: 2097152     # 2MB
+  blobSizeLimitWarn: 524288        # 512KB
+  
+  # History limits
+  historyCountLimitError: 50000
+  historyCountLimitWarn: 10000
+
+# System settings
+system:
+  # Enable advanced visibility features
+  advancedVisibilityWritingMode: "on"
+  
+  # Retention period for completed workflows (days)
+  retentionDays: 7
+
+# Development-specific settings
+namespaceDefaults:
+  archival:
+    history:
+      state: "disabled"
+    visibility:
+      state: "disabled"
+  retention: 168h  # 7 days
