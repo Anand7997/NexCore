@@ -1,1138 +1,815 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
+import { useEffect, useRef, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
-  ChevronRight,
-  FileText,
-  FolderOpen,
-  Layers3,
-  Plus,
-  Save,
-  Tag,
-  Trash2,
+  ArrowDown, ArrowUp, ChevronDown, ChevronRight, Eye, EyeOff, FileText,
+  FolderOpen, Layers3, ListChecks, Package, Plus, Save, Search, Tag,
+  TestTube, Trash2,
 } from 'lucide-react';
-
 import { Button } from '@/components/ui/Button';
 import {
-  useCreateTestCase,
-  useCreateTestModule,
-  useCreateTestProject,
-  useCreateTestStep,
-  useDeleteTestCase,
-  useDeleteTestModule,
-  useDeleteTestProject,
-  useDeleteTestStep,
-  useTestConfigurationTree,
-  useUpdateTestCase,
-  useUpdateTestModule,
-  useUpdateTestProject,
-  useUpdateTestStep,
+  useCreateTestCase, useCreateTestModule, useCreateTestProject, useCreateTestStep,
+  useDeleteTestCase, useDeleteTestModule, useDeleteTestProject, useDeleteTestStep,
+  useTestConfigurationTree, useUpdateAnyTestStep, useUpdateTestCase,
+  useUpdateTestModule, useUpdateTestProject,
 } from '@/lib/api/testConfiguration';
-import type {
-  TestCase,
-  TestModule,
-  TestProject,
-  TestStep,
-} from '@/lib/api/types';
+import { useAllPages } from '@/lib/api/pageRepository';
+import type { TestCase, TestModule, TestProject, TestStep, PageDetail } from '@/lib/api/types';
 
-type EditorTarget = 'project' | 'module' | 'case' | 'step';
+// ── Constants ──────────────────────────────────────────────────────────────────
 
-type ProjectDraft = {
-  name: string;
-  description: string;
-  status: string;
-  tags: string;
+const ACTION_TYPES = [
+  'OPEN_BROWSER','CLICK','DOUBLE_CLICK','RIGHT_CLICK','MOUSE_OVER',
+  'CLICK_AND_SELECT','CLICK_AND_TYPE','TYPE_AND_SELECT','CLEAR_AND_TYPE',
+  'RADIO_BUTTON','DRAG_AND_DROP','SELECT_COUNT','INCREMENT','DECREMENT',
+  'HANDLE_CHECKBOX','SWITCH_TO_NEW_WINDOW','SWITCH_TO_WINDOW_BY_INDEX',
+  'SWITCH_TO_WINDOW_BY_URL','SWITCH_TO_IFRAME','CLOSE_EXTRA_WINDOWS',
+  'NAVIGATE_TO_URL','REFRESH_PAGE','GO_BACK','GO_FORWARD',
+  'READ_TEXT','READ_VALUE','READ_TOOLTIP','READ_LABEL',
+  'COPY','PASTE','UPLOAD_FILE','DOWNLOAD_FILE','HANDLE',
+  'VISUAL_ASSERTION','TYPE','SELECT','WAIT','PRESS_KEY','ASSERTION',
+];
+
+const LEGACY_MAP: Record<string, string> = {
+  DOUBLECLICK:'DOUBLE_CLICK',RIGHTCLICK:'RIGHT_CLICK',MOUSEOVER:'MOUSE_OVER',
+  MOUSE_HOVER:'MOUSE_OVER',HOVER:'MOUSE_OVER',HOVER_MOUSE_OVER:'MOUSE_OVER',
+  CLEAR_TYPE:'CLEAR_AND_TYPE',TYPE_AND_CLEAR:'CLEAR_AND_TYPE',
+  TYPE_SELECT:'TYPE_AND_SELECT',TYPE_AND_PICK:'TYPE_AND_SELECT',
+  RADIO:'RADIO_BUTTON',RADIOBUTTON:'RADIO_BUTTON',HANDLE_RADIO:'RADIO_BUTTON',
+  DRAGDROP:'DRAG_AND_DROP','DRAG_&_DROP':'DRAG_AND_DROP',
+  HANDLE_ALERT_DIALOG:'HANDLE',HANDLE_CONFIRMATION:'HANDLE',
+  HANDLE_NOTIFICATION:'HANDLE',HANDLE_OS_DIALOG:'HANDLE',
+  SWITCH_FRAME:'SWITCH_TO_IFRAME',SWITCH_TO_FRAME:'SWITCH_TO_IFRAME',
+  SWITCH_IFRAME:'SWITCH_TO_IFRAME',
 };
 
-type ModuleDraft = {
-  name: string;
-  description: string;
-  status: string;
-  tags: string;
+const ACTION_COLOR: Record<string, string> = {
+  CLICK:'#5b8cff',DOUBLE_CLICK:'#5b8cff',RIGHT_CLICK:'#5b8cff',MOUSE_OVER:'#4dd1e1',
+  CLICK_AND_SELECT:'#5b8cff',CLICK_AND_TYPE:'#5b8cff',
+  TYPE:'#45c08a',TYPE_AND_SELECT:'#45c08a',CLEAR_AND_TYPE:'#45c08a',SELECT:'#45c08a',
+  OPEN_BROWSER:'#a195ff',NAVIGATE_TO_URL:'#a195ff',REFRESH_PAGE:'#a195ff',
+  GO_BACK:'#a195ff',GO_FORWARD:'#a195ff',
+  ASSERTION:'#f0b558',VISUAL_ASSERTION:'#f0b558',
+  READ_TEXT:'#4dd1e1',READ_VALUE:'#4dd1e1',READ_TOOLTIP:'#4dd1e1',READ_LABEL:'#4dd1e1',
+  WAIT:'#8b8c97',PRESS_KEY:'#8b8c97',HANDLE:'#f06262',HANDLE_CHECKBOX:'#f06262',
+  UPLOAD_FILE:'#f0b558',DOWNLOAD_FILE:'#f0b558',
 };
 
-type CaseDraft = {
-  name: string;
-  description: string;
-  status: string;
-  testType: string;
-  priority: string;
-  executionMode: string;
-  platforms: string[];
-  tags: string;
-  defaultVariablesText: string;
+const PRIORITY_CONFIG: Record<string, { color: string }> = {
+  p0:{ color:'#f06262' },p1:{ color:'#f0b558' },p2:{ color:'#45c08a' },p3:{ color:'#8b8c97' },
 };
 
-type StepDraft = {
-  name: string;
-  description: string;
-  stepOrder: string;
-  intent: string;
-  target: string;
-  expectedResult: string;
-  tags: string;
-  testDataText: string;
-  bindingsText: string;
-  isEnabled: boolean;
+const TYPE_COLOR: Record<string, string> = {
+  functional:'#5b8cff',smoke:'#45c08a',regression:'#f0b558',integration:'#a195ff',
 };
 
-const PANEL_CLASS = 'rounded-xl border border-[var(--color-line-default)] bg-[rgba(16,16,22,0.84)]';
-const INPUT_CLASS = 'w-full rounded-md border border-[var(--color-line-default)] bg-[var(--color-bg-base)] px-3 py-2 text-sm text-[var(--color-fg-default)] outline-none transition-colors focus:border-[var(--color-accent-default)]';
-const LABEL_CLASS = 'text-[10px] font-mono uppercase tracking-[0.16em] text-[var(--color-fg-subtle)]';
+// ── Helpers ────────────────────────────────────────────────────────────────────
 
-const PROJECT_STATUS = ['active', 'draft', 'archived'];
-const MODULE_STATUS = ['active', 'draft', 'archived'];
-const CASE_STATUS = ['draft', 'active', 'deprecated'];
-
-function findProject(projects: TestProject[], projectId: string | null) {
-  if (!projectId) return null;
-  return projects.find((project) => project.id === projectId) ?? null;
+function normalizeAction(raw?: string) {
+  const s = (raw || 'CLICK').toUpperCase().trim().replace(/[\s\-/]+/g, '_');
+  if (s in LEGACY_MAP) return LEGACY_MAP[s];
+  return ACTION_TYPES.includes(s) ? s : 'CLICK';
 }
 
-function findModule(projects: TestProject[], moduleId: string | null) {
-  if (!moduleId) return null;
-  for (const project of projects) {
-    const match = project.modules.find((module) => module.id === moduleId);
-    if (match) return match;
+function asStr(v: unknown) { return typeof v === 'string' ? v : ''; }
+function webBind(s: TestStep) { return s.bindings?.web ?? {}; }
+function stepPage(s: TestStep) { return asStr(webBind(s).page); }
+function stepElement(s: TestStep) { return asStr(webBind(s).element_name) || s.target; }
+function stepLocator(s: TestStep) { return asStr(webBind(s).selector) || asStr(webBind(s).xpath); }
+function stepValue(s: TestStep) { return asStr(s.test_data?.value); }
+function tagsToCSV(t: string[]) { return t.join(', '); }
+function csvToTags(c: string) { return c.split(',').map((t) => t.trim()).filter(Boolean); }
+function uniqueSorted(vs: string[]) { return [...new Set(vs.filter(Boolean))].sort((a, b) => a.localeCompare(b)); }
+
+type StepUpdates = {
+  description?: string; action?: string; page?: string;
+  element?: string; locator?: string; value?: string;
+  stepOrder?: number; isEnabled?: boolean;
+};
+
+function buildPayload(step: TestStep, u: StepUpdates) {
+  const action = normalizeAction(u.action ?? step.intent);
+  const page   = u.page    ?? stepPage(step);
+  const elem   = u.element ?? stepElement(step);
+  const loc    = u.locator ?? stepLocator(step);
+  const val    = u.value   ?? stepValue(step);
+  const desc   = u.description ?? step.description;
+  return {
+    name: desc.trim().slice(0, 90) || `Step ${u.stepOrder ?? step.step_order}`,
+    description: desc,
+    step_order: u.stepOrder ?? step.step_order,
+    intent: action,
+    target: elem,
+    expected_result: step.expected_result,
+    test_data: { ...step.test_data, value: val, action_type: action },
+    tags: step.tags,
+    bindings: {
+      ...step.bindings,
+      web: { ...(step.bindings?.web ?? {}), page, element_name: elem, selector: loc, xpath: loc },
+    },
+    is_enabled: u.isEnabled ?? step.is_enabled,
+  };
+}
+
+// ── StepRow ────────────────────────────────────────────────────────────────────
+
+function StepRow({
+  step, index, isFirst, isLast,
+  onAddAfter, onMoveUp, onMoveDown, onDelete, onUpdate,
+  pageOptions, elementOptions, locatorByElement, pageRepo,
+}: {
+  step: TestStep; index: number; isFirst: boolean; isLast: boolean;
+  onAddAfter: () => void; onMoveUp: () => void; onMoveDown: () => void;
+  onDelete: () => void; onUpdate: (u: StepUpdates) => void;
+  pageOptions: string[]; elementOptions: string[]; locatorByElement: Map<string, string>;
+  pageRepo: PageDetail[];
+}) {
+  const [desc, setDesc]       = useState(step.description);
+  const [action, setAction]   = useState(normalizeAction(step.intent));
+  const [page, setPage]       = useState(stepPage(step));
+  const [element, setElement] = useState(stepElement(step));
+  const [locator, setLocator] = useState(stepLocator(step));
+  const [value, setValue]     = useState(stepValue(step));
+  const [enabled, setEnabled] = useState(step.is_enabled);
+  const prevId = useRef(step.id);
+
+  useEffect(() => {
+    if (prevId.current === step.id) return;
+    prevId.current = step.id;
+    setDesc(step.description);
+    setAction(normalizeAction(step.intent));
+    setPage(stepPage(step));
+    setElement(stepElement(step));
+    setLocator(stepLocator(step));
+    setValue(stepValue(step));
+    setEnabled(step.is_enabled);
+  }, [step.id]);
+
+  const color = ACTION_COLOR[action] ?? '#8b8c97';
+
+  // Page repository: elements for the selected page
+  const repoPage = pageRepo.find((p) => p.name.toLowerCase() === page.toLowerCase());
+  const repoElems = repoPage?.elements ?? [];
+  const repoPageNames = pageRepo.map((p) => p.name);
+  const repoElemNames = repoElems.map((e) => e.name);
+
+  function save(overrides: StepUpdates = {}) {
+    onUpdate({ description: desc, action, page, element, locator, value, isEnabled: enabled, ...overrides });
   }
-  return null;
-}
 
-function findCase(projects: TestProject[], caseId: string | null) {
-  if (!caseId) return null;
-  for (const project of projects) {
-    for (const module of project.modules) {
-      const match = module.test_cases.find((testCase) => testCase.id === caseId);
-      if (match) return match;
+  function handleElementBlur() {
+    // First check page repository for a matching element
+    const repoEl = repoElems.find((e) => e.name.toLowerCase() === element.toLowerCase());
+    if (repoEl) {
+      const repoLoc = repoEl.locator_strategy === 'css' ? repoEl.css_selector
+        : repoEl.locator_strategy === 'id' ? (repoEl.id_attr ? `#${repoEl.id_attr}` : '')
+        : repoEl.locator_strategy === 'name' ? repoEl.name_attr
+        : repoEl.xpath;
+      if (repoLoc && !locator) setLocator(repoLoc);
+      onUpdate({ description: desc, action, page, element, locator: repoLoc || locator, value, isEnabled: enabled });
+      return;
     }
+    // Fall back to locator derived from existing steps
+    const auto = locatorByElement.get(element);
+    if (auto && !locator) setLocator(auto);
+    onUpdate({ description: desc, action, page, element, locator: auto || locator, value, isEnabled: enabled });
   }
-  return null;
+
+  const ic = 'w-full bg-transparent text-[11px] font-mono text-[var(--color-fg-default)] outline-none placeholder:text-[var(--color-fg-subtle)]/40';
+  const bd = 'border-r border-[var(--color-line-subtle)] px-2 py-2';
+
+  return (
+    <motion.tr
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.022, duration: 0.18 }}
+      className={[
+        'group border-b border-[var(--color-line-subtle)]/40 transition-colors',
+        !enabled ? 'opacity-40' : '',
+        'hover:bg-[rgba(255,255,255,0.018)]',
+      ].join(' ')}
+    >
+      <td className={`${bd} w-8 text-center shrink-0`}>
+        <span className="font-mono text-[10px] text-[var(--color-fg-subtle)]">{step.step_order}</span>
+      </td>
+      <td className={`${bd} min-w-[150px]`}>
+        <input value={desc} onChange={(e) => setDesc(e.target.value)} onBlur={() => save()}
+          className={ic} placeholder="Describe step…" />
+      </td>
+      <td className={`${bd} w-40`}>
+        <select value={action}
+          onChange={(e) => { const v = e.target.value; setAction(v); save({ action: v }); }}
+          className={`${ic} cursor-pointer`} style={{ color }}>
+          {ACTION_TYPES.map((t) => (
+            <option key={t} value={t} style={{ background: '#0d0d18', color: ACTION_COLOR[t] ?? '#8b8c97' }}>{t}</option>
+          ))}
+        </select>
+      </td>
+      <td className={`${bd} w-28`}>
+        <input value={page} onChange={(e) => setPage(e.target.value)} onBlur={() => save()}
+          className={ic} placeholder="Page" list={`pg-${step.id}`} />
+        <datalist id={`pg-${step.id}`}>
+          {[...new Set([...repoPageNames, ...pageOptions])].map((p) => <option key={p} value={p} />)}
+        </datalist>
+      </td>
+      <td className={`${bd} w-28`}>
+        <input value={element} onChange={(e) => setElement(e.target.value)} onBlur={handleElementBlur}
+          className={ic} placeholder="Element" list={`el-${step.id}`} />
+        <datalist id={`el-${step.id}`}>
+          {[...new Set([...repoElemNames, ...elementOptions])].map((e) => <option key={e} value={e} />)}
+        </datalist>
+      </td>
+      <td className={`${bd} w-24`}>
+        <input value={value} onChange={(e) => setValue(e.target.value)} onBlur={() => save()}
+          className={ic} placeholder="Value" />
+      </td>
+      <td className={`${bd} w-9 text-center`}>
+        <button onClick={() => { const n = !enabled; setEnabled(n); save({ isEnabled: n }); }}
+          className="flex items-center justify-center w-full transition-colors">
+          {enabled
+            ? <Eye size={10} className="text-[#45c08a] mx-auto" />
+            : <EyeOff size={10} className="text-[var(--color-fg-subtle)] mx-auto" />}
+        </button>
+      </td>
+      <td className="w-24 px-2 py-1">
+        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button disabled={isFirst} onClick={onMoveUp}
+            className="p-1 rounded hover:bg-[var(--color-surface-2)] disabled:opacity-20 transition-all">
+            <ArrowUp size={9} className="text-[var(--color-fg-subtle)]" />
+          </button>
+          <button disabled={isLast} onClick={onMoveDown}
+            className="p-1 rounded hover:bg-[var(--color-surface-2)] disabled:opacity-20 transition-all">
+            <ArrowDown size={9} className="text-[var(--color-fg-subtle)]" />
+          </button>
+          <button onClick={onAddAfter}
+            className="p-1 rounded hover:bg-[var(--color-surface-2)] transition-all">
+            <Plus size={9} className="text-[var(--color-fg-subtle)]" />
+          </button>
+          <button onClick={onDelete}
+            className="p-1 rounded hover:bg-red-500/20 transition-all">
+            <Trash2 size={9} className="text-red-400/50 hover:text-red-400" />
+          </button>
+        </div>
+      </td>
+    </motion.tr>
+  );
 }
 
-function findStep(projects: TestProject[], stepId: string | null) {
-  if (!stepId) return null;
-  for (const project of projects) {
-    for (const module of project.modules) {
-      for (const testCase of module.test_cases) {
-        const match = testCase.test_steps.find((step) => step.id === stepId);
-        if (match) return match;
-      }
-    }
-  }
-  return null;
+// ── CaseCard ───────────────────────────────────────────────────────────────────
+
+function CaseCard({ tc, isSelected, onClick }: { tc: TestCase; isSelected: boolean; onClick: () => void }) {
+  const pc = PRIORITY_CONFIG[tc.priority] ?? { color: '#8b8c97' };
+  const tc2 = TYPE_COLOR[tc.test_type] ?? '#8b8c97';
+  return (
+    <motion.button
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      whileHover={{ scale: 1.005 }}
+      onClick={onClick}
+      className={[
+        'w-full text-left rounded-xl border px-4 py-3 transition-all',
+        isSelected
+          ? 'border-[rgba(91,140,255,0.4)] bg-[rgba(91,140,255,0.07)] shadow-[0_0_12px_rgba(91,140,255,0.08)]'
+          : 'border-[var(--color-line-default)] bg-[var(--color-surface-2)] hover:border-[var(--color-line-strong)] hover:bg-[rgba(255,255,255,0.02)]',
+      ].join(' ')}
+    >
+      <div className="flex items-start justify-between gap-2 mb-2.5">
+        <p className="text-[12px] font-medium text-[var(--color-fg-default)] leading-snug">{tc.name}</p>
+        <span className="shrink-0 rounded-full border px-1.5 py-0.5 text-[9px] font-mono font-bold"
+          style={{ color: pc.color, borderColor: `${pc.color}40`, background: `${pc.color}12` }}>
+          {(tc.priority || 'p2').toUpperCase()}
+        </span>
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-[10px] font-mono px-2 py-0.5 rounded-full border"
+          style={{ color: tc2, borderColor: `${tc2}30`, background: `${tc2}10` }}>
+          {tc.test_type}
+        </span>
+        {tc.platforms.slice(0, 3).map((p) => (
+          <span key={p} className="text-[10px] font-mono px-2 py-0.5 rounded-full border border-[var(--color-line-default)] text-[var(--color-fg-subtle)]">{p}</span>
+        ))}
+        <span className="ml-auto text-[10px] font-mono text-[var(--color-fg-subtle)]">{tc.test_steps.length} steps</span>
+      </div>
+    </motion.button>
+  );
 }
 
-function csvToTags(value: string) {
-  return value
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
+// ── Main Page ──────────────────────────────────────────────────────────────────
 
-function tagsToCsv(tags: string[]) {
-  return tags.join(', ');
-}
-
-function formatJson(value: Record<string, unknown>) {
-  return JSON.stringify(value ?? {}, null, 2);
-}
-
-function parseJsonObject(text: string, label: string) {
-  if (!text.trim()) return {};
-  const parsed = JSON.parse(text);
-  if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
-    throw new Error(`${label} must be a JSON object.`);
-  }
-  return parsed as Record<string, unknown>;
-}
-
-function appendTag(current: string, next: string) {
-  const values = new Set(csvToTags(current));
-  values.add(next);
-  return Array.from(values).join(', ');
-}
+type EditorMode = 'project' | 'module' | 'case';
 
 export default function TestConfigurationPage() {
   const { data, isLoading } = useTestConfigurationTree();
-  const projects = data?.projects ?? [];
+  const projects   = data?.projects    ?? [];
   const tagCatalog = data?.tag_catalog ?? [];
+  const { data: pageRepo = [] } = useAllPages();
 
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
-  const [selectedModuleId, setSelectedModuleId] = useState<string | null>(null);
-  const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
-  const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
-  const [editorTarget, setEditorTarget] = useState<EditorTarget>('project');
+  const [selProjectId, setSelProjectId] = useState<string | null>(null);
+  const [selModuleId,  setSelModuleId]  = useState<string | null>(null);
+  const [selCaseId,    setSelCaseId]    = useState<string | null>(null);
+  const [expandedIds, setExpandedIds]   = useState<Set<string>>(new Set());
+  const [caseSearch,  setCaseSearch]    = useState('');
+  const [editorMode,  setEditorMode]    = useState<EditorMode>('project');
   const [validationError, setValidationError] = useState<string | null>(null);
 
-  const [projectDraft, setProjectDraft] = useState<ProjectDraft>({
-    name: '',
-    description: '',
-    status: 'active',
-    tags: '',
-  });
-  const [moduleDraft, setModuleDraft] = useState<ModuleDraft>({
-    name: '',
-    description: '',
-    status: 'active',
-    tags: '',
-  });
-  const [caseDraft, setCaseDraft] = useState<CaseDraft>({
-    name: '',
-    description: '',
-    status: 'draft',
-    testType: 'functional',
-    priority: 'p2',
-    executionMode: 'automated',
-    platforms: [],
-    tags: '',
-    defaultVariablesText: '{}',
-  });
-  const [stepDraft, setStepDraft] = useState<StepDraft>({
-    name: '',
-    description: '',
-    stepOrder: '1',
-    intent: 'action',
-    target: '',
-    expectedResult: '',
-    tags: '',
-    testDataText: '{}',
-    bindingsText: '{}',
-    isEnabled: true,
+  const [pd, setPd] = useState({ name:'', description:'', status:'active', tags:'' });
+  const [md, setMd] = useState({ name:'', description:'', status:'active', tags:'' });
+  const [cd, setCd] = useState({
+    name:'', description:'', status:'draft', testType:'functional',
+    priority:'p2', executionMode:'automated', platforms:[] as string[], tags:'', vars:'{}',
   });
 
-  const selectedProject = findProject(projects, selectedProjectId);
-  const selectedModule = findModule(projects, selectedModuleId);
-  const selectedCase = findCase(projects, selectedCaseId);
-  const selectedStep = findStep(projects, selectedStepId);
+  const selProject = projects.find((p) => p.id === selProjectId) ?? null;
+  const selModule  = selProject?.modules.find((m) => m.id === selModuleId) ?? null;
+  const selCase    = selModule?.test_cases.find((c) => c.id === selCaseId) ?? null;
 
-  const createProject = useCreateTestProject();
-  const updateProject = useUpdateTestProject(selectedProjectId ?? '');
-  const deleteProject = useDeleteTestProject();
-  const createModule = useCreateTestModule(selectedProjectId ?? '');
-  const updateModule = useUpdateTestModule(selectedModuleId ?? '');
-  const deleteModule = useDeleteTestModule();
-  const createCase = useCreateTestCase(selectedModuleId ?? '');
-  const updateCase = useUpdateTestCase(selectedCaseId ?? '');
-  const deleteCase = useDeleteTestCase();
-  const createStep = useCreateTestStep(selectedCaseId ?? '');
-  const updateStep = useUpdateTestStep(selectedStepId ?? '');
-  const deleteStep = useDeleteTestStep();
+  const createProject  = useCreateTestProject();
+  const updateProject  = useUpdateTestProject(selProjectId ?? '');
+  const deleteProject  = useDeleteTestProject();
+  const createModule   = useCreateTestModule(selProjectId ?? '');
+  const updateModule   = useUpdateTestModule(selModuleId ?? '');
+  const deleteModule   = useDeleteTestModule();
+  const createCase     = useCreateTestCase(selModuleId ?? '');
+  const updateCase     = useUpdateTestCase(selCaseId ?? '');
+  const deleteCase     = useDeleteTestCase();
+  const createStep     = useCreateTestStep(selCaseId ?? '');
+  const updateAnyStep  = useUpdateAnyTestStep();
+  const deleteStepHook = useDeleteTestStep();
 
+  // Auto-select first project/module/case on load
   useEffect(() => {
-    if (!projects.length) {
-      setSelectedProjectId(null);
-      setSelectedModuleId(null);
-      setSelectedCaseId(null);
-      setSelectedStepId(null);
-      return;
+    if (!projects.length) return;
+    const proj = projects.find((p) => p.id === selProjectId) ?? projects[0];
+    if (proj.id !== selProjectId) {
+      setSelProjectId(proj.id);
+      setExpandedIds((prev) => new Set([...prev, proj.id]));
     }
-
-    const project = findProject(projects, selectedProjectId) ?? projects[0];
-    const module = project.modules.find((item) => item.id === selectedModuleId) ?? project.modules[0] ?? null;
-    const testCase = module?.test_cases.find((item) => item.id === selectedCaseId) ?? module?.test_cases[0] ?? null;
-    const step = testCase?.test_steps.find((item) => item.id === selectedStepId) ?? testCase?.test_steps[0] ?? null;
-
-    if (project.id !== selectedProjectId) setSelectedProjectId(project.id);
-    if ((module?.id ?? null) !== selectedModuleId) setSelectedModuleId(module?.id ?? null);
-    if ((testCase?.id ?? null) !== selectedCaseId) setSelectedCaseId(testCase?.id ?? null);
-    if ((step?.id ?? null) !== selectedStepId) setSelectedStepId(step?.id ?? null);
-  }, [projects, selectedProjectId, selectedModuleId, selectedCaseId, selectedStepId]);
+    const mod = proj.modules.find((m) => m.id === selModuleId) ?? proj.modules[0] ?? null;
+    if ((mod?.id ?? null) !== selModuleId) setSelModuleId(mod?.id ?? null);
+    const tc = mod?.test_cases.find((c) => c.id === selCaseId) ?? mod?.test_cases[0] ?? null;
+    if ((tc?.id ?? null) !== selCaseId) setSelCaseId(tc?.id ?? null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projects]);
 
   useEffect(() => {
-    if (!selectedProject) return;
-    setProjectDraft({
-      name: selectedProject.name,
-      description: selectedProject.description,
-      status: selectedProject.status,
-      tags: tagsToCsv(selectedProject.tags),
-    });
-  }, [selectedProject]);
+    if (!selProject) return;
+    setPd({ name: selProject.name, description: selProject.description, status: selProject.status, tags: tagsToCSV(selProject.tags) });
+  }, [selProject?.id]);
 
   useEffect(() => {
-    if (!selectedModule) return;
-    setModuleDraft({
-      name: selectedModule.name,
-      description: selectedModule.description,
-      status: selectedModule.status,
-      tags: tagsToCsv(selectedModule.tags),
-    });
-  }, [selectedModule]);
+    if (!selModule) return;
+    setMd({ name: selModule.name, description: selModule.description, status: selModule.status, tags: tagsToCSV(selModule.tags) });
+  }, [selModule?.id]);
 
   useEffect(() => {
-    if (!selectedCase) return;
-    setCaseDraft({
-      name: selectedCase.name,
-      description: selectedCase.description,
-      status: selectedCase.status,
-      testType: selectedCase.test_type,
-      priority: selectedCase.priority,
-      executionMode: selectedCase.execution_mode,
-      platforms: selectedCase.platforms,
-      tags: tagsToCsv(selectedCase.tags),
-      defaultVariablesText: formatJson(selectedCase.default_variables),
+    if (!selCase) return;
+    setCd({
+      name: selCase.name, description: selCase.description, status: selCase.status,
+      testType: selCase.test_type, priority: selCase.priority,
+      executionMode: selCase.execution_mode, platforms: selCase.platforms,
+      tags: tagsToCSV(selCase.tags), vars: JSON.stringify(selCase.default_variables ?? {}, null, 2),
     });
-  }, [selectedCase]);
+    setEditorMode('case');
+  }, [selCase?.id]);
 
-  useEffect(() => {
-    if (!selectedStep) return;
-    setStepDraft({
-      name: selectedStep.name,
-      description: selectedStep.description,
-      stepOrder: String(selectedStep.step_order),
-      intent: selectedStep.intent,
-      target: selectedStep.target,
-      expectedResult: selectedStep.expected_result,
-      tags: tagsToCsv(selectedStep.tags),
-      testDataText: formatJson(selectedStep.test_data),
-      bindingsText: formatJson(selectedStep.bindings),
-      isEnabled: selectedStep.is_enabled,
+  const allSteps      = projects.flatMap((p) => p.modules.flatMap((m) => m.test_cases.flatMap((c) => c.test_steps)));
+  const pageOptions   = uniqueSorted(allSteps.map(stepPage));
+  const elemOptions   = uniqueSorted(allSteps.map(stepElement));
+  const locByElem     = new Map(allSteps.map((s) => [stepElement(s), stepLocator(s)] as const).filter(([e, l]) => e && l));
+  const totalModules  = projects.reduce((s, p) => s + p.modules.length, 0);
+  const totalCases    = projects.reduce((s, p) => p.modules.reduce((ms, m) => ms + m.test_cases.length, s), 0);
+  const totalSteps    = projects.reduce((s, p) => p.modules.reduce((ms, m) => m.test_cases.reduce((cs, c) => cs + c.test_steps.length, ms), s), 0);
+
+  function toggleExpand(id: string) {
+    setExpandedIds((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  }
+
+  function selectProject(p: TestProject) {
+    setSelProjectId(p.id); toggleExpand(p.id); setEditorMode('project');
+  }
+
+  function selectModule(m: TestModule) {
+    setSelModuleId(m.id);
+    setSelCaseId(m.test_cases[0]?.id ?? null);
+    setEditorMode('module');
+  }
+
+  function selectCase(c: TestCase) {
+    setSelCaseId(c.id);
+    setEditorMode('case');
+  }
+
+  function doUpdateStep(step: TestStep, u: StepUpdates) {
+    updateAnyStep.mutate({ stepId: step.id, input: buildPayload(step, u) });
+  }
+
+  function doMoveStep(step: TestStep, dir: -1 | 1) {
+    if (!selCase) return;
+    const sorted = [...selCase.test_steps].sort((a, b) => a.step_order - b.step_order);
+    const idx = sorted.findIndex((s) => s.id === step.id);
+    const si = idx + dir;
+    if (idx < 0 || si < 0 || si >= sorted.length) return;
+    const other = sorted[si];
+    updateAnyStep.mutate({ stepId: step.id, input: { step_order: other.step_order } });
+    updateAnyStep.mutate({ stepId: other.id, input: { step_order: step.step_order } });
+  }
+
+  function doDeleteStep(step: TestStep) {
+    if (window.confirm(`Delete step "${step.name}"?`)) deleteStepHook.mutate(step.id);
+  }
+
+  function addStep(after?: TestStep) {
+    if (!selCase) return;
+    const order = after ? after.step_order + 1 : selCase.test_steps.length + 1;
+    createStep.mutate({
+      name: `Step ${order}`, description: '', step_order: order, intent: 'CLICK', target: '',
+      expected_result: '', test_data: { value: '', action_type: 'CLICK' },
+      tags: ['configured'], bindings: { web: { page:'', element_name:'', selector:'', xpath:'' } }, is_enabled: true,
     });
-  }, [selectedStep]);
-
-  function selectProject(project: TestProject) {
-    setSelectedProjectId(project.id);
-    setSelectedModuleId(project.modules[0]?.id ?? null);
-    setSelectedCaseId(project.modules[0]?.test_cases[0]?.id ?? null);
-    setSelectedStepId(project.modules[0]?.test_cases[0]?.test_steps[0]?.id ?? null);
-    setEditorTarget('project');
   }
 
-  function selectModule(module: TestModule) {
-    setSelectedModuleId(module.id);
-    setSelectedCaseId(module.test_cases[0]?.id ?? null);
-    setSelectedStepId(module.test_cases[0]?.test_steps[0]?.id ?? null);
-    setEditorTarget('module');
-  }
-
-  function selectCaseItem(testCase: TestCase) {
-    setSelectedCaseId(testCase.id);
-    setSelectedStepId(testCase.test_steps[0]?.id ?? null);
-    setEditorTarget('case');
-  }
-
-  function selectStepItem(step: TestStep) {
-    setSelectedStepId(step.id);
-    setEditorTarget('step');
-  }
-
-  function toggleCasePlatform(platform: string) {
-    setCaseDraft((current) => ({
-      ...current,
-      platforms: current.platforms.includes(platform)
-        ? current.platforms.filter((item) => item !== platform)
-        : [...current.platforms, platform],
-    }));
-  }
-
-  function applyCatalogValue(dimensionKey: string, value: string) {
-    if (editorTarget === 'case') {
-      if (dimensionKey === 'platform') {
-        toggleCasePlatform(value);
-        return;
-      }
-      if (dimensionKey === 'test_type') {
-        setCaseDraft((current) => ({ ...current, testType: value }));
-        return;
-      }
-      if (dimensionKey === 'priority') {
-        setCaseDraft((current) => ({ ...current, priority: value }));
-        return;
-      }
-      if (dimensionKey === 'execution_mode') {
-        setCaseDraft((current) => ({ ...current, executionMode: value }));
-        return;
-      }
-      setCaseDraft((current) => ({ ...current, tags: appendTag(current.tags, value) }));
-      return;
-    }
-    if (editorTarget === 'step') {
-      setStepDraft((current) => ({ ...current, tags: appendTag(current.tags, value) }));
-      return;
-    }
-    if (editorTarget === 'module') {
-      setModuleDraft((current) => ({ ...current, tags: appendTag(current.tags, value) }));
-      return;
-    }
-    setProjectDraft((current) => ({ ...current, tags: appendTag(current.tags, value) }));
-  }
-
-  function saveProjectDetails() {
-    if (!selectedProject) return;
+  function saveEditor() {
     setValidationError(null);
-    updateProject.mutate({
-      name: projectDraft.name,
-      description: projectDraft.description,
-      status: projectDraft.status,
-      tags: csvToTags(projectDraft.tags),
-    });
-  }
-
-  function saveModuleDetails() {
-    if (!selectedModule) return;
-    setValidationError(null);
-    updateModule.mutate({
-      name: moduleDraft.name,
-      description: moduleDraft.description,
-      status: moduleDraft.status,
-      tags: csvToTags(moduleDraft.tags),
-    });
-  }
-
-  function saveCaseDetails() {
-    if (!selectedCase) return;
-    try {
-      const defaultVariables = parseJsonObject(caseDraft.defaultVariablesText, 'Default variables');
-      setValidationError(null);
-      updateCase.mutate({
-        name: caseDraft.name,
-        description: caseDraft.description,
-        status: caseDraft.status,
-        test_type: caseDraft.testType,
-        priority: caseDraft.priority,
-        execution_mode: caseDraft.executionMode,
-        platforms: caseDraft.platforms,
-        tags: csvToTags(caseDraft.tags),
-        default_variables: defaultVariables,
-      });
-    } catch (error) {
-      setValidationError(error instanceof Error ? error.message : 'Unable to save case details.');
+    if (editorMode === 'project' && selProject) {
+      updateProject.mutate({ name: pd.name, description: pd.description, status: pd.status, tags: csvToTags(pd.tags) });
+    } else if (editorMode === 'module' && selModule) {
+      updateModule.mutate({ name: md.name, description: md.description, status: md.status, tags: csvToTags(md.tags) });
+    } else if (editorMode === 'case' && selCase) {
+      try {
+        const vars = JSON.parse(cd.vars);
+        updateCase.mutate({ name: cd.name, description: cd.description, status: cd.status, test_type: cd.testType, priority: cd.priority, execution_mode: cd.executionMode, platforms: cd.platforms, tags: csvToTags(cd.tags), default_variables: vars });
+      } catch { setValidationError('Default variables must be valid JSON.'); }
     }
   }
 
-  function saveStepDetails() {
-    if (!selectedStep) return;
-    try {
-      const testData = parseJsonObject(stepDraft.testDataText, 'Test data');
-      const bindings = parseJsonObject(stepDraft.bindingsText, 'Bindings');
-      setValidationError(null);
-      updateStep.mutate({
-        name: stepDraft.name,
-        description: stepDraft.description,
-        step_order: Number(stepDraft.stepOrder) || 1,
-        intent: stepDraft.intent,
-        target: stepDraft.target,
-        expected_result: stepDraft.expectedResult,
-        tags: csvToTags(stepDraft.tags),
-        test_data: testData,
-        bindings: bindings as Record<string, Record<string, unknown>>,
-        is_enabled: stepDraft.isEnabled,
-      });
-    } catch (error) {
-      setValidationError(error instanceof Error ? error.message : 'Unable to save step details.');
-    }
+  function deleteEditor() {
+    if (editorMode === 'project' && selProject && window.confirm(`Delete project "${selProject.name}"?`)) { deleteProject.mutate(selProject.id); }
+    else if (editorMode === 'module' && selModule && window.confirm(`Delete module "${selModule.name}"?`)) { deleteModule.mutate(selModule.id); }
+    else if (editorMode === 'case' && selCase && window.confirm(`Delete case "${selCase.name}"?`)) { deleteCase.mutate(selCase.id); }
   }
 
-  function removeCurrentEntity() {
-    if (editorTarget === 'step' && selectedStep && window.confirm(`Delete step "${selectedStep.name}"?`)) {
-      deleteStep.mutate(selectedStep.id);
-      setEditorTarget('case');
-      return;
-    }
-    if (editorTarget === 'case' && selectedCase && window.confirm(`Delete case "${selectedCase.name}"?`)) {
-      deleteCase.mutate(selectedCase.id);
-      setEditorTarget('module');
-      return;
-    }
-    if (editorTarget === 'module' && selectedModule && window.confirm(`Delete module "${selectedModule.name}"?`)) {
-      deleteModule.mutate(selectedModule.id);
-      setEditorTarget('project');
-      return;
-    }
-    if (editorTarget === 'project' && selectedProject && window.confirm(`Delete project "${selectedProject.name}"?`)) {
-      deleteProject.mutate(selectedProject.id);
-    }
-  }
+  const catPlatforms  = tagCatalog.find((d) => d.key === 'platform')?.values       ?? ['web','android','ios','windows','api'];
+  const catTypes      = tagCatalog.find((d) => d.key === 'test_type')?.values      ?? ['functional','smoke','regression'];
+  const catPriorities = tagCatalog.find((d) => d.key === 'priority')?.values       ?? ['p0','p1','p2'];
+  const catModes      = tagCatalog.find((d) => d.key === 'execution_mode')?.values ?? ['automated','manual','hybrid'];
+  const filteredCases = selModule?.test_cases.filter((c) => !caseSearch || c.name.toLowerCase().includes(caseSearch.toLowerCase())) ?? [];
+  const sortedSteps   = selCase ? [...selCase.test_steps].sort((a, b) => a.step_order - b.step_order) : [];
 
-  function createDefaultProject() {
-    createProject.mutate(
-      {
-        name: `Project ${projects.length + 1}`,
-        description: 'Execution-ready test catalog.',
-        status: 'active',
-        tags: ['new'],
-      },
-      {
-        onSuccess: (project) => {
-          setSelectedProjectId(project.id);
-          setSelectedModuleId(project.modules[0]?.id ?? null);
-          setSelectedCaseId(project.modules[0]?.test_cases[0]?.id ?? null);
-          setSelectedStepId(project.modules[0]?.test_cases[0]?.test_steps[0]?.id ?? null);
-          setEditorTarget('project');
-        },
-      },
-    );
-  }
-
-  function createDefaultModule() {
-    if (!selectedProject) return;
-    createModule.mutate(
-      {
-        name: `Module ${selectedProject.modules.length + 1}`,
-        description: 'Area under test.',
-        status: 'active',
-        tags: [selectedProject.name.toLowerCase().replace(/\s+/g, '-')],
-      },
-      {
-        onSuccess: (module) => {
-          setSelectedModuleId(module.id);
-          setSelectedCaseId(null);
-          setSelectedStepId(null);
-          setEditorTarget('module');
-        },
-      },
-    );
-  }
-
-  function createDefaultCase() {
-    if (!selectedModule) return;
-    createCase.mutate(
-      {
-        name: `Test Case ${selectedModule.test_cases.length + 1}`,
-        description: 'Reusable business flow.',
-        status: 'draft',
-        test_type: 'functional',
-        priority: 'p2',
-        execution_mode: 'automated',
-        platforms: ['web'],
-        tags: ['new'],
-        default_variables: {},
-      },
-      {
-        onSuccess: (testCase) => {
-          setSelectedCaseId(testCase.id);
-          setSelectedStepId(testCase.test_steps[0]?.id ?? null);
-          setEditorTarget('case');
-        },
-      },
-    );
-  }
-
-  function createDefaultStep() {
-    if (!selectedCase) return;
-    createStep.mutate(
-      {
-        name: `Step ${selectedCase.test_steps.length + 1}`,
-        description: '',
-        step_order: selectedCase.test_steps.length + 1,
-        intent: 'action',
-        target: '',
-        expected_result: '',
-        test_data: {},
-        tags: ['new'],
-        bindings: {},
-        is_enabled: true,
-      },
-      {
-        onSuccess: (step) => {
-          setSelectedStepId(step.id);
-          setEditorTarget('step');
-        },
-      },
-    );
-  }
-
-  const casePlatforms = tagCatalog.find((dimension) => dimension.key === 'platform')?.values ?? ['web', 'android', 'ios', 'windows', 'api'];
-  const caseTypes = tagCatalog.find((dimension) => dimension.key === 'test_type')?.values ?? ['functional', 'smoke', 'regression'];
-  const casePriorities = tagCatalog.find((dimension) => dimension.key === 'priority')?.values ?? ['p0', 'p1', 'p2'];
-  const executionModes = tagCatalog.find((dimension) => dimension.key === 'execution_mode')?.values ?? ['automated', 'manual', 'hybrid'];
+  const INP = 'w-full rounded-lg border border-[var(--color-line-default)] bg-[var(--color-surface-2)] px-3 py-2 text-sm text-[var(--color-fg-default)] outline-none transition-colors focus:border-[var(--color-accent-default)] placeholder:text-[var(--color-fg-subtle)]';
+  const LBL = 'text-[10px] font-mono uppercase tracking-[0.14em] text-[var(--color-fg-subtle)] mb-1.5 block';
 
   return (
-    <div className="mx-auto max-w-[1600px] space-y-6 p-8">
+    <div className="flex h-full flex-col overflow-hidden">
+
+      {/* ── Header ─────────────────────────────────────────────────────────────────── */}
       <motion.div
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.28 }}
-        className="flex items-end justify-between gap-4"
+        className="shrink-0 border-b border-[var(--color-line-default)] bg-[var(--color-surface-1)] px-6 py-4"
       >
-        <div>
-          <p className="mb-2 text-[10px] font-mono uppercase tracking-[0.16em] text-[var(--color-fg-subtle)]">
-            Authoring Workspace
-          </p>
-          <h1 className="text-[30px] font-semibold tracking-normal text-[var(--color-fg-default)]">
-            Test Configuration
-          </h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--color-fg-muted)]">
-            Projects, modules, test cases, and step bindings live here before they fan out into execution workflows.
-          </p>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <p className="text-[10px] font-mono uppercase tracking-[0.16em] text-[var(--color-fg-subtle)]">Authoring Workspace</p>
+            <h1 className="mt-0.5 text-xl font-semibold tracking-tight text-[var(--color-fg-default)]">Test Configuration</h1>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Stats */}
+            {[
+              { icon: Package,    label: 'Projects', value: projects.length, color: '#5b8cff' },
+              { icon: Layers3,    label: 'Modules',  value: totalModules,    color: '#a195ff' },
+              { icon: TestTube,   label: 'Cases',    value: totalCases,      color: '#45c08a' },
+              { icon: ListChecks, label: 'Steps',    value: totalSteps,      color: '#4dd1e1' },
+            ].map(({ icon: Icon, label, value, color }) => (
+              <div key={label} className="flex items-center gap-2 rounded-lg border px-3 py-1.5"
+                style={{ borderColor: `${color}25`, background: `${color}0a` }}>
+                <Icon size={12} style={{ color }} />
+                <span className="font-mono text-sm font-semibold" style={{ color }}>{value}</span>
+                <span className="text-[10px] text-[var(--color-fg-subtle)]">{label}</span>
+              </div>
+            ))}
+
+            {/* Actions */}
+            <div className="flex items-center gap-1.5 border-l border-[var(--color-line-default)] pl-3">
+              <Button variant="glass" size="sm"
+                onClick={() => createProject.mutate({ name: `Project ${projects.length + 1}`, description: 'Execution-ready test catalog.', status: 'active', tags: ['new'] })}>
+                <Plus size={11} /> Project
+              </Button>
+              <Button variant="glass" size="sm" disabled={!selProject}
+                onClick={() => selProject && createModule.mutate({ name: `Module ${selProject.modules.length + 1}`, description: '', status: 'active', tags: [] })}>
+                <Plus size={11} /> Module
+              </Button>
+              <Button variant="glass" size="sm" disabled={!selModule}
+                onClick={() => selModule && createCase.mutate({ name: `Test Case ${selModule.test_cases.length + 1}`, description: '', status: 'draft', test_type: 'functional', priority: 'p2', execution_mode: 'automated', platforms: ['web'], tags: ['new'], default_variables: {} })}>
+                <Plus size={11} /> Case
+              </Button>
+              <Button variant="neon" size="sm" disabled={!selCase} onClick={() => addStep()}>
+                <Plus size={11} /> Step
+              </Button>
+            </div>
+          </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="glass" size="sm" onClick={createDefaultProject}>
-            <Plus size={12} />
-            Project
-          </Button>
-          <Button variant="glass" size="sm" onClick={createDefaultModule} disabled={!selectedProject}>
-            <Plus size={12} />
-            Module
-          </Button>
-          <Button variant="glass" size="sm" onClick={createDefaultCase} disabled={!selectedModule}>
-            <Plus size={12} />
-            Case
-          </Button>
-          <Button variant="neon" size="sm" onClick={createDefaultStep} disabled={!selectedCase}>
-            <Plus size={12} />
-            Step
-          </Button>
-        </div>
+        <AnimatePresence>
+          {validationError && (
+            <motion.div initial={{ opacity:0, height:0 }} animate={{ opacity:1, height:'auto' }} exit={{ opacity:0, height:0 }}
+              className="mt-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs text-red-300">
+              {validationError}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </motion.div>
 
-      {validationError && (
-        <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
-          {validationError}
-        </div>
-      )}
+      {/* ── 3-Column layout ────────────────────────────────────────────────────────── */}
+      <div className="flex min-h-0 flex-1 overflow-hidden">
 
-      <div className="grid min-h-[720px] grid-cols-1 gap-5 xl:grid-cols-[320px_380px_minmax(0,1fr)]">
-        <section className={`${PANEL_CLASS} flex min-h-0 flex-col`}>
-          <div className="flex items-center justify-between border-b border-[var(--color-line-subtle)] px-4 py-3">
-            <div className="flex items-center gap-2">
-              <FolderOpen size={14} className="text-[var(--color-accent-default)]" />
-              <h2 className="text-sm font-medium text-[var(--color-fg-default)]">Project Tree</h2>
-            </div>
-            <span className="text-[10px] font-mono text-[var(--color-fg-subtle)]">{projects.length} projects</span>
+        {/* Col 1 — Project Tree */}
+        <aside className="flex w-60 shrink-0 flex-col border-r border-[var(--color-line-default)] bg-[var(--color-surface-1)]">
+          <div className="flex items-center gap-2 border-b border-[var(--color-line-subtle)] px-4 py-2.5 shrink-0">
+            <FolderOpen size={13} className="text-[var(--color-accent-default)]" />
+            <span className="text-[10px] font-mono uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]">Projects</span>
+            <span className="ml-auto text-[10px] font-mono text-[var(--color-fg-subtle)]">{projects.length}</span>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto p-3">
-            {isLoading ? (
-              <div className="rounded-lg border border-[var(--color-line-default)] bg-[var(--color-surface-2)] px-3 py-4 text-sm text-[var(--color-fg-subtle)]">
-                Loading configuration tree...
+          <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
+            {isLoading && <p className="px-3 py-6 text-center text-xs text-[var(--color-fg-subtle)]">Loading…</p>}
+            {!isLoading && projects.length === 0 && (
+              <div className="rounded-lg border border-dashed border-[var(--color-line-default)] px-3 py-8 text-center">
+                <p className="text-xs text-[var(--color-fg-subtle)]">No projects yet</p>
+                <p className="mt-1 text-[10px] text-[var(--color-fg-subtle)]/60">Create one above</p>
               </div>
-            ) : projects.length === 0 ? (
-              <div className="rounded-lg border border-[var(--color-line-default)] bg-[var(--color-surface-2)] px-3 py-4 text-sm text-[var(--color-fg-subtle)]">
-                No projects yet. Create the first project to start organizing coverage.
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {projects.map((project) => {
-                  const projectSelected = project.id === selectedProjectId;
-                  return (
-                    <div key={project.id} className="rounded-lg border border-[var(--color-line-default)] bg-[var(--color-surface-2)]">
-                      <button
-                        onClick={() => selectProject(project)}
-                        className={`flex w-full items-center justify-between gap-3 px-3 py-3 text-left transition-colors ${
-                          projectSelected ? 'bg-[var(--color-accent-soft)] text-[var(--color-fg-default)]' : 'hover:bg-[rgba(255,255,255,0.03)]'
-                        }`}
-                      >
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-medium text-[var(--color-fg-default)]">{project.name}</p>
-                          <p className="mt-1 text-[10px] font-mono text-[var(--color-fg-subtle)]">
-                            {project.modules.length} modules
-                          </p>
+            )}
+
+            {projects.map((proj) => {
+              const expanded = expandedIds.has(proj.id);
+              const active   = proj.id === selProjectId;
+              return (
+                <div key={proj.id}>
+                  <button onClick={() => selectProject(proj)}
+                    className={[
+                      'flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition-all',
+                      active ? 'bg-[rgba(91,140,255,0.1)]' : 'hover:bg-[rgba(255,255,255,0.03)]',
+                    ].join(' ')}>
+                    {expanded
+                      ? <ChevronDown size={11} className="shrink-0 text-[var(--color-fg-subtle)]" />
+                      : <ChevronRight size={11} className="shrink-0 text-[var(--color-fg-subtle)]" />}
+                    <span className={`flex-1 truncate text-[12px] font-medium ${active ? 'text-[var(--color-fg-default)]' : 'text-[var(--color-fg-muted)]'}`}>{proj.name}</span>
+                    <span className="shrink-0 text-[9px] font-mono text-[var(--color-fg-subtle)]">{proj.modules.length}m</span>
+                  </button>
+
+                  <AnimatePresence>
+                    {expanded && (
+                      <motion.div initial={{ height:0, opacity:0 }} animate={{ height:'auto', opacity:1 }} exit={{ height:0, opacity:0 }}
+                        transition={{ duration: 0.18 }} className="overflow-hidden">
+                        <div className="ml-3 mt-0.5 space-y-0.5 border-l border-[var(--color-line-subtle)] pl-2 pb-1">
+                          {proj.modules.length === 0
+                            ? <p className="py-2 pl-1 text-[10px] text-[var(--color-fg-subtle)]">No modules</p>
+                            : proj.modules.map((mod) => {
+                              const ma = mod.id === selModuleId;
+                              return (
+                                <button key={mod.id}
+                                  onClick={() => { setSelProjectId(proj.id); selectModule(mod); }}
+                                  className={[
+                                    'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-all',
+                                    ma ? 'bg-[rgba(161,149,255,0.12)] text-[#a195ff]' : 'hover:bg-[rgba(255,255,255,0.03)] text-[var(--color-fg-subtle)]',
+                                  ].join(' ')}>
+                                  <Layers3 size={10} className="shrink-0" />
+                                  <span className="flex-1 truncate text-[11px]">{mod.name}</span>
+                                  <span className="shrink-0 text-[9px] font-mono opacity-50">{mod.test_cases.length}c</span>
+                                </button>
+                              );
+                            })
+                          }
                         </div>
-                        <ChevronRight size={12} className="text-[var(--color-fg-subtle)]" />
-                      </button>
-
-                      <div className="border-t border-[var(--color-line-subtle)] px-2 py-2">
-                        {project.modules.length === 0 ? (
-                          <p className="px-2 py-1 text-[11px] text-[var(--color-fg-subtle)]">No modules yet</p>
-                        ) : (
-                          project.modules.map((module) => {
-                            const moduleSelected = module.id === selectedModuleId;
-                            return (
-                              <button
-                                key={module.id}
-                                onClick={() => selectModule(module)}
-                                className={`flex w-full items-center justify-between rounded-md px-2 py-2 text-left text-sm transition-colors ${
-                                  moduleSelected ? 'bg-[rgba(91,140,255,0.12)]' : 'hover:bg-[rgba(255,255,255,0.03)]'
-                                }`}
-                              >
-                                <div className="min-w-0">
-                                  <p className="truncate text-[13px] text-[var(--color-fg-default)]">{module.name}</p>
-                                  <p className="text-[10px] font-mono text-[var(--color-fg-subtle)]">
-                                    {module.test_cases.length} cases
-                                  </p>
-                                </div>
-                                <span className="rounded-full border border-[var(--color-line-default)] px-1.5 py-0.5 text-[9px] font-mono text-[var(--color-fg-subtle)]">
-                                  {module.status}
-                                </span>
-                              </button>
-                            );
-                          })
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              );
+            })}
           </div>
-        </section>
+        </aside>
 
-        <section className={`${PANEL_CLASS} flex min-h-0 flex-col`}>
-          <div className="border-b border-[var(--color-line-subtle)] px-4 py-3">
-            <div className="flex items-center gap-2">
-              <Layers3 size={14} className="text-[var(--color-state-running)]" />
-              <h2 className="text-sm font-medium text-[var(--color-fg-default)]">Cases and Steps</h2>
-            </div>
-            <p className="mt-1 text-[11px] text-[var(--color-fg-subtle)]">
-              {selectedModule ? selectedModule.name : 'Select a module to inspect test coverage.'}
-            </p>
-          </div>
+        {/* Col 2 — Cases + Step Table */}
+        <div className="flex min-h-0 flex-1 flex-col border-r border-[var(--color-line-default)] overflow-hidden">
 
-          <div className="grid min-h-0 flex-1 grid-rows-[1fr_1fr]">
-            <div className="min-h-0 overflow-y-auto border-b border-[var(--color-line-subtle)] p-3">
-              <div className="mb-2 flex items-center justify-between">
-                <span className={LABEL_CLASS}>Test Cases</span>
-                <span className="text-[10px] font-mono text-[var(--color-fg-subtle)]">
-                  {selectedModule?.test_cases.length ?? 0}
+          {/* Cases top half */}
+          <div className="flex flex-col border-b border-[var(--color-line-default)] overflow-hidden" style={{ flex: '0 0 40%' }}>
+            <div className="flex items-center justify-between border-b border-[var(--color-line-subtle)] px-4 py-2 shrink-0">
+              <div className="flex items-center gap-2">
+                <FileText size={13} className="text-[#5b8cff]" />
+                <span className="text-[10px] font-mono uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]">
+                  {selModule ? selModule.name : 'Select a module'}
                 </span>
+                {selModule && <span className="text-[10px] font-mono text-[var(--color-fg-subtle)]">· {selModule.test_cases.length}</span>}
               </div>
-
-              {!selectedModule ? (
-                <p className="rounded-lg border border-[var(--color-line-default)] bg-[var(--color-surface-2)] px-3 py-4 text-sm text-[var(--color-fg-subtle)]">
-                  Pick a project module first.
-                </p>
-              ) : selectedModule.test_cases.length === 0 ? (
-                <p className="rounded-lg border border-[var(--color-line-default)] bg-[var(--color-surface-2)] px-3 py-4 text-sm text-[var(--color-fg-subtle)]">
-                  No test cases yet. Create one from the action bar.
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {selectedModule.test_cases.map((testCase) => (
-                    <button
-                      key={testCase.id}
-                      onClick={() => selectCaseItem(testCase)}
-                      className={`w-full rounded-lg border px-3 py-3 text-left transition-colors ${
-                        testCase.id === selectedCaseId
-                          ? 'border-[var(--color-line-active)] bg-[var(--color-accent-soft)]'
-                          : 'border-[var(--color-line-default)] bg-[var(--color-surface-2)] hover:bg-[rgba(255,255,255,0.03)]'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="truncate text-sm font-medium text-[var(--color-fg-default)]">{testCase.name}</p>
-                        <span className="rounded-full border border-[var(--color-line-default)] px-1.5 py-0.5 text-[9px] font-mono text-[var(--color-fg-subtle)]">
-                          {testCase.priority}
-                        </span>
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {[testCase.test_type, ...testCase.platforms].slice(0, 4).map((item) => (
-                          <span
-                            key={item}
-                            className="rounded-full border border-[var(--color-line-default)] px-2 py-0.5 text-[9px] font-mono text-[var(--color-fg-subtle)]"
-                          >
-                            {item}
-                          </span>
-                        ))}
-                      </div>
-                    </button>
-                  ))}
+              {selModule && (
+                <div className="relative">
+                  <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-fg-subtle)]" />
+                  <input value={caseSearch} onChange={(e) => setCaseSearch(e.target.value)} placeholder="Filter…"
+                    className="rounded-md border border-[var(--color-line-default)] bg-[var(--color-surface-2)] pl-7 pr-3 py-1 text-[11px] text-[var(--color-fg-default)] outline-none focus:border-[var(--color-accent-default)] transition-colors" />
                 </div>
               )}
             </div>
 
-            <div className="min-h-0 overflow-y-auto p-3">
-              <div className="mb-2 flex items-center justify-between">
-                <span className={LABEL_CLASS}>Test Steps</span>
-                <span className="text-[10px] font-mono text-[var(--color-fg-subtle)]">
-                  {selectedCase?.test_steps.length ?? 0}
-                </span>
-              </div>
+            <div className="flex-1 overflow-y-auto p-3">
+              {!selModule
+                ? <p className="py-8 text-center text-xs text-[var(--color-fg-subtle)]">Select a module from the project tree</p>
+                : filteredCases.length === 0
+                  ? <p className="py-8 text-center text-xs text-[var(--color-fg-subtle)]">{caseSearch ? 'No matching cases' : 'No test cases — create one above'}</p>
+                  : (
+                    <div className="grid gap-2 grid-cols-1 xl:grid-cols-2">
+                      {filteredCases.map((tc) => (
+                        <CaseCard key={tc.id} tc={tc} isSelected={tc.id === selCaseId} onClick={() => selectCase(tc)} />
+                      ))}
+                    </div>
+                  )
+              }
+            </div>
+          </div>
 
-              {!selectedCase ? (
-                <p className="rounded-lg border border-[var(--color-line-default)] bg-[var(--color-surface-2)] px-3 py-4 text-sm text-[var(--color-fg-subtle)]">
-                  Choose a test case to edit step bindings.
-                </p>
-              ) : selectedCase.test_steps.length === 0 ? (
-                <p className="rounded-lg border border-[var(--color-line-default)] bg-[var(--color-surface-2)] px-3 py-4 text-sm text-[var(--color-fg-subtle)]">
-                  No steps yet. Add the first one from the action bar.
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {selectedCase.test_steps.map((step) => (
-                    <button
-                      key={step.id}
-                      onClick={() => selectStepItem(step)}
-                      className={`flex w-full items-start gap-3 rounded-lg border px-3 py-3 text-left transition-colors ${
-                        step.id === selectedStepId
-                          ? 'border-[var(--color-line-active)] bg-[rgba(91,140,255,0.1)]'
-                          : 'border-[var(--color-line-default)] bg-[var(--color-surface-2)] hover:bg-[rgba(255,255,255,0.03)]'
-                      }`}
-                    >
-                      <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-[var(--color-line-default)] bg-[var(--color-bg-base)] text-[10px] font-mono text-[var(--color-fg-subtle)]">
-                        {step.step_order}
-                      </span>
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-[var(--color-fg-default)]">{step.name}</p>
-                        <p className="mt-1 truncate text-[11px] text-[var(--color-fg-subtle)]">
-                          {step.intent} {step.target ? `· ${step.target}` : ''}
-                        </p>
-                      </div>
-                    </button>
-                  ))}
-                </div>
+          {/* Step table bottom half */}
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <div className="flex items-center justify-between border-b border-[var(--color-line-subtle)] px-4 py-2 shrink-0">
+              <div className="flex items-center gap-2">
+                <ListChecks size={13} className="text-[#45c08a]" />
+                <span className="text-[10px] font-mono uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]">
+                  {selCase ? selCase.name : 'Select a test case'}
+                </span>
+                {selCase && <span className="text-[10px] font-mono text-[var(--color-fg-subtle)]">· {selCase.test_steps.length} steps</span>}
+              </div>
+              {selCase && (
+                <Button variant="glass" size="xs" onClick={() => addStep()}>
+                  <Plus size={10} /> Add step
+                </Button>
               )}
             </div>
-          </div>
-        </section>
 
-        <section className={`${PANEL_CLASS} flex min-h-0 flex-col`}>
-          <div className="flex items-center justify-between border-b border-[var(--color-line-subtle)] px-5 py-3">
+            <div className="flex-1 overflow-auto">
+              {!selCase
+                ? <p className="py-12 text-center text-xs text-[var(--color-fg-subtle)]">Choose a test case to edit its steps inline</p>
+                : sortedSteps.length === 0
+                  ? (
+                    <div className="flex flex-col items-center justify-center py-12">
+                      <p className="text-xs text-[var(--color-fg-subtle)]">No steps yet</p>
+                      <Button variant="neon" size="sm" className="mt-3" onClick={() => addStep()}>
+                        <Plus size={11} /> Add first step
+                      </Button>
+                    </div>
+                  )
+                  : (
+                    <table className="w-full border-collapse" style={{ minWidth: 780 }}>
+                      <thead className="sticky top-0 z-10" style={{ background: 'var(--color-surface-1)' }}>
+                        <tr className="border-b border-[var(--color-line-default)]">
+                          {['#','Description','Action','Page','Element','Value','',''].map((h, i) => (
+                            <th key={i} className="px-2 py-2 text-left font-mono text-[9px] uppercase tracking-[0.14em] text-[var(--color-fg-subtle)] border-r border-[var(--color-line-subtle)] last:border-r-0">
+                              {h}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sortedSteps.map((step, i) => (
+                          <StepRow
+                            key={step.id} step={step} index={i}
+                            isFirst={i === 0} isLast={i === sortedSteps.length - 1}
+                            onAddAfter={() => addStep(step)}
+                            onMoveUp={() => doMoveStep(step, -1)}
+                            onMoveDown={() => doMoveStep(step, 1)}
+                            onDelete={() => doDeleteStep(step)}
+                            onUpdate={(u) => doUpdateStep(step, u)}
+                            pageOptions={pageOptions} elementOptions={elemOptions} locatorByElement={locByElem}
+                            pageRepo={pageRepo}
+                          />
+                        ))}
+                      </tbody>
+                    </table>
+                  )
+              }
+            </div>
+          </div>
+        </div>
+
+        {/* Col 3 — Detail Editor + Tag Catalog */}
+        <aside className="flex w-80 shrink-0 flex-col border-[var(--color-line-default)] bg-[var(--color-surface-1)] xl:w-96">
+          <div className="flex items-center justify-between border-b border-[var(--color-line-subtle)] px-4 py-2.5 shrink-0">
             <div className="flex items-center gap-2">
-              <FileText size={14} className="text-[var(--color-state-success)]" />
-              <h2 className="text-sm font-medium text-[var(--color-fg-default)]">Detail Editor</h2>
+              <FileText size={13} className="text-[#45c08a]" />
+              <span className="text-[10px] font-mono uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]">
+                {editorMode === 'project' ? 'Project' : editorMode === 'module' ? 'Module' : 'Test Case'} Editor
+              </span>
             </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={removeCurrentEntity}
-                disabled={
-                  (editorTarget === 'project' && !selectedProject) ||
-                  (editorTarget === 'module' && !selectedModule) ||
-                  (editorTarget === 'case' && !selectedCase) ||
-                  (editorTarget === 'step' && !selectedStep)
-                }
-              >
-                <Trash2 size={11} />
-                Delete
-              </Button>
-              <Button
-                variant="neon"
-                size="sm"
-                onClick={() => {
-                  if (editorTarget === 'project') saveProjectDetails();
-                  if (editorTarget === 'module') saveModuleDetails();
-                  if (editorTarget === 'case') saveCaseDetails();
-                  if (editorTarget === 'step') saveStepDetails();
-                }}
-              >
-                <Save size={11} />
-                Save
-              </Button>
+            <div className="flex items-center gap-1.5">
+              <Button variant="ghost" size="xs" onClick={deleteEditor}><Trash2 size={10} /> Del</Button>
+              <Button variant="neon" size="xs" onClick={saveEditor}><Save size={10} /> Save</Button>
             </div>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto p-5">
-            {editorTarget === 'project' && selectedProject && (
-              <div className="space-y-4">
-                <div>
-                  <p className={LABEL_CLASS}>Project</p>
-                  <div className="mt-3 grid gap-4 lg:grid-cols-2">
-                    <div className="lg:col-span-2">
-                      <input
-                        value={projectDraft.name}
-                        onChange={(event) => setProjectDraft((current) => ({ ...current, name: event.target.value }))}
-                        className={INPUT_CLASS}
-                        placeholder="Project name"
-                      />
-                    </div>
-                    <div>
-                      <select
-                        value={projectDraft.status}
-                        onChange={(event) => setProjectDraft((current) => ({ ...current, status: event.target.value }))}
-                        className={INPUT_CLASS}
-                      >
-                        {PROJECT_STATUS.map((status) => (
-                          <option key={status} value={status}>
-                            {status}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <input
-                        value={projectDraft.tags}
-                        onChange={(event) => setProjectDraft((current) => ({ ...current, tags: event.target.value }))}
-                        className={INPUT_CLASS}
-                        placeholder="commerce, release"
-                      />
-                    </div>
-                    <div className="lg:col-span-2">
-                      <textarea
-                        value={projectDraft.description}
-                        onChange={(event) => setProjectDraft((current) => ({ ...current, description: event.target.value }))}
-                        className={`${INPUT_CLASS} min-h-28 resize-y`}
-                        placeholder="What this project covers"
-                      />
-                    </div>
-                  </div>
+          <div className="min-h-0 flex-1 overflow-y-auto p-4">
+            {editorMode === 'project' && selProject && (
+              <div className="space-y-3">
+                <div><label className={LBL}>Name</label><input value={pd.name} onChange={(e) => setPd((d) => ({ ...d, name: e.target.value }))} className={INP} placeholder="Project name" /></div>
+                <div><label className={LBL}>Status</label>
+                  <select value={pd.status} onChange={(e) => setPd((d) => ({ ...d, status: e.target.value }))} className={INP}>
+                    {['active','draft','archived'].map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
                 </div>
+                <div><label className={LBL}>Tags</label><input value={pd.tags} onChange={(e) => setPd((d) => ({ ...d, tags: e.target.value }))} className={INP} placeholder="commerce, release" /></div>
+                <div><label className={LBL}>Description</label><textarea value={pd.description} onChange={(e) => setPd((d) => ({ ...d, description: e.target.value }))} className={`${INP} min-h-24 resize-y`} placeholder="What this project covers" /></div>
               </div>
             )}
 
-            {editorTarget === 'module' && selectedModule && (
-              <div className="space-y-4">
-                <div>
-                  <p className={LABEL_CLASS}>Module</p>
-                  <div className="mt-3 grid gap-4 lg:grid-cols-2">
-                    <div className="lg:col-span-2">
-                      <input
-                        value={moduleDraft.name}
-                        onChange={(event) => setModuleDraft((current) => ({ ...current, name: event.target.value }))}
-                        className={INPUT_CLASS}
-                        placeholder="Module name"
-                      />
-                    </div>
-                    <div>
-                      <select
-                        value={moduleDraft.status}
-                        onChange={(event) => setModuleDraft((current) => ({ ...current, status: event.target.value }))}
-                        className={INPUT_CLASS}
-                      >
-                        {MODULE_STATUS.map((status) => (
-                          <option key={status} value={status}>
-                            {status}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <input
-                        value={moduleDraft.tags}
-                        onChange={(event) => setModuleDraft((current) => ({ ...current, tags: event.target.value }))}
-                        className={INPUT_CLASS}
-                        placeholder="checkout, payments"
-                      />
-                    </div>
-                    <div className="lg:col-span-2">
-                      <textarea
-                        value={moduleDraft.description}
-                        onChange={(event) => setModuleDraft((current) => ({ ...current, description: event.target.value }))}
-                        className={`${INPUT_CLASS} min-h-28 resize-y`}
-                        placeholder="What this module covers"
-                      />
-                    </div>
-                  </div>
+            {editorMode === 'module' && selModule && (
+              <div className="space-y-3">
+                <div><label className={LBL}>Name</label><input value={md.name} onChange={(e) => setMd((d) => ({ ...d, name: e.target.value }))} className={INP} placeholder="Module name" /></div>
+                <div><label className={LBL}>Status</label>
+                  <select value={md.status} onChange={(e) => setMd((d) => ({ ...d, status: e.target.value }))} className={INP}>
+                    {['active','draft','archived'].map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
                 </div>
+                <div><label className={LBL}>Tags</label><input value={md.tags} onChange={(e) => setMd((d) => ({ ...d, tags: e.target.value }))} className={INP} placeholder="checkout, payments" /></div>
+                <div><label className={LBL}>Description</label><textarea value={md.description} onChange={(e) => setMd((d) => ({ ...d, description: e.target.value }))} className={`${INP} min-h-24 resize-y`} placeholder="What this module covers" /></div>
               </div>
             )}
 
-            {editorTarget === 'case' && selectedCase && (
-              <div className="space-y-5">
-                <div>
-                  <p className={LABEL_CLASS}>Test Case</p>
-                  <div className="mt-3 grid gap-4 xl:grid-cols-2">
-                    <div className="xl:col-span-2">
-                      <input
-                        value={caseDraft.name}
-                        onChange={(event) => setCaseDraft((current) => ({ ...current, name: event.target.value }))}
-                        className={INPUT_CLASS}
-                        placeholder="Case name"
-                      />
-                    </div>
-                    <div>
-                      <select
-                        value={caseDraft.status}
-                        onChange={(event) => setCaseDraft((current) => ({ ...current, status: event.target.value }))}
-                        className={INPUT_CLASS}
-                      >
-                        {CASE_STATUS.map((status) => (
-                          <option key={status} value={status}>
-                            {status}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <select
-                        value={caseDraft.priority}
-                        onChange={(event) => setCaseDraft((current) => ({ ...current, priority: event.target.value }))}
-                        className={INPUT_CLASS}
-                      >
-                        {casePriorities.map((priority) => (
-                          <option key={priority} value={priority}>
-                            {priority}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <select
-                        value={caseDraft.testType}
-                        onChange={(event) => setCaseDraft((current) => ({ ...current, testType: event.target.value }))}
-                        className={INPUT_CLASS}
-                      >
-                        {caseTypes.map((testType) => (
-                          <option key={testType} value={testType}>
-                            {testType}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <select
-                        value={caseDraft.executionMode}
-                        onChange={(event) => setCaseDraft((current) => ({ ...current, executionMode: event.target.value }))}
-                        className={INPUT_CLASS}
-                      >
-                        {executionModes.map((mode) => (
-                          <option key={mode} value={mode}>
-                            {mode}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="xl:col-span-2">
-                      <textarea
-                        value={caseDraft.description}
-                        onChange={(event) => setCaseDraft((current) => ({ ...current, description: event.target.value }))}
-                        className={`${INPUT_CLASS} min-h-24 resize-y`}
-                        placeholder="Business path under test"
-                      />
-                    </div>
-                    <div className="xl:col-span-2">
-                      <p className={`${LABEL_CLASS} mb-2`}>Platforms</p>
-                      <div className="flex flex-wrap gap-2">
-                        {casePlatforms.map((platform) => {
-                          const active = caseDraft.platforms.includes(platform);
-                          return (
-                            <button
-                              key={platform}
-                              onClick={() => toggleCasePlatform(platform)}
-                              className={`rounded-full border px-3 py-1 text-xs font-mono transition-colors ${
-                                active
-                                  ? 'border-[var(--color-line-active)] bg-[var(--color-accent-soft)] text-[var(--color-fg-default)]'
-                                  : 'border-[var(--color-line-default)] text-[var(--color-fg-subtle)] hover:text-[var(--color-fg-default)]'
-                              }`}
-                            >
-                              {platform}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                    <div className="xl:col-span-2">
-                      <input
-                        value={caseDraft.tags}
-                        onChange={(event) => setCaseDraft((current) => ({ ...current, tags: event.target.value }))}
-                        className={INPUT_CLASS}
-                        placeholder="smoke, checkout, payments"
-                      />
-                    </div>
-                    <div className="xl:col-span-2">
-                      <textarea
-                        value={caseDraft.defaultVariablesText}
-                        onChange={(event) => setCaseDraft((current) => ({ ...current, defaultVariablesText: event.target.value }))}
-                        className={`${INPUT_CLASS} min-h-36 resize-y font-mono text-xs`}
-                        placeholder='{"baseUrl":"https://app.example.com"}'
-                      />
-                    </div>
+            {editorMode === 'case' && selCase && (
+              <div className="space-y-3">
+                <div><label className={LBL}>Name</label><input value={cd.name} onChange={(e) => setCd((d) => ({ ...d, name: e.target.value }))} className={INP} placeholder="Case name" /></div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div><label className={LBL}>Status</label>
+                    <select value={cd.status} onChange={(e) => setCd((d) => ({ ...d, status: e.target.value }))} className={INP}>
+                      {['draft','active','deprecated'].map((s) => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                  <div><label className={LBL}>Priority</label>
+                    <select value={cd.priority} onChange={(e) => setCd((d) => ({ ...d, priority: e.target.value }))} className={INP}>
+                      {catPriorities.map((p) => <option key={p} value={p}>{p}</option>)}
+                    </select>
+                  </div>
+                  <div><label className={LBL}>Type</label>
+                    <select value={cd.testType} onChange={(e) => setCd((d) => ({ ...d, testType: e.target.value }))} className={INP}>
+                      {catTypes.map((t) => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  </div>
+                  <div><label className={LBL}>Mode</label>
+                    <select value={cd.executionMode} onChange={(e) => setCd((d) => ({ ...d, executionMode: e.target.value }))} className={INP}>
+                      {catModes.map((m) => <option key={m} value={m}>{m}</option>)}
+                    </select>
                   </div>
                 </div>
+                <div>
+                  <label className={LBL}>Platforms</label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {catPlatforms.map((p) => {
+                      const active = cd.platforms.includes(p);
+                      return (
+                        <button key={p} onClick={() => setCd((d) => ({ ...d, platforms: active ? d.platforms.filter((x) => x !== p) : [...d.platforms, p] }))}
+                          className={`rounded-full border px-2.5 py-1 text-[10px] font-mono transition-all ${active ? 'border-[rgba(91,140,255,0.5)] bg-[rgba(91,140,255,0.12)] text-[#5b8cff]' : 'border-[var(--color-line-default)] text-[var(--color-fg-subtle)] hover:text-[var(--color-fg-default)]'}`}>
+                          {p}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div><label className={LBL}>Tags</label><input value={cd.tags} onChange={(e) => setCd((d) => ({ ...d, tags: e.target.value }))} className={INP} placeholder="smoke, checkout" /></div>
+                <div><label className={LBL}>Description</label><textarea value={cd.description} onChange={(e) => setCd((d) => ({ ...d, description: e.target.value }))} className={`${INP} min-h-20 resize-y`} placeholder="Business path under test" /></div>
+                <div><label className={LBL}>Default Variables (JSON)</label><textarea value={cd.vars} onChange={(e) => setCd((d) => ({ ...d, vars: e.target.value }))} className={`${INP} min-h-24 resize-y font-mono text-xs`} placeholder='{"baseUrl":"https://…"}' /></div>
               </div>
             )}
 
-            {editorTarget === 'step' && selectedStep && (
-              <div className="space-y-5">
-                <div>
-                  <p className={LABEL_CLASS}>Test Step</p>
-                  <div className="mt-3 grid gap-4 xl:grid-cols-2">
-                    <div className="xl:col-span-2">
-                      <input
-                        value={stepDraft.name}
-                        onChange={(event) => setStepDraft((current) => ({ ...current, name: event.target.value }))}
-                        className={INPUT_CLASS}
-                        placeholder="Step name"
-                      />
-                    </div>
-                    <div>
-                      <input
-                        value={stepDraft.stepOrder}
-                        onChange={(event) => setStepDraft((current) => ({ ...current, stepOrder: event.target.value }))}
-                        className={INPUT_CLASS}
-                        placeholder="1"
-                      />
-                    </div>
-                    <div>
-                      <input
-                        value={stepDraft.intent}
-                        onChange={(event) => setStepDraft((current) => ({ ...current, intent: event.target.value }))}
-                        className={INPUT_CLASS}
-                        placeholder="click"
-                      />
-                    </div>
-                    <div className="xl:col-span-2">
-                      <input
-                        value={stepDraft.target}
-                        onChange={(event) => setStepDraft((current) => ({ ...current, target: event.target.value }))}
-                        className={INPUT_CLASS}
-                        placeholder="Target alias or element"
-                      />
-                    </div>
-                    <div className="xl:col-span-2">
-                      <textarea
-                        value={stepDraft.expectedResult}
-                        onChange={(event) => setStepDraft((current) => ({ ...current, expectedResult: event.target.value }))}
-                        className={`${INPUT_CLASS} min-h-20 resize-y`}
-                        placeholder="Expected result"
-                      />
-                    </div>
-                    <div className="xl:col-span-2">
-                      <input
-                        value={stepDraft.tags}
-                        onChange={(event) => setStepDraft((current) => ({ ...current, tags: event.target.value }))}
-                        className={INPUT_CLASS}
-                        placeholder="assertion, payment, critical"
-                      />
-                    </div>
-                    <div className="xl:col-span-2 rounded-lg border border-[var(--color-line-default)] bg-[var(--color-surface-2)] px-3 py-2">
-                      <label className="flex items-center gap-2 text-sm text-[var(--color-fg-default)]">
-                        <input
-                          type="checkbox"
-                          checked={stepDraft.isEnabled}
-                          onChange={(event) => setStepDraft((current) => ({ ...current, isEnabled: event.target.checked }))}
-                        />
-                        Step enabled
-                      </label>
-                    </div>
-                    <div>
-                      <p className={`${LABEL_CLASS} mb-2`}>Test Data</p>
-                      <textarea
-                        value={stepDraft.testDataText}
-                        onChange={(event) => setStepDraft((current) => ({ ...current, testDataText: event.target.value }))}
-                        className={`${INPUT_CLASS} min-h-44 resize-y font-mono text-xs`}
-                        placeholder='{"username":"qa.user"}'
-                      />
-                    </div>
-                    <div>
-                      <p className={`${LABEL_CLASS} mb-2`}>Platform Bindings</p>
-                      <textarea
-                        value={stepDraft.bindingsText}
-                        onChange={(event) => setStepDraft((current) => ({ ...current, bindingsText: event.target.value }))}
-                        className={`${INPUT_CLASS} min-h-44 resize-y font-mono text-xs`}
-                        placeholder='{"web":{"framework":"playwright","selector":"#login"}}'
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {!selectedProject && !isLoading && (
-              <div className="flex h-full items-center justify-center text-sm text-[var(--color-fg-subtle)]">
-                Create a project to start the test catalog.
+            {!selProject && !isLoading && (
+              <div className="flex h-40 items-center justify-center text-xs text-[var(--color-fg-subtle)]">
+                Create or select a project to start
               </div>
             )}
           </div>
 
-          <div className="border-t border-[var(--color-line-subtle)] px-5 py-4">
-            <div className="mb-3 flex items-center gap-2">
-              <Tag size={13} className="text-[var(--color-state-warning)]" />
-              <span className="text-sm font-medium text-[var(--color-fg-default)]">Tag Ideas</span>
-            </div>
-            <div className="space-y-3">
-              {tagCatalog.map((dimension) => (
-                <div key={dimension.key}>
-                  <p className="mb-2 text-[10px] font-mono uppercase tracking-[0.16em] text-[var(--color-fg-subtle)]">
-                    {dimension.label}
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {dimension.values.map((value) => (
-                      <button
-                        key={value}
-                        onClick={() => applyCatalogValue(dimension.key, value)}
-                        className="rounded-full border border-[var(--color-line-default)] px-2.5 py-1 text-[10px] font-mono text-[var(--color-fg-subtle)] transition-colors hover:border-[var(--color-line-strong)] hover:text-[var(--color-fg-default)]"
-                      >
-                        {value}
-                      </button>
-                    ))}
+          {tagCatalog.length > 0 && (
+            <div className="shrink-0 border-t border-[var(--color-line-subtle)] p-4">
+              <div className="mb-3 flex items-center gap-2">
+                <Tag size={12} className="text-[#f0b558]" />
+                <span className="text-[10px] font-mono uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]">Tag Catalog</span>
+              </div>
+              <div className="space-y-2.5">
+                {tagCatalog.map((dim) => (
+                  <div key={dim.key}>
+                    <p className="mb-1.5 text-[9px] font-mono uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">{dim.label}</p>
+                    <div className="flex flex-wrap gap-1">
+                      {dim.values.map((v) => (
+                        <button key={v}
+                          className="rounded-full border border-[var(--color-line-default)] px-2 py-0.5 text-[10px] font-mono text-[var(--color-fg-subtle)] transition-colors hover:border-[var(--color-accent-default)] hover:text-[var(--color-fg-default)]">
+                          {v}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
-        </section>
+          )}
+        </aside>
       </div>
     </div>
   );

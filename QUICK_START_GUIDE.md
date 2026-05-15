@@ -37,7 +37,10 @@ cd ..
 
 # Install Python dependencies
 cd nexus-api
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
+
+# Optional: install Phase 6 AI worker dependencies
+python -m pip install -r requirements-ai.txt
 cd ..
 ```
 

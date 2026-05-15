@@ -12,6 +12,8 @@
 
 # testing
 /coverage
+/playwright-artifacts/
+/playwright-report/
 
 # next.js
 /.next/

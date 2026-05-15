@@ -436,3 +436,45 @@ class IntelligenceJobModel(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+# ── Page Object Repository ────────────────────────────────────────────────────
+
+class PageRepositoryModel(Base):
+    """Application page definition with its UI element catalog."""
+    __tablename__ = "page_repository"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    url_pattern: Mapped[str] = mapped_column(String(512), default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+    platform: Mapped[str] = mapped_column(String(30), default="web", index=True)
+    tags: Mapped[list[str]] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    elements: Mapped[list["PageElementModel"]] = relationship(
+        "PageElementModel", back_populates="page",
+        cascade="all, delete-orphan", order_by="PageElementModel.name",
+    )
+
+
+class PageElementModel(Base):
+    """A named UI element on a page, with one or more locator strategies."""
+    __tablename__ = "page_elements"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    page_id: Mapped[str] = mapped_column(ForeignKey("page_repository.id"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    element_type: Mapped[str] = mapped_column(String(50), default="element")
+    description: Mapped[str] = mapped_column(Text, default="")
+    xpath: Mapped[str] = mapped_column(Text, default="")
+    css_selector: Mapped[str] = mapped_column(Text, default="")
+    id_attr: Mapped[str] = mapped_column(String(255), default="")
+    name_attr: Mapped[str] = mapped_column(String(255), default="")
+    locator_strategy: Mapped[str] = mapped_column(String(30), default="xpath")
+    tags: Mapped[list[str]] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    page: Mapped[PageRepositoryModel] = relationship("PageRepositoryModel", back_populates="elements")

@@ -51,19 +51,27 @@ NexCore is a **production-ready** enterprise platform for intelligent, cross-pla
 ### One-Command Startup
 
 ```powershell
-# Start the entire stack
+# Fast local startup (core API + execution plugins)
 .\start-nexus.ps1
+
+# Full startup with optional Phase 6 AI extras
+.\start-nexus.ps1 -WithAiExtras
+
+# Optional: run Playwright verification after startup
+.\start-nexus.ps1 -RunTests
 ```
 
 This script automatically:
 1. ✅ Starts infrastructure (PostgreSQL, Temporal, NATS, Qdrant, Keycloak)
 2. ✅ Sets up NestJS backend + Temporal worker
-3. ✅ Sets up Python AI service + job runner
-4. ✅ Sets up Next.js frontend
-5. ✅ Launches external runtime agent
+3. ✅ Sets up the Python API service
+4. ✅ Optionally installs and launches the LangGraph AI worker
+5. ✅ Sets up Next.js frontend + runtime agent
 6. ✅ Verifies all services are healthy
 
 **Ready in under 5 minutes!**
+
+Playwright verification is opt-in. Use `.\start-nexus.ps1 -RunTests` after browsers are installed with `npx playwright install`.
 
 ### Manual Setup
 
@@ -238,7 +246,8 @@ NexCore/
 │   │   ├── execution/      # Plugins (web, api, mobile, desktop)
 │   │   ├── platform_adapters/
 │   │   └── main.py
-│   └── requirements.txt
+│   ├── requirements.txt    # Base API + execution plugin dependencies
+│   └── requirements-ai.txt # Optional Phase 6 AI worker dependencies
 │
 ├── nexus-qa/               # Next.js frontend
 │   ├── src/

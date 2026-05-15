@@ -9,16 +9,48 @@
     .\start-nexus.ps1
 .EXAMPLE
     .\start-nexus.ps1 -SkipInfra  # Start only application services (infra already running)
+.EXAMPLE
+    .\start-nexus.ps1 -WithAiExtras  # Install optional LangGraph/Qdrant/OpenAI worker deps
+.EXAMPLE
+    .\start-nexus.ps1 -ApplyBackendSchema  # Run NestJS drizzle push against PostgreSQL
+.EXAMPLE
+    .\start-nexus.ps1 -RunTests  # Run Playwright verification after startup
 #>
 
 [CmdletBinding()]
 param(
-    [switch]$SkipInfra,
-    [switch]$SkipTests
+    [switch]$UseDocker,
+    [switch]$SkipTests,
+    [switch]$RunTests,
+    [switch]$WithAiExtras,
+    [switch]$ApplyBackendSchema
 )
 
 $ErrorActionPreference = "Stop"
 $workspaceRoot = $PSScriptRoot
+$aiModules = @("langgraph", "qdrant_client", "sentence_transformers", "nats", "openai")
+$aiReady = $false
+$shellCommand = Get-Command pwsh -ErrorAction SilentlyContinue
+if ($shellCommand) {
+    $shellExe = $shellCommand.Source
+} else {
+    $shellExe = (Get-Command powershell.exe -ErrorAction Stop).Source
+}
+
+if ($RunTests -and $SkipTests) {
+    throw "Use either -RunTests or -SkipTests, not both."
+}
+
+function Test-PythonModules {
+    param(
+        [string]$PythonExe,
+        [string[]]$Modules
+    )
+
+    $moduleCsv = $Modules -join ","
+    & $PythonExe -c "import importlib.util, sys; modules = '$moduleCsv'.split(','); sys.exit(0 if all(importlib.util.find_spec(name) for name in modules) else 1)"
+    return $LASTEXITCODE -eq 0
+}
 
 Write-Host "================================================================" -ForegroundColor Cyan
 Write-Host "      NexCore - Enterprise Execution Intelligence Platform     " -ForegroundColor Cyan
@@ -26,10 +58,10 @@ Write-Host "================================================================" -F
 Write-Host ""
 
 # ------------------------------------------------------------------------
-# Step 1: Start Infrastructure Services
+# Step 1: Start Infrastructure Services (Optional)
 # ------------------------------------------------------------------------
 
-if (-not $SkipInfra) {
+if ($UseDocker) {
     Write-Host "[1/8] Starting infrastructure services (Docker Compose)..." -ForegroundColor Yellow
     
     Push-Location $workspaceRoot
@@ -49,7 +81,8 @@ if (-not $SkipInfra) {
         Pop-Location
     }
 } else {
-    Write-Host "[1/8] Skipping infrastructure startup (--SkipInfra)" -ForegroundColor Gray
+    Write-Host "[1/8] Skipping Docker infrastructure (use -UseDocker to enable)" -ForegroundColor Gray
+    Write-Host "    Using externally managed PostgreSQL and other configured services" -ForegroundColor Gray
 }
 
 Write-Host ""
@@ -69,9 +102,28 @@ try {
             throw "npm install failed in nexus-backend"
         }
     }
+
+    if (-not (Test-Path ".env")) {
+        if (Test-Path ".env.example") {
+            throw "nexus-backend/.env is required. Copy .env.example and point DATABASE_URL to your PostgreSQL instance."
+        }
+
+        throw "nexus-backend/.env is required for backend startup."
+    }
     
-    Write-Host "    Running database migrations..." -ForegroundColor Gray
-    npm run db:push 2>&1 | Out-Null
+    if ($ApplyBackendSchema) {
+        Write-Host "    Running database push against configured PostgreSQL..." -ForegroundColor Gray
+        $dbPushOutput = npm run db:push 2>&1
+        $dbPushOutput | ForEach-Object { Write-Host $_ }
+
+        $dbPushText = ($dbPushOutput | Out-String)
+        if ($LASTEXITCODE -ne 0 -or $dbPushText -match '(?im)^error:') {
+            throw "npm run db:push failed in nexus-backend"
+        }
+    } else {
+        Write-Host "    Skipping automatic database push for existing PostgreSQL schema" -ForegroundColor Gray
+        Write-Host "    Re-run with -ApplyBackendSchema if you want NestJS Drizzle changes applied" -ForegroundColor Gray
+    }
     
     Write-Host "[OK] Backend setup complete" -ForegroundColor Green
 }
@@ -82,10 +134,10 @@ finally {
 Write-Host ""
 
 # ------------------------------------------------------------------------
-# Step 3: Setup Python AI Service
+# Step 3: Setup Python Service
 # ------------------------------------------------------------------------
 
-Write-Host "[3/8] Setting up Python AI service..." -ForegroundColor Yellow
+Write-Host "[3/8] Setting up Python service..." -ForegroundColor Yellow
 
 Push-Location "$workspaceRoot\nexus-api"
 try {
@@ -94,11 +146,34 @@ try {
         Write-Host "    Creating Python virtual environment..." -ForegroundColor Gray
         python -m venv .venv
     }
-    
-    & "$venvPath\Scripts\Activate.ps1"
-    
-    Write-Host "    Installing Python dependencies..." -ForegroundColor Gray
-    pip install -q -r requirements.txt
+
+    $pythonExe = Join-Path $venvPath "Scripts\python.exe"
+
+    Write-Host "    Installing base Python dependencies..." -ForegroundColor Gray
+    & $pythonExe -m pip install -q -r requirements.txt
+    if ($LASTEXITCODE -ne 0) {
+        throw "Base Python dependency install failed in nexus-api"
+    }
+
+    if ($WithAiExtras) {
+        Write-Host "    Installing optional AI dependencies..." -ForegroundColor Gray
+        & $pythonExe -m pip install -q -r requirements-ai.txt
+        if ($LASTEXITCODE -ne 0) {
+            throw "Optional AI dependency install failed in nexus-api"
+        }
+    }
+
+    $aiReady = Test-PythonModules -PythonExe $pythonExe -Modules $aiModules
+    if ($aiReady) {
+        if ($WithAiExtras) {
+            Write-Host "    [OK] Optional AI dependencies installed" -ForegroundColor Green
+        } else {
+            Write-Host "    [OK] Optional AI dependencies already available" -ForegroundColor Green
+        }
+    } else {
+        Write-Host "    Optional AI dependencies not installed; LangGraph RCA worker will be skipped" -ForegroundColor Gray
+        Write-Host "    Re-run with -WithAiExtras to install requirements-ai.txt" -ForegroundColor Gray
+    }
     
     Write-Host "[OK] Python service setup complete" -ForegroundColor Green
 }
@@ -136,23 +211,27 @@ Write-Host ""
 # Step 5: Verify Infrastructure Health
 # ------------------------------------------------------------------------
 
-Write-Host "[5/8] Verifying infrastructure health..." -ForegroundColor Yellow
+if ($UseDocker) {
+    Write-Host "[5/8] Verifying infrastructure health..." -ForegroundColor Yellow
 
-$services = @(
-    @{ Name = "PostgreSQL"; Url = "http://localhost:5432"; Port = 5432 }
-    @{ Name = "Temporal UI"; Url = "http://localhost:8233"; Port = 8233 }
-    @{ Name = "NATS"; Url = "http://localhost:8222/varz"; Port = 8222 }
-    @{ Name = "Qdrant"; Url = "http://localhost:6333/healthz"; Port = 6333 }
-    @{ Name = "Keycloak"; Url = "http://localhost:8080/health/ready"; Port = 8080 }
-)
+    $services = @(
+        @{ Name = "PostgreSQL"; Url = "http://localhost:5432"; Port = 5432 }
+        @{ Name = "Temporal UI"; Url = "http://localhost:8233"; Port = 8233 }
+        @{ Name = "NATS"; Url = "http://localhost:8222/varz"; Port = 8222 }
+        @{ Name = "Qdrant"; Url = "http://localhost:6333/healthz"; Port = 6333 }
+        @{ Name = "Keycloak"; Url = "http://localhost:8080/health/ready"; Port = 8080 }
+    )
 
-foreach ($svc in $services) {
-    $portOpen = Test-NetConnection -ComputerName localhost -Port $svc.Port -InformationLevel Quiet -WarningAction SilentlyContinue
-    if ($portOpen) {
-        Write-Host "    [OK] $($svc.Name) is reachable" -ForegroundColor Green
-    } else {
-        Write-Host "    [WARN] $($svc.Name) is NOT reachable on port $($svc.Port)" -ForegroundColor Red
+    foreach ($svc in $services) {
+        $portOpen = Test-NetConnection -ComputerName localhost -Port $svc.Port -InformationLevel Quiet -WarningAction SilentlyContinue
+        if ($portOpen) {
+            Write-Host "    [OK] $($svc.Name) is reachable" -ForegroundColor Green
+        } else {
+            Write-Host "    [WARN] $($svc.Name) is NOT reachable on port $($svc.Port)" -ForegroundColor Red
+        }
     }
+} else {
+    Write-Host "[5/8] Skipping infrastructure health check" -ForegroundColor Gray
 }
 
 Write-Host ""
@@ -179,14 +258,8 @@ $services = @(
     @{
         Name = "Python AI Service"
         Path = "$workspaceRoot\nexus-api"
-        Command = ".\.venv\Scripts\Activate.ps1; uvicorn app.main:app --reload --port 8000"
+        Command = ".\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000"
         Color = "Yellow"
-    },
-    @{
-        Name = "AI Job Runner"
-        Path = "$workspaceRoot\nexus-api"
-        Command = ".\.venv\Scripts\Activate.ps1; python -m app.intelligence.ai_job_runner"
-        Color = "Magenta"
     },
     @{
         Name = "Runtime Agent (Web/API)"
@@ -202,10 +275,28 @@ $services = @(
     }
 )
 
+if ($aiReady) {
+    $services = @(
+        $services[0],
+        $services[1],
+        $services[2],
+        @{
+            Name = "AI Job Runner"
+            Path = "$workspaceRoot\nexus-api"
+            Command = ".\.venv\Scripts\python.exe -m app.intelligence.ai_job_runner"
+            Color = "Magenta"
+        },
+        $services[3],
+        $services[4]
+    )
+} else {
+    Write-Host "    Skipping AI Job Runner (optional AI dependencies not installed)" -ForegroundColor Gray
+}
+
 foreach ($svc in $services) {
     Write-Host "    Launching $($svc.Name)..." -ForegroundColor $svc.Color
     
-    Start-Process pwsh -ArgumentList "-NoExit", "-Command", "cd '$($svc.Path)'; Write-Host '[$($svc.Name)]' -ForegroundColor $($svc.Color); $($svc.Command)"
+    Start-Process $shellExe -ArgumentList "-NoExit", "-Command", "cd '$($svc.Path)'; Write-Host '[$($svc.Name)]' -ForegroundColor $($svc.Color); $($svc.Command)"
     
     Start-Sleep -Milliseconds 500
 }
@@ -231,8 +322,8 @@ Write-Host ""
 Write-Host "[8/8] Verifying application health..." -ForegroundColor Yellow
 
 $appServices = @(
-    @{ Name = "NestJS API"; Url = "http://localhost:3001/health" }
-    @{ Name = "Python AI Service"; Url = "http://localhost:8000/health" }
+    @{ Name = "NestJS API"; Url = "http://localhost:3001/api/health/live" }
+    @{ Name = "Python AI Service"; Url = "http://localhost:8000/api/health" }
     @{ Name = "Next.js Frontend"; Url = "http://localhost:3000" }
 )
 
@@ -254,7 +345,7 @@ Write-Host ""
 # Optional: Run Tests
 # ------------------------------------------------------------------------
 
-if (-not $SkipTests) {
+if ($RunTests) {
     Write-Host "================================================================" -ForegroundColor Cyan
     Write-Host "   Running Verification Tests                                  " -ForegroundColor Cyan
     Write-Host "================================================================" -ForegroundColor Cyan
@@ -264,15 +355,21 @@ if (-not $SkipTests) {
     Push-Location "$workspaceRoot\nexus-qa"
     try {
         npx playwright test --reporter=list
-        if ($LASTEXITCODE -eq 0) {
+        $playwrightExitCode = $LASTEXITCODE
+        if ($playwrightExitCode -eq 0) {
             Write-Host "[OK] All tests passed!" -ForegroundColor Green
         } else {
             Write-Host "[WARN] Some tests failed - check output above" -ForegroundColor Yellow
         }
     }
     finally {
+        $global:LASTEXITCODE = 0
         Pop-Location
     }
+} elseif ($SkipTests) {
+    Write-Host "Verification tests skipped (-SkipTests)." -ForegroundColor Gray
+} else {
+    Write-Host "Verification tests not run by default. Re-run with -RunTests to execute Playwright." -ForegroundColor Gray
 }
 
 Write-Host ""
@@ -289,6 +386,13 @@ Write-Host "  Temporal UI:      http://localhost:8233" -ForegroundColor Cyan
 Write-Host "  NATS Monitoring:  http://localhost:8222" -ForegroundColor Cyan
 Write-Host "  Keycloak Admin:   http://localhost:8080 (admin/admin)" -ForegroundColor Cyan
 Write-Host ""
+
+if (-not $aiReady) {
+    Write-Host "Note:" -ForegroundColor White
+    Write-Host "  Phase 6 AI extras are not installed; the LangGraph RCA worker was not started." -ForegroundColor Yellow
+    Write-Host "  Run .\start-nexus.ps1 -WithAiExtras to enable AI job processing." -ForegroundColor Yellow
+    Write-Host ""
+}
 
 Write-Host "Quick Actions:" -ForegroundColor White
 Write-Host "  Create Workflow:  http://localhost:3000/workflows" -ForegroundColor Green
@@ -308,3 +412,5 @@ Write-Host "  (Then close the PowerShell windows manually)" -ForegroundColor Gra
 Write-Host ""
 
 Write-Host "Happy Testing!" -ForegroundColor Green
+
+$global:LASTEXITCODE = 0

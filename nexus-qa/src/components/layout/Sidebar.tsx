@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   BarChart3,
+  BookOpen,
   Bot,
   Boxes,
   Code2,
@@ -49,6 +50,7 @@ const GROUPS: NavGroup[] = [
     label: 'Intelligence',
     items: [
       { href: '/architecture', label: 'Architecture', icon: Boxes },
+      { href: '/page-repository', label: 'Page Repository', icon: BookOpen },
       { href: '/intent-studio', label: 'Intent Studio', icon: Target },
       { href: '/testcases', label: 'Testcases', icon: FlaskConical },
     ],

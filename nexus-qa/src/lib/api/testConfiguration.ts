@@ -161,6 +161,17 @@ export function useUpdateTestStep(stepId: string) {
   });
 }
 
+export function useUpdateAnyTestStep() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ stepId, input }: { stepId: string; input: TestStepUpdateInput }) =>
+      api.put<TestStep>(`/test-configuration/steps/${stepId}`, input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: testConfigurationKeys.all });
+    },
+  });
+}
+
 export function useDeleteTestStep() {
   const qc = useQueryClient();
   return useMutation({

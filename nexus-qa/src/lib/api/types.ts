@@ -370,3 +370,83 @@ export interface WsEvent {
   type: string;
   [key: string]: unknown;
 }
+
+// ── Page Object Repository ──────────────────────────────────────────────────
+
+export type LocatorStrategy = 'xpath' | 'css' | 'id' | 'name' | 'text';
+
+export type ElementType =
+  | 'button' | 'input' | 'link' | 'dropdown' | 'checkbox' | 'radio'
+  | 'textarea' | 'table' | 'label' | 'image' | 'div' | 'span' | 'element';
+
+export interface PageElement {
+  id: string;
+  page_id: string;
+  name: string;
+  element_type: ElementType | string;
+  description: string;
+  xpath: string;
+  css_selector: string;
+  id_attr: string;
+  name_attr: string;
+  locator_strategy: LocatorStrategy | string;
+  tags: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PageListItem {
+  id: string;
+  name: string;
+  url_pattern: string;
+  description: string;
+  platform: string;
+  tags: string[];
+  element_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PageDetail extends PageListItem {
+  elements: PageElement[];
+}
+
+export interface PageCreateInput {
+  name: string;
+  url_pattern?: string;
+  description?: string;
+  platform?: string;
+  tags?: string[];
+}
+
+export interface PageUpdateInput {
+  name?: string;
+  url_pattern?: string;
+  description?: string;
+  platform?: string;
+  tags?: string[];
+}
+
+export interface ElementCreateInput {
+  name: string;
+  element_type?: string;
+  description?: string;
+  xpath?: string;
+  css_selector?: string;
+  id_attr?: string;
+  name_attr?: string;
+  locator_strategy?: string;
+  tags?: string[];
+}
+
+export interface ElementUpdateInput {
+  name?: string;
+  element_type?: string;
+  description?: string;
+  xpath?: string;
+  css_selector?: string;
+  id_attr?: string;
+  name_attr?: string;
+  locator_strategy?: string;
+  tags?: string[];
+}

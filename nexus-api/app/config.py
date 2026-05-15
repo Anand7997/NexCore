@@ -9,8 +9,8 @@ class Settings(BaseSettings):
     app_version: str = "1.0.0"
     debug: bool = True
 
-    database_url: str = "sqlite+aiosqlite:///./nexus.db"
-    database_url_sync: str = "sqlite:///./nexus.db"
+    database_url: str = "postgresql+asyncpg://postgres:password@localhost:5432/NexCore"
+    database_url_sync: str = "postgresql://postgres:password@localhost:5432/NexCore"
 
     cors_origins: list[str] = ["http://localhost:3000", "http://localhost:3001"]
 

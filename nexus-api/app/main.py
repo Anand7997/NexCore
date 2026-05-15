@@ -35,6 +35,7 @@ from app.api.routes import (
     runtime,
     enterprise,
     test_configuration,
+    page_repository,
 )
 
 logging.basicConfig(
@@ -220,6 +221,7 @@ app.include_router(adapters.router, prefix="/api")
 app.include_router(runtime.router, prefix="/api")
 app.include_router(enterprise.router, prefix="/api")
 app.include_router(test_configuration.router, prefix="/api")
+app.include_router(page_repository.router, prefix="/api")
 app.include_router(websocket.router)
 
 

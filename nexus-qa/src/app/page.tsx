@@ -108,12 +108,12 @@ const TOPOLOGY_NODES = [
   { id: 'db', label: 'DB Layer', icon: Database, color: '#f0b558', x: 4 },
 ];
 
-const INITIAL_ACTIVITY: ActivityEvent[] = [
-  { id: 'a1', message: 'Execution #E-4821 started', detail: 'Airline Booking Suite · Web', color: '#5b8cff', ts: Date.now() - 12000 },
-  { id: 'a2', message: 'Assertion passed', detail: 'checkout_flow.assert_total', color: '#45c08a', ts: Date.now() - 9500 },
-  { id: 'a3', message: 'Locator healed by AI', detail: 'btn#confirm → button[data-testid]', color: '#a195ff', ts: Date.now() - 7200 },
-  { id: 'a4', message: 'Screenshot captured', detail: 'step_12_payment_confirm.png', color: '#4dd1e1', ts: Date.now() - 5100 },
-  { id: 'a5', message: 'Test suite completed', detail: 'Invoice Processing · 18/18 passed', color: '#45c08a', ts: Date.now() - 2800 },
+const INITIAL_ACTIVITY_SEED = [
+  { id: 'a1', message: 'Execution #E-4821 started', detail: 'Airline Booking Suite · Web', color: '#5b8cff', ageMs: 12000 },
+  { id: 'a2', message: 'Assertion passed', detail: 'checkout_flow.assert_total', color: '#45c08a', ageMs: 9500 },
+  { id: 'a3', message: 'Locator healed by AI', detail: 'btn#confirm → button[data-testid]', color: '#a195ff', ageMs: 7200 },
+  { id: 'a4', message: 'Screenshot captured', detail: 'step_12_payment_confirm.png', color: '#4dd1e1', ageMs: 5100 },
+  { id: 'a5', message: 'Test suite completed', detail: 'Invoice Processing · 18/18 passed', color: '#45c08a', ageMs: 2800 },
 ];
 
 const ACTIVITY_TEMPLATES = [
@@ -128,8 +128,15 @@ const ACTIVITY_TEMPLATES = [
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function timeAgo(ts: number): string {
-  const s = Math.floor((Date.now() - ts) / 1000);
+function buildInitialActivity(now: number): ActivityEvent[] {
+  return INITIAL_ACTIVITY_SEED.map(({ ageMs, ...event }) => ({
+    ...event,
+    ts: now - ageMs,
+  }));
+}
+
+function timeAgo(ts: number, now: number): string {
+  const s = Math.floor((now - ts) / 1000);
   if (s < 5) return 'just now';
   if (s < 60) return `${s}s ago`;
   return `${Math.floor(s / 60)}m ago`;
@@ -434,10 +441,17 @@ function SystemTopology() {
 
 function ActivityStream() {
   const listRef = useRef<HTMLDivElement>(null);
-  const [events, setEvents] = useState<ActivityEvent[]>(INITIAL_ACTIVITY);
+  const [now, setNow] = useState(0);
+  const [events, setEvents] = useState<ActivityEvent[]>(() => buildInitialActivity(0));
 
   useEffect(() => {
-    const id = setInterval(() => {
+    const syncNow = () => setNow(Date.now());
+
+    syncNow();
+    setEvents(buildInitialActivity(Date.now()));
+
+    const clockId = setInterval(syncNow, 1000);
+    const activityId = setInterval(() => {
       const tpl = ACTIVITY_TEMPLATES[Math.floor(Math.random() * ACTIVITY_TEMPLATES.length)];
       setEvents(prev => {
         const next = [
@@ -447,7 +461,10 @@ function ActivityStream() {
         return next.slice(-40);
       });
     }, 2000);
-    return () => clearInterval(id);
+    return () => {
+      clearInterval(clockId);
+      clearInterval(activityId);
+    };
   }, []);
 
   useEffect(() => {
@@ -484,7 +501,7 @@ function ActivityStream() {
                 <p className="text-[11px]" style={{ color: 'var(--color-fg-default)' }}>{ev.message}</p>
                 <p className="mt-0.5 truncate font-mono text-[10px]" style={{ color: 'var(--color-fg-subtle)' }}>{ev.detail}</p>
               </div>
-              <span className="shrink-0 text-[9px] font-mono" style={{ color: 'var(--color-fg-subtle)' }}>{timeAgo(ev.ts)}</span>
+              <span className="shrink-0 text-[9px] font-mono" style={{ color: 'var(--color-fg-subtle)' }}>{timeAgo(ev.ts, now)}</span>
             </motion.div>
           ))}
         </AnimatePresence>

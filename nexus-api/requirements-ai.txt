@@ -1,0 +1,6 @@
+# Install this after requirements.txt when you need Phase 6 AI features.
+langgraph==1.2.0
+qdrant-client==1.18.0
+sentence-transformers==5.5.0
+nats-py==2.14.0
+openai==2.8.0

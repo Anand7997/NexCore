@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import { and, eq } from 'drizzle-orm';
 import type { NexusDb } from '../../infrastructure/postgres/drizzle.service';
 import { DrizzleService } from '../../infrastructure/postgres/drizzle.service';
@@ -30,22 +30,31 @@ export class RuntimeSchedulerService implements OnModuleInit, OnModuleDestroy {
   private readonly agents = new Map<string, RuntimeAgentView>();
   private readonly queue = new Map<string, QueueItem>();
   private readonly commands = new Map<string, RuntimeAgentCommand[]>();
+  private runtimeStoreEnabled = true;
   private healthTimer?: NodeJS.Timeout;
   private readonly staleAgentTimeoutMs = 30_000;
   private readonly healthSweepIntervalMs = 10_000;
 
   constructor(
+    @Inject(RuntimeNatsService)
     private readonly nats: RuntimeNatsClient,
     @Optional() private readonly drizzle?: DrizzleService,
   ) {}
 
   get db(): NexusDb | undefined {
-    return this.drizzle?.db;
+    return this.runtimeStoreEnabled ? this.drizzle?.db : undefined;
   }
 
   async onModuleInit(): Promise<void> {
     if (this.db) {
-      await this.bootstrapAgents();
+      try {
+        await this.bootstrapAgents();
+      } catch (error) {
+        this.runtimeStoreEnabled = false;
+        this.logger.warn(
+          `Runtime scheduler DB bootstrap disabled; falling back to in-memory mode. ${String(error)}`,
+        );
+      }
     }
     this.nats.onEvent((event) => this.handleAgentEvent(event));
     this.healthTimer = setInterval(() => this.sweepStaleAgents().catch((err) => this.logger.warn(err)), this.healthSweepIntervalMs);

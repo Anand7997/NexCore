@@ -334,7 +334,7 @@ def build_rca_graph() -> Any:
         from langgraph.graph import StateGraph, END
     except ImportError as exc:
         raise ImportError(
-            "langgraph is required: pip install langgraph"
+            "langgraph is required: python -m pip install -r nexus-api/requirements-ai.txt"
         ) from exc
 
     builder: Any = StateGraph(RCAState)
