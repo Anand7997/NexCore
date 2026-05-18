@@ -1,4 +1,4 @@
-import { integer, jsonb, pgTable, timestamp, varchar } from 'drizzle-orm/pg-core';
+import { integer, jsonb, pgTable, text, timestamp, varchar } from 'drizzle-orm/pg-core';
 import { uniqueIndex } from 'drizzle-orm/pg-core';
 
 // TypeScript-owned control-plane schemas. Python workers may only write back
@@ -81,6 +81,119 @@ export const auditLogs = pgTable('audit_logs', {
   resourceType: varchar('resource_type', { length: 80 }).notNull(),
   resourceId: varchar('resource_id', { length: 120 }),
   metadata: jsonb('metadata').$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// ─── Test Management ──────────────────────────────────────────────────────────────────
+
+export const projects = pgTable('test_projects', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  tenantId: varchar('tenant_id', { length: 36 }).notNull(),
+  name: varchar('name', { length: 255 }).notNull(),
+  description: text('description'),
+  status: varchar('status', { length: 32 }).notNull().default('active'),
+  metadata: jsonb('metadata').$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export const projectModules = pgTable(
+  'test_project_modules',
+  {
+    id: varchar('id', { length: 36 }).primaryKey(),
+    tenantId: varchar('tenant_id', { length: 36 }).notNull(),
+    projectId: varchar('project_id', { length: 36 }).notNull(),
+    name: varchar('name', { length: 255 }).notNull(),
+    description: text('description'),
+    testingTypes: jsonb('testing_types').$type<string[]>().notNull().default([]),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (t) => ({
+    projectModuleUnique: uniqueIndex('test_project_modules_pid_name_uidx').on(t.projectId, t.name),
+  }),
+);
+
+export const testCases = pgTable('test_cases', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  tenantId: varchar('tenant_id', { length: 36 }).notNull(),
+  projectId: varchar('project_id', { length: 36 }).notNull(),
+  moduleId: varchar('module_id', { length: 36 }).notNull(),
+  name: varchar('name', { length: 255 }).notNull(),
+  description: text('description'),
+  platform: varchar('platform', { length: 32 }).notNull(),
+  intentId: varchar('intent_id', { length: 64 }),
+  config: jsonb('config').$type<Record<string, unknown>>().notNull().default({}),
+  steps: jsonb('steps').$type<unknown[]>().notNull().default([]),
+  expectedResult: text('expected_result'),
+  status: varchar('status', { length: 32 }).notNull().default('draft'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export const testSuites = pgTable('test_suites', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  tenantId: varchar('tenant_id', { length: 36 }).notNull(),
+  projectId: varchar('project_id', { length: 36 }).notNull(),
+  name: varchar('name', { length: 255 }).notNull(),
+  description: text('description'),
+  platform: varchar('platform', { length: 32 }),
+  config: jsonb('config').$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export const testSuiteCases = pgTable(
+  'test_suite_cases',
+  {
+    id: varchar('id', { length: 36 }).primaryKey(),
+    tenantId: varchar('tenant_id', { length: 36 }).notNull(),
+    suiteId: varchar('suite_id', { length: 36 }).notNull(),
+    testCaseId: varchar('test_case_id', { length: 36 }).notNull(),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (t) => ({
+    suiteCaseUnique: uniqueIndex('test_suite_cases_sid_tcid_uidx').on(t.suiteId, t.testCaseId),
+  }),
+);
+
+export const testExecutions = pgTable('test_executions', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  tenantId: varchar('tenant_id', { length: 36 }).notNull(),
+  suiteId: varchar('suite_id', { length: 36 }).notNull(),
+  projectId: varchar('project_id', { length: 36 }).notNull(),
+  name: varchar('name', { length: 255 }).notNull(),
+  status: varchar('status', { length: 32 }).notNull().default('pending'),
+  platform: varchar('platform', { length: 32 }),
+  config: jsonb('config').$type<Record<string, unknown>>(),
+  totalTests: integer('total_tests').notNull().default(0),
+  passedTests: integer('passed_tests').notNull().default(0),
+  failedTests: integer('failed_tests').notNull().default(0),
+  skippedTests: integer('skipped_tests').notNull().default(0),
+  startedAt: timestamp('started_at'),
+  completedAt: timestamp('completed_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export const testExecutionResults = pgTable('test_execution_results', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  tenantId: varchar('tenant_id', { length: 36 }).notNull(),
+  executionId: varchar('execution_id', { length: 36 }).notNull(),
+  testCaseId: varchar('test_case_id', { length: 36 }).notNull(),
+  testCaseName: varchar('test_case_name', { length: 255 }).notNull(),
+  suiteId: varchar('suite_id', { length: 36 }).notNull(),
+  status: varchar('status', { length: 32 }).notNull().default('pending'),
+  platform: varchar('platform', { length: 32 }),
+  intentId: varchar('intent_id', { length: 64 }),
+  durationMs: integer('duration_ms'),
+  error: text('error'),
+  screenshotUrls: jsonb('screenshot_urls').$type<string[]>(),
+  logs: text('logs'),
+  attempts: integer('attempts').notNull().default(0),
+  startedAt: timestamp('started_at'),
+  completedAt: timestamp('completed_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 

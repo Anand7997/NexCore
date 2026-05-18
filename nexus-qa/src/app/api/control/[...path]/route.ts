@@ -5,7 +5,7 @@ async function forwardRequest(
   path: string[],
 ): Promise<NextResponse> {
   const backendBase =
-    process.env.NEXT_PUBLIC_CONTROL_API_URL ?? 'http://localhost:3001';
+    process.env.NEXT_PUBLIC_CONTROL_API_URL ?? 'http://localhost:3001/api';
   const upstreamUrl = `${backendBase.replace(/\/$/, '')}/${path.join('/')}`;
 
   try {

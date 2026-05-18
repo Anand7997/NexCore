@@ -8,12 +8,20 @@ import {
   ChevronRight,
   Cpu,
   Lightbulb,
+  Loader2,
+  Play,
   TrendingUp,
   Zap,
 } from 'lucide-react';
 import GlassCard from '@/components/ui/GlassCard';
 import { useExecutions } from '@/lib/api/executions';
-import { useExecutionAnalysis } from '@/lib/api/intelligence';
+import {
+  useExecutionAnalysis,
+  useAIJobs,
+  useTriggerAIAnalysis,
+  type AIJobStatus,
+  type AIJobType,
+} from '@/lib/api/intelligence';
 import { timeAgo } from '@/lib/utils';
 import type { AIInsight } from '@/types';
 
@@ -181,11 +189,38 @@ function InsightDetail({ insight }: { insight: AIInsight }) {
   );
 }
 
+const JOB_TYPE_LABELS: Record<AIJobType, string> = {
+  root_cause_analysis: 'Root Cause',
+  flaky_detection: 'Flaky Detection',
+  locator_healing: 'Locator Healing',
+  anomaly_analysis: 'Anomaly',
+};
+
+function JobStatusBadge({ job }: { job: AIJobStatus }) {
+  const colors: Record<AIJobStatus['status'], string> = {
+    queued:    'border-amber-500/25 bg-amber-500/10 text-amber-300',
+    running:   'border-blue-500/25 bg-blue-500/10 text-blue-300',
+    completed: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300',
+    failed:    'border-red-500/25 bg-red-500/10 text-red-300',
+    cancelled: 'border-slate-500/25 bg-slate-500/10 text-slate-400',
+  };
+  return (
+    <div className={`rounded border px-2 py-0.5 text-[9px] font-mono font-bold ${colors[job.status]}`}>
+      {job.status === 'running' && <Loader2 size={8} className="inline mr-1 animate-spin" />}
+      {job.status.toUpperCase()}
+      {job.status === 'running' && ` ${Math.round(job.progress * 100)}%`}
+    </div>
+  );
+}
+
 export default function AIAnalysisPage() {
   const { data: executions = [] } = useExecutions();
   const [selectedExecution, setSelectedExecution] = useState<string | null>(null);
   const { data: analysis } = useExecutionAnalysis(selectedExecution);
+  const { data: aiJobs = [] } = useAIJobs(selectedExecution);
+  const triggerMutation = useTriggerAIAnalysis();
   const [selected, setSelected] = useState<string>('');
+  const [jobType, setJobType] = useState<AIJobType>('root_cause_analysis');
 
   useEffect(() => {
     if (!selectedExecution && executions.length > 0) {
@@ -234,17 +269,38 @@ export default function AIAnalysisPage() {
             {activeInsights.length} active insights
           </p>
           {executions.length > 0 && (
-            <select
-              value={selectedExecution ?? ''}
-              onChange={(event) => setSelectedExecution(event.target.value || null)}
-              className="mt-3 w-full rounded-md border border-border-default bg-surface-2 px-2 py-1.5 text-xs text-fg-muted outline-none focus:border-accent-default"
-            >
-              {executions.map((execution) => (
-                <option key={execution.id} value={execution.id}>
-                  {execution.workflow_id.slice(0, 8)} - {execution.status} - {execution.id.slice(0, 8)}
-                </option>
-              ))}
-            </select>
+            <>
+              <select
+                value={selectedExecution ?? ''}
+                onChange={(event) => setSelectedExecution(event.target.value || null)}
+                className="mt-3 w-full rounded-md border border-border-default bg-surface-2 px-2 py-1.5 text-xs text-fg-muted outline-none focus:border-accent-default"
+              >
+                {executions.map((execution) => (
+                  <option key={execution.id} value={execution.id}>
+                    {execution.workflow_id.slice(0, 8)} - {execution.status} - {execution.id.slice(0, 8)}
+                  </option>
+                ))}
+              </select>
+              <div className="mt-2 flex gap-1.5">
+                <select
+                  value={jobType}
+                  onChange={(e) => setJobType(e.target.value as AIJobType)}
+                  className="flex-1 rounded-md border border-border-default bg-surface-2 px-2 py-1.5 text-[10px] font-mono text-fg-muted outline-none focus:border-accent-default"
+                >
+                  {(Object.entries(JOB_TYPE_LABELS) as [AIJobType, string][]).map(([type, label]) => (
+                    <option key={type} value={type}>{label}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => selectedExecution && triggerMutation.mutate({ executionId: selectedExecution, jobType })}
+                  disabled={!selectedExecution || triggerMutation.isPending}
+                  className="flex items-center gap-1.5 rounded-md border border-accent-default/30 bg-accent-default/10 px-3 py-1.5 text-[10px] font-mono text-accent-default hover:bg-accent-default/20 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {triggerMutation.isPending ? <Loader2 size={10} className="animate-spin" /> : <Play size={10} />}
+                  Run
+                </button>
+              </div>
+            </>
           )}
         </div>
 
@@ -260,6 +316,21 @@ export default function AIAnalysisPage() {
             </div>
           ))}
         </div>
+
+        {aiJobs.length > 0 && (
+          <div className="shrink-0 border-b border-border-subtle px-3 py-2 space-y-1.5">
+            <p className="text-[9px] font-mono uppercase tracking-[0.12em] text-fg-subtle mb-1">AI Jobs</p>
+            {aiJobs.slice(0, 3).map((job) => (
+              <div key={job.id} className="flex items-center gap-2 rounded-md border border-border-default bg-surface-2 px-2 py-1.5">
+                <Cpu size={10} className="shrink-0 text-fg-subtle" />
+                <span className="flex-1 text-[10px] font-mono text-fg-muted truncate">
+                  {JOB_TYPE_LABELS[job.job_type as AIJobType] ?? job.job_type}
+                </span>
+                <JobStatusBadge job={job} />
+              </div>
+            ))}
+          </div>
+        )}
 
         <div className="flex-1 space-y-2 overflow-y-auto p-3">
           {activeInsights.length === 0 && (

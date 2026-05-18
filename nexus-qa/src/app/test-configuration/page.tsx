@@ -31,6 +31,17 @@ const ACTION_TYPES = [
   'VISUAL_ASSERTION','TYPE','SELECT','WAIT','PRESS_KEY','ASSERTION',
 ];
 
+const ASSERTION_TYPES = [
+  'EQUALS','CONTAINS','NOT_CONTAINS','STARTS_WITH','ENDS_WITH',
+  'REGEX','GREATER_THAN','LESS_THAN','IS_VISIBLE','IS_HIDDEN',
+  'IS_ENABLED','IS_DISABLED','IS_CHECKED','IS_EMPTY','COUNT_EQUALS',
+];
+
+const SECONDARY_ACTIONS = [
+  '','LOG_STEP','AUTO_GENERATE_VALUE','TAKE_SCREENSHOT',
+  'HIGHLIGHT_ELEMENT','SCROLL_INTO_VIEW',
+];
+
 const LEGACY_MAP: Record<string, string> = {
   DOUBLECLICK:'DOUBLE_CLICK',RIGHTCLICK:'RIGHT_CLICK',MOUSEOVER:'MOUSE_OVER',
   MOUSE_HOVER:'MOUSE_OVER',HOVER:'MOUSE_OVER',HOVER_MOUSE_OVER:'MOUSE_OVER',
@@ -78,6 +89,19 @@ function stepPage(s: TestStep) { return asStr(webBind(s).page); }
 function stepElement(s: TestStep) { return asStr(webBind(s).element_name) || s.target; }
 function stepLocator(s: TestStep) { return asStr(webBind(s).selector) || asStr(webBind(s).xpath); }
 function stepValue(s: TestStep) { return asStr(s.test_data?.value); }
+function stepAssertionType(s: TestStep) { return asStr(s.test_data?.assertion_type); }
+function stepSecondaryAction(s: TestStep) { return asStr(s.test_data?.secondary_action); }
+function resolveLocatorFromRepo(el: { locator_strategy: string; css_selector: string; id_attr: string; name_attr: string; xpath: string; name: string }): string {
+  switch (el.locator_strategy) {
+    case 'css':    return el.css_selector;
+    case 'id':     return el.id_attr ? `#${el.id_attr}` : '';
+    case 'name':   return el.name_attr;
+    case 'text':   return el.name;
+    case 'role':   return el.name_attr ? `[role="${el.name_attr}"]` : el.css_selector;
+    case 'testid': return el.css_selector || (el.id_attr ? `[data-testid="${el.id_attr}"]` : '');
+    default:       return el.xpath;
+  }
+}
 function tagsToCSV(t: string[]) { return t.join(', '); }
 function csvToTags(c: string) { return c.split(',').map((t) => t.trim()).filter(Boolean); }
 function uniqueSorted(vs: string[]) { return [...new Set(vs.filter(Boolean))].sort((a, b) => a.localeCompare(b)); }
@@ -85,16 +109,19 @@ function uniqueSorted(vs: string[]) { return [...new Set(vs.filter(Boolean))].so
 type StepUpdates = {
   description?: string; action?: string; page?: string;
   element?: string; locator?: string; value?: string;
+  assertionType?: string; secondaryAction?: string;
   stepOrder?: number; isEnabled?: boolean;
 };
 
 function buildPayload(step: TestStep, u: StepUpdates) {
-  const action = normalizeAction(u.action ?? step.intent);
-  const page   = u.page    ?? stepPage(step);
-  const elem   = u.element ?? stepElement(step);
-  const loc    = u.locator ?? stepLocator(step);
-  const val    = u.value   ?? stepValue(step);
-  const desc   = u.description ?? step.description;
+  const action          = normalizeAction(u.action ?? step.intent);
+  const page            = u.page            ?? stepPage(step);
+  const elem            = u.element         ?? stepElement(step);
+  const loc             = u.locator         ?? stepLocator(step);
+  const val             = u.value           ?? stepValue(step);
+  const assertionType   = u.assertionType   ?? stepAssertionType(step);
+  const secondaryAction = u.secondaryAction ?? stepSecondaryAction(step);
+  const desc            = u.description     ?? step.description;
   return {
     name: desc.trim().slice(0, 90) || `Step ${u.stepOrder ?? step.step_order}`,
     description: desc,
@@ -102,7 +129,13 @@ function buildPayload(step: TestStep, u: StepUpdates) {
     intent: action,
     target: elem,
     expected_result: step.expected_result,
-    test_data: { ...step.test_data, value: val, action_type: action },
+    test_data: {
+      ...step.test_data,
+      value: val,
+      action_type: action,
+      ...(assertionType   ? { assertion_type:   assertionType   } : {}),
+      ...(secondaryAction ? { secondary_action: secondaryAction } : {}),
+    },
     tags: step.tags,
     bindings: {
       ...step.bindings,
@@ -125,13 +158,15 @@ function StepRow({
   pageOptions: string[]; elementOptions: string[]; locatorByElement: Map<string, string>;
   pageRepo: PageDetail[];
 }) {
-  const [desc, setDesc]       = useState(step.description);
-  const [action, setAction]   = useState(normalizeAction(step.intent));
-  const [page, setPage]       = useState(stepPage(step));
-  const [element, setElement] = useState(stepElement(step));
-  const [locator, setLocator] = useState(stepLocator(step));
-  const [value, setValue]     = useState(stepValue(step));
-  const [enabled, setEnabled] = useState(step.is_enabled);
+  const [desc, setDesc]               = useState(step.description);
+  const [action, setAction]           = useState(normalizeAction(step.intent));
+  const [page, setPage]               = useState(stepPage(step));
+  const [element, setElement]         = useState(stepElement(step));
+  const [locator, setLocator]         = useState(stepLocator(step));
+  const [value, setValue]             = useState(stepValue(step));
+  const [assertionType, setAssType]   = useState(stepAssertionType(step));
+  const [secondaryAction, setSecAct]  = useState(stepSecondaryAction(step));
+  const [enabled, setEnabled]         = useState(step.is_enabled);
   const prevId = useRef(step.id);
 
   useEffect(() => {
@@ -143,6 +178,8 @@ function StepRow({
     setElement(stepElement(step));
     setLocator(stepLocator(step));
     setValue(stepValue(step));
+    setAssType(stepAssertionType(step));
+    setSecAct(stepSecondaryAction(step));
     setEnabled(step.is_enabled);
   }, [step.id]);
 
@@ -154,26 +191,23 @@ function StepRow({
   const repoPageNames = pageRepo.map((p) => p.name);
   const repoElemNames = repoElems.map((e) => e.name);
 
+  const isAssertionAction = action === 'ASSERTION' || action === 'VISUAL_ASSERTION';
+
   function save(overrides: StepUpdates = {}) {
-    onUpdate({ description: desc, action, page, element, locator, value, isEnabled: enabled, ...overrides });
+    onUpdate({ description: desc, action, page, element, locator, value, assertionType, secondaryAction, isEnabled: enabled, ...overrides });
   }
 
   function handleElementBlur() {
-    // First check page repository for a matching element
     const repoEl = repoElems.find((e) => e.name.toLowerCase() === element.toLowerCase());
     if (repoEl) {
-      const repoLoc = repoEl.locator_strategy === 'css' ? repoEl.css_selector
-        : repoEl.locator_strategy === 'id' ? (repoEl.id_attr ? `#${repoEl.id_attr}` : '')
-        : repoEl.locator_strategy === 'name' ? repoEl.name_attr
-        : repoEl.xpath;
+      const repoLoc = resolveLocatorFromRepo(repoEl);
       if (repoLoc && !locator) setLocator(repoLoc);
-      onUpdate({ description: desc, action, page, element, locator: repoLoc || locator, value, isEnabled: enabled });
+      onUpdate({ description: desc, action, page, element, locator: repoLoc || locator, value, assertionType, secondaryAction, isEnabled: enabled });
       return;
     }
-    // Fall back to locator derived from existing steps
     const auto = locatorByElement.get(element);
     if (auto && !locator) setLocator(auto);
-    onUpdate({ description: desc, action, page, element, locator: auto || locator, value, isEnabled: enabled });
+    onUpdate({ description: desc, action, page, element, locator: auto || locator, value, assertionType, secondaryAction, isEnabled: enabled });
   }
 
   const ic = 'w-full bg-transparent text-[11px] font-mono text-[var(--color-fg-default)] outline-none placeholder:text-[var(--color-fg-subtle)]/40';
@@ -206,6 +240,7 @@ function StepRow({
           ))}
         </select>
       </td>
+      {/* Page */}
       <td className={`${bd} w-28`}>
         <input value={page} onChange={(e) => setPage(e.target.value)} onBlur={() => save()}
           className={ic} placeholder="Page" list={`pg-${step.id}`} />
@@ -213,17 +248,61 @@ function StepRow({
           {[...new Set([...repoPageNames, ...pageOptions])].map((p) => <option key={p} value={p} />)}
         </datalist>
       </td>
-      <td className={`${bd} w-28`}>
+      {/* Element + auto-locator sub-display */}
+      <td className={`${bd} min-w-[140px]`}>
         <input value={element} onChange={(e) => setElement(e.target.value)} onBlur={handleElementBlur}
           className={ic} placeholder="Element" list={`el-${step.id}`} />
         <datalist id={`el-${step.id}`}>
           {[...new Set([...repoElemNames, ...elementOptions])].map((e) => <option key={e} value={e} />)}
         </datalist>
+        {locator && (
+          <div className="mt-0.5 flex items-center gap-1 min-w-0">
+            <input
+              value={locator}
+              onChange={(e) => setLocator(e.target.value)}
+              onBlur={() => save()}
+              className="w-full bg-transparent text-[9px] font-mono text-[var(--color-fg-subtle)] outline-none placeholder:text-[var(--color-fg-subtle)]/30 truncate"
+              title={locator}
+            />
+          </div>
+        )}
       </td>
-      <td className={`${bd} w-24`}>
-        <input value={value} onChange={(e) => setValue(e.target.value)} onBlur={() => save()}
-          className={ic} placeholder="Value" />
+      {/* Value — or assertion type dropdown when action is ASSERTION */}
+      <td className={`${bd} min-w-[120px]`}>
+        {isAssertionAction ? (
+          <div className="space-y-0.5">
+            <select value={assertionType}
+              onChange={(e) => { const v = e.target.value; setAssType(v); save({ assertionType: v }); }}
+              className={`${ic} cursor-pointer text-[#f0b558]`}
+              style={{ color: assertionType ? '#f0b558' : undefined }}
+            >
+              <option value="">— Assertion type —</option>
+              {ASSERTION_TYPES.map((t) => (
+                <option key={t} value={t} style={{ background: '#0d0d18', color: '#f0b558' }}>{t}</option>
+              ))}
+            </select>
+            <input value={value} onChange={(e) => setValue(e.target.value)} onBlur={() => save()}
+              className={`${ic} text-[10px]`} placeholder="Expected value" />
+          </div>
+        ) : (
+          <input value={value} onChange={(e) => setValue(e.target.value)} onBlur={() => save()}
+            className={ic} placeholder="Value / data" />
+        )}
       </td>
+      {/* Secondary action */}
+      <td className={`${bd} w-28`}>
+        <select value={secondaryAction}
+          onChange={(e) => { const v = e.target.value; setSecAct(v); save({ secondaryAction: v }); }}
+          className={`${ic} cursor-pointer text-[var(--color-fg-subtle)]`}
+        >
+          {SECONDARY_ACTIONS.map((a) => (
+            <option key={a} value={a} style={{ background: '#0d0d18', color: '#8b8c97' }}>
+              {a || '—'}
+            </option>
+          ))}
+        </select>
+      </td>
+      {/* Enabled */}
       <td className={`${bd} w-9 text-center`}>
         <button onClick={() => { const n = !enabled; setEnabled(n); save({ isEnabled: n }); }}
           className="flex items-center justify-center w-full transition-colors">
@@ -232,6 +311,7 @@ function StepRow({
             : <EyeOff size={10} className="text-[var(--color-fg-subtle)] mx-auto" />}
         </button>
       </td>
+      {/* Row actions */}
       <td className="w-24 px-2 py-1">
         <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
           <button disabled={isFirst} onClick={onMoveUp}
@@ -522,6 +602,32 @@ export default function TestConfigurationPage() {
         </AnimatePresence>
       </motion.div>
 
+      {/* ── Workflow progress strip ─────────────────────────────────────────────── */}
+      <div className="shrink-0 border-b border-[var(--color-line-subtle)] bg-[var(--color-surface-1)] px-6 py-2">
+        <div className="flex items-center gap-1 overflow-x-auto">
+          {([
+            { label: '① Test Cases', href: '/test-configuration', active: true  },
+            { label: '② Pages & Elements', href: '/page-repository', active: false },
+            { label: '③ Test Steps', href: '/test-configuration', active: false  },
+            { label: '④ Architecture', href: '/architecture', active: false       },
+            { label: '⑤ Execution', href: '/executions', active: false            },
+          ] as const).map((s, i, arr) => (
+            <span key={s.label} className="flex items-center gap-1 shrink-0">
+              <a href={s.href}
+                className={[
+                  'rounded px-2.5 py-1 text-[10px] font-mono transition-colors',
+                  s.active
+                    ? 'bg-[rgba(91,140,255,0.15)] text-[#5b8cff] border border-[rgba(91,140,255,0.3)]'
+                    : 'text-[var(--color-fg-subtle)] hover:text-[var(--color-fg-default)] hover:bg-[var(--color-surface-2)]',
+                ].join(' ')}>
+                {s.label}
+              </a>
+              {i < arr.length - 1 && <span className="text-[var(--color-fg-subtle)] text-[10px]">›</span>}
+            </span>
+          ))}
+        </div>
+      </div>
+
       {/* ── 3-Column layout ────────────────────────────────────────────────────────── */}
       <div className="flex min-h-0 flex-1 overflow-hidden">
 
@@ -660,10 +766,10 @@ export default function TestConfigurationPage() {
                     </div>
                   )
                   : (
-                    <table className="w-full border-collapse" style={{ minWidth: 780 }}>
+                    <table className="w-full border-collapse" style={{ minWidth: 1020 }}>
                       <thead className="sticky top-0 z-10" style={{ background: 'var(--color-surface-1)' }}>
                         <tr className="border-b border-[var(--color-line-default)]">
-                          {['#','Description','Action','Page','Element','Value','',''].map((h, i) => (
+                          {['#','Description','Action','Page','Element / Locator','Value / Assertion','2nd','',''].map((h, i) => (
                             <th key={i} className="px-2 py-2 text-left font-mono text-[9px] uppercase tracking-[0.14em] text-[var(--color-fg-subtle)] border-r border-[var(--color-line-subtle)] last:border-r-0">
                               {h}
                             </th>
@@ -684,6 +790,14 @@ export default function TestConfigurationPage() {
                             pageRepo={pageRepo}
                           />
                         ))}
+                        <tr>
+                          <td colSpan={9} className="py-2 px-3">
+                            <button onClick={() => addStep(sortedSteps[sortedSteps.length - 1])}
+                              className="flex items-center gap-1.5 text-[10px] font-mono text-[var(--color-fg-subtle)] hover:text-[var(--color-fg-default)] transition-colors">
+                              <Plus size={9} /> Add step
+                            </button>
+                          </td>
+                        </tr>
                       </tbody>
                     </table>
                   )

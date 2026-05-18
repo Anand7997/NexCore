@@ -18,18 +18,18 @@ function mapBackendEventType(type: string): RealtimeEventType {
     execution_failed: 'execution_failed',
     node_started: 'node_started',
     node_completed: 'node_completed',
-    node_failed: 'node_completed',
+    node_failed: 'node_failed',
     ai_insight_generated: 'ai_insight_generated',
     terminal_line: 'log_added',
-    execution_cancelled: 'execution_failed',
+    execution_cancelled: 'execution_cancelled',
     // Backend dataclass names (from event.to_dict() type field)
     ExecutionStarted:   'execution_started',
     ExecutionCompleted: 'execution_completed',
     ExecutionFailed:    'execution_failed',
-    ExecutionCancelled: 'execution_failed',
+    ExecutionCancelled: 'execution_cancelled',
     NodeStarted:        'node_started',
     NodeCompleted:      'node_completed',
-    NodeFailed:         'node_completed',
+    NodeFailed:         'node_failed',
     NodeRetrying:       'execution_progress',
     NodeSkipped:        'execution_progress',
     TerminalLog:        'log_added',
@@ -37,6 +37,9 @@ function mapBackendEventType(type: string): RealtimeEventType {
     ApiCall:            'execution_progress',
     ArtifactCaptured:   'execution_progress',
     VariableSet:        'execution_progress',
+    AIJobQueued:        'ai_job_queued',
+    AIJobProgress:      'ai_job_progress',
+    AIJobCompleted:     'ai_job_completed',
   };
   return (map[type] ?? 'execution_progress') as RealtimeEventType;
 }
@@ -118,7 +121,9 @@ export function useWebSocket(subscribeToExecution?: string | null) {
       type === 'execution_completed' || type === 'execution_failed' || type === 'execution_cancelled'
     ) {
       if (execId) {
-        const status = type === 'ExecutionCompleted' || type === 'execution_completed' ? 'success' : 'failed';
+        const status =
+          type === 'ExecutionCompleted' || type === 'execution_completed' ? 'success' :
+          type === 'ExecutionCancelled' || type === 'execution_cancelled' ? 'cancelled' : 'failed';
         useExecutionStore.getState().updateExecutionStatus(execId, status as never);
       }
     }
@@ -194,14 +199,15 @@ export function useWebSocket(subscribeToExecution?: string | null) {
 
     // ── Notifications for important events ──────────────────────────────
     if (
-      type === 'ExecutionCompleted' || type === 'ExecutionFailed' ||
-      type === 'execution_completed' || type === 'execution_failed'
+      type === 'ExecutionCompleted' || type === 'ExecutionFailed' || type === 'ExecutionCancelled' ||
+      type === 'execution_completed' || type === 'execution_failed' || type === 'execution_cancelled'
     ) {
       const isSuccess = type === 'ExecutionCompleted' || type === 'execution_completed';
+      const isCancelled = type === 'ExecutionCancelled' || type === 'execution_cancelled';
       useUIStore.getState().addNotification({
-        title: isSuccess ? 'Execution Complete' : 'Execution Failed',
-        message: `${workflowName ?? execId ?? 'Execution'} ${isSuccess ? 'completed successfully' : 'failed'}`,
-        severity: isSuccess ? 'success' : 'error',
+        title: isSuccess ? 'Execution Complete' : isCancelled ? 'Execution Cancelled' : 'Execution Failed',
+        message: `${workflowName ?? execId ?? 'Execution'} ${isSuccess ? 'completed successfully' : isCancelled ? 'was cancelled' : 'failed'}`,
+        severity: isSuccess ? 'success' : isCancelled ? 'info' : 'error',
         executionId: execId,
       });
     }

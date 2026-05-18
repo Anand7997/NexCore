@@ -85,6 +85,8 @@ class TestCaseCreateSchema(BaseModel):
     platforms: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
     default_variables: dict[str, Any] = Field(default_factory=dict)
+    project_id: str | None = None
+    testing_type_id: str | None = None
 
 
 class TestCaseUpdateSchema(BaseModel):
@@ -97,12 +99,24 @@ class TestCaseUpdateSchema(BaseModel):
     platforms: list[str] | None = None
     tags: list[str] | None = None
     default_variables: dict[str, Any] | None = None
+    project_id: str | None = None
+    testing_type_id: str | None = None
 
 
 class TestStepCreateSchema(BaseModel):
     name: str
     description: str = ""
     step_order: int | None = None
+    # Normalized explicit fields
+    action_type: str = ""
+    page_id: str | None = None
+    page_element_id: str | None = None
+    api_endpoint_id: str | None = None
+    input_value: str = ""
+    assertion_type: str = ""
+    secondary_action: str = ""
+    secondary_value: str = ""
+    # Legacy JSON fields (kept for UI backward compatibility)
     intent: str = "action"
     target: str = ""
     expected_result: str = ""
@@ -116,6 +130,16 @@ class TestStepUpdateSchema(BaseModel):
     name: str | None = None
     description: str | None = None
     step_order: int | None = None
+    # Normalized explicit fields
+    action_type: str | None = None
+    page_id: str | None = None
+    page_element_id: str | None = None
+    api_endpoint_id: str | None = None
+    input_value: str | None = None
+    assertion_type: str | None = None
+    secondary_action: str | None = None
+    secondary_value: str | None = None
+    # Legacy JSON fields
     intent: str | None = None
     target: str | None = None
     expected_result: str | None = None
@@ -130,6 +154,16 @@ class TestStepResponse(BaseModel):
     step_order: int
     name: str
     description: str
+    # Normalized explicit fields
+    action_type: str
+    page_id: str | None
+    page_element_id: str | None
+    api_endpoint_id: str | None
+    input_value: str
+    assertion_type: str
+    secondary_action: str
+    secondary_value: str
+    # Legacy JSON fields
     intent: str
     target: str
     expected_result: str
@@ -146,6 +180,8 @@ class TestStepResponse(BaseModel):
 class TestCaseResponse(BaseModel):
     id: str
     module_id: str
+    project_id: str | None
+    testing_type_id: str | None
     name: str
     description: str
     status: str

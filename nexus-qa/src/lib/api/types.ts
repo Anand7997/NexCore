@@ -373,7 +373,7 @@ export interface WsEvent {
 
 // ── Page Object Repository ──────────────────────────────────────────────────
 
-export type LocatorStrategy = 'xpath' | 'css' | 'id' | 'name' | 'text';
+export type LocatorStrategy = 'xpath' | 'css' | 'id' | 'name' | 'text' | 'role' | 'testid';
 
 export type ElementType =
   | 'button' | 'input' | 'link' | 'dropdown' | 'checkbox' | 'radio'

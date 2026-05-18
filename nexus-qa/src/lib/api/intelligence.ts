@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from './client';
 
 export interface IntelligenceInsight {
@@ -38,8 +38,30 @@ export interface ExecutionAnalysis {
   };
 }
 
+export type AIJobType =
+  | 'root_cause_analysis'
+  | 'flaky_detection'
+  | 'locator_healing'
+  | 'anomaly_analysis';
+
+export interface AIJobStatus {
+  id: string;
+  execution_id: string;
+  job_type: AIJobType;
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+  progress: number;
+  current_step: string | null;
+  error: string | null;
+  result: Record<string, unknown> | null;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
 export const intelligenceKeys = {
   execution: (id: string | null) => ['intelligence', 'execution', id] as const,
+  jobs: (executionId: string | null) => ['intelligence', 'jobs', executionId] as const,
+  job: (jobId: string | null) => ['intelligence', 'job', jobId] as const,
 };
 
 export function useExecutionAnalysis(executionId: string | null) {
@@ -49,6 +71,66 @@ export function useExecutionAnalysis(executionId: string | null) {
     enabled: !!executionId,
     staleTime: 15_000,
     retry: false,
+  });
+}
+
+export function useAIJobs(executionId: string | null) {
+  return useQuery({
+    queryKey: intelligenceKeys.jobs(executionId),
+    queryFn: () => api.get<AIJobStatus[]>(`/intelligence/executions/${executionId}/jobs`),
+    enabled: !!executionId,
+    refetchInterval: (query) => {
+      const jobs = query.state.data;
+      if (!jobs?.length) return 10_000;
+      const hasActive = jobs.some((j) => j.status === 'queued' || j.status === 'running');
+      return hasActive ? 2_000 : 10_000;
+    },
+    retry: false,
+  });
+}
+
+export function useAIJob(jobId: string | null) {
+  return useQuery({
+    queryKey: intelligenceKeys.job(jobId),
+    queryFn: () => api.get<AIJobStatus>(`/intelligence/jobs/${jobId}`),
+    enabled: !!jobId,
+    refetchInterval: (query) => {
+      const job = query.state.data;
+      if (!job) return 2_000;
+      return job.status === 'queued' || job.status === 'running' ? 2_000 : false;
+    },
+    retry: false,
+  });
+}
+
+export function useTriggerAIAnalysis() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      executionId,
+      jobType = 'root_cause_analysis',
+    }: {
+      executionId: string;
+      jobType?: AIJobType;
+    }) =>
+      api.post<AIJobStatus>(`/intelligence/executions/${executionId}/analyze`, {
+        job_type: jobType,
+        tenant_id: 'default',
+      }),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: intelligenceKeys.jobs(variables.executionId) });
+    },
+  });
+}
+
+export function useCancelAIJob() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (jobId: string) =>
+      api.delete<void>(`/intelligence/jobs/${jobId}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['intelligence', 'jobs'] });
+    },
   });
 }
 

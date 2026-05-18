@@ -16,6 +16,7 @@ import { RuntimeModule } from './modules/runtime/runtime.module';
 import { AiGatewayModule } from './modules/ai-gateway/ai-gateway.module';
 import { EnterpriseModule } from './modules/enterprise/enterprise.module';
 import { IntentModule } from './modules/intent/intent.module';
+import { TestManagementModule } from './modules/test-management/test-management.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { IntentModule } from './modules/intent/intent.module';
     AiGatewayModule,
     EnterpriseModule,
     IntentModule,
+    TestManagementModule,
   ],
   controllers: [],
   providers: [AllExceptionsFilter, { provide: APP_GUARD, useClass: KeycloakGuard }],

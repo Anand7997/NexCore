@@ -36,6 +36,9 @@ from app.api.routes import (
     enterprise,
     test_configuration,
     page_repository,
+    testing_types,
+    api_testing,
+    execution_results,
 )
 
 logging.basicConfig(
@@ -80,7 +83,12 @@ async def _start_nats_bridge(bus: Any) -> None:
     try:
         import nats as nats_lib
         from app.config import settings
-        nc = await nats_lib.connect(settings.nats_url)
+        nc = await nats_lib.connect(
+            settings.nats_url,
+            allow_reconnect=False,
+            max_reconnect_attempts=0,
+            connect_timeout=1,
+        )
 
         async def _on_progress(msg: Any) -> None:
             try:
@@ -222,6 +230,9 @@ app.include_router(runtime.router, prefix="/api")
 app.include_router(enterprise.router, prefix="/api")
 app.include_router(test_configuration.router, prefix="/api")
 app.include_router(page_repository.router, prefix="/api")
+app.include_router(testing_types.router, prefix="/api")
+app.include_router(api_testing.router, prefix="/api")
+app.include_router(execution_results.router, prefix="/api")
 app.include_router(websocket.router)
 
 

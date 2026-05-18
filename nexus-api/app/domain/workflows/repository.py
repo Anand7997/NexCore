@@ -23,6 +23,8 @@ class WorkflowRepository:
             id=str(uuid.uuid4()),
             name=schema.name,
             description=schema.description,
+            project_id=schema.project_id,
+            module_id=schema.module_id,
             tags=schema.tags,
             platforms=schema.platforms,
             variables=schema.variables,
@@ -69,6 +71,10 @@ class WorkflowRepository:
             workflow.tags = schema.tags
         if schema.variables is not None:
             workflow.variables = schema.variables
+        if schema.project_id is not None:
+            workflow.project_id = schema.project_id
+        if schema.module_id is not None:
+            workflow.module_id = schema.module_id
 
         if schema.nodes is not None or schema.edges is not None:
             next_nodes = schema.nodes or []
@@ -105,6 +111,7 @@ class WorkflowRepository:
             self.db.add(WorkflowNodeModel(
                 id=str(uuid.uuid4()),
                 workflow_id=workflow_id,
+                test_case_id=getattr(n, "test_case_id", None),
                 node_key=n.node_key,
                 type=n.type,
                 label=n.label,
@@ -122,6 +129,7 @@ class WorkflowRepository:
                 source_key=e.source_key,
                 target_key=e.target_key,
                 condition=e.condition,
+                execution_order=getattr(e, "execution_order", 0),
             ))
         await self.db.flush()
 

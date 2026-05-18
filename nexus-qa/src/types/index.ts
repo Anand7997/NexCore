@@ -127,10 +127,15 @@ export type RealtimeEventType =
   | 'execution_started'
   | 'execution_completed'
   | 'execution_failed'
+  | 'execution_cancelled'
   | 'node_started'
   | 'node_completed'
+  | 'node_failed'
   | 'log_added'
   | 'ai_insight_generated'
+  | 'ai_job_queued'
+  | 'ai_job_progress'
+  | 'ai_job_completed'
   | 'agent_status_changed'
   | 'execution_progress';
 

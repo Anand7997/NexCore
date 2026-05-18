@@ -15,8 +15,12 @@ class ExecutionRepository:
         execution = ExecutionModel(
             id=str(uuid.uuid4()),
             workflow_id=schema.workflow_id,
+            project_id=schema.project_id,
+            module_id=schema.module_id,
+            testing_type_id=schema.testing_type_id,
             status="queued",
             trigger=schema.trigger,
+            triggered_by=schema.triggered_by,
             environment=schema.environment,
             platform=schema.platform,
             variables=schema.variables,

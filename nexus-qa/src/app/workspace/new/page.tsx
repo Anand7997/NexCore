@@ -623,39 +623,57 @@ function SuccessState({ projectName }: { projectName: string }) {
         Your AI-powered execution environment is ready. Choose where to proceed.
       </motion.p>
 
+      <motion.p
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.57 }}
+        className="mt-6 text-[10px] font-mono uppercase tracking-[0.18em]"
+        style={{ color: 'var(--color-fg-subtle)' }}
+      >
+        Complete these steps in order
+      </motion.p>
+
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.6 }}
-        className="mt-8 flex flex-col gap-3 w-full max-w-md"
+        className="mt-3 flex flex-col gap-2 w-full max-w-md"
       >
         {[
-          { label: 'Proceed to Architecture Builder', href: '/workflows', icon: Zap, color: '#a195ff' },
-          { label: 'Add Business Intents', href: '/test-configuration', icon: Brain, color: '#5b8cff' },
-          { label: 'Run First Execution', href: '/executions', icon: Rocket, color: '#45c08a' },
-        ].map(({ label, href, icon: Icon, color }, i) => (
+          { step: 1, label: 'Configure Test Cases & Modules',   href: '/test-configuration', icon: Brain,  color: '#5b8cff', note: 'Create projects, modules, and test cases' },
+          { step: 2, label: 'Configure Pages & Object Repository', href: '/page-repository',  icon: Database, color: '#4dd1e1', note: 'Add pages, elements, and locators' },
+          { step: 3, label: 'Configure Test Steps',             href: '/test-configuration', icon: Zap,    color: '#45c08a', note: 'Map steps to pages, elements, and actions' },
+          { step: 4, label: 'Build Test Architecture',          href: '/architecture',       icon: Layers, color: '#a195ff', note: 'Connect test cases into execution workflows' },
+          { step: 5, label: 'Run Execution',                    href: '/executions',         icon: Rocket, color: '#f0b558', note: 'Execute workflow and view live results' },
+        ].map(({ step, label, href, icon: Icon, color, note }, i) => (
           <motion.div
-            key={href}
+            key={`${href}-${step}`}
             initial={{ opacity: 0, x: -16 }}
             animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.65 + i * 0.08 }}
+            transition={{ delay: 0.65 + i * 0.07 }}
           >
             <Link
               href={href}
-              className="group flex items-center gap-4 rounded-xl border px-5 py-3.5 transition-all hover:scale-[1.01]"
-              style={{
-                background: `${color}0a`,
-                borderColor: `${color}30`,
-              }}
+              className="group flex items-center gap-3 rounded-xl border px-4 py-3 transition-all hover:scale-[1.005]"
+              style={{ background: `${color}08`, borderColor: `${color}28` }}
             >
               <div
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
-                style={{ background: `${color}18`, border: `1px solid ${color}30` }}
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-mono font-bold"
+                style={{ background: `${color}18`, border: `1px solid ${color}35`, color }}
               >
-                <Icon size={16} style={{ color }} />
+                {step}
               </div>
-              <span className="flex-1 text-sm font-medium" style={{ color: 'var(--color-fg-default)' }}>{label}</span>
-              <ArrowRight size={14} className="opacity-40 transition-opacity group-hover:opacity-100" style={{ color }} />
+              <div
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+                style={{ background: `${color}15`, border: `1px solid ${color}28` }}
+              >
+                <Icon size={14} style={{ color }} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium" style={{ color: 'var(--color-fg-default)' }}>{label}</p>
+                <p className="text-[10px] font-mono" style={{ color: 'var(--color-fg-subtle)' }}>{note}</p>
+              </div>
+              <ArrowRight size={12} className="shrink-0 opacity-30 transition-opacity group-hover:opacity-80" style={{ color }} />
             </Link>
           </motion.div>
         ))}

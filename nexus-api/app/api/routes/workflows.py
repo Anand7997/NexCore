@@ -33,6 +33,7 @@ def _to_response(wf) -> WorkflowResponse:
                 type=n.type,
                 label=n.label,
                 description=n.description or "",
+                test_case_id=n.test_case_id,
                 config=n.config or {},
                 position_x=n.position_x,
                 position_y=n.position_y,
@@ -47,6 +48,7 @@ def _to_response(wf) -> WorkflowResponse:
                 source_key=e.source_key,
                 target_key=e.target_key,
                 condition=e.condition,
+                execution_order=e.execution_order or 0,
             )
             for e in (wf.edges or [])
         ],

@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import GlassCard from '@/components/ui/GlassCard';
 import { useAdapterRuntimes, type AdapterRuntime } from '@/lib/api/adapters';
+import { useIntegrations, type Integration } from '@/lib/api/enterprise';
 import { cn } from '@/lib/utils';
 
 const SECTIONS = [
@@ -92,9 +93,37 @@ function AdapterRuntimeRow({ runtime }: { runtime: AdapterRuntime }) {
   );
 }
 
+const INTEGRATION_TYPE_LABELS: Record<string, string> = {
+  slack: 'Slack',
+  jira: 'Jira',
+  github: 'GitHub',
+  webhook: 'Webhook',
+  s3: 'AWS S3',
+  datadog: 'Datadog',
+};
+
+function IntegrationRow({ integration }: { integration: Integration }) {
+  const label = INTEGRATION_TYPE_LABELS[integration.integration_type] ?? integration.integration_type;
+  return (
+    <div className="flex items-center gap-3 border-b border-white/4 py-3 last:border-b-0">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/5 border border-white/8">
+        <Webhook size={13} className="text-indigo-400" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm text-slate-200 truncate">{integration.name}</p>
+        <p className="text-[10px] font-mono text-slate-500 mt-0.5">{label}</p>
+      </div>
+      <span className="rounded border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-mono text-emerald-300">
+        active
+      </span>
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   const [activeSection, setActiveSection] = useState('general');
   const { data: adapterRuntimes } = useAdapterRuntimes();
+  const { data: integrations = [], isError: integrationsError } = useIntegrations();
   const [settings, setSettings] = useState({
     liveStream: true,
     aiAnalysis: true,
@@ -280,11 +309,49 @@ export default function SettingsPage() {
             </>
           )}
 
-          {(activeSection === 'integrations' || activeSection === 'team') && (
+          {activeSection === 'integrations' && (
+            <>
+              <div>
+                <h1 className="text-xl font-bold text-white">Integrations</h1>
+                <p className="text-xs text-slate-400 mt-1">Connected third-party services</p>
+              </div>
+              <GlassCard className="p-4" animate={false}>
+                <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3">Active Integrations</h3>
+                {integrationsError && (
+                  <p className="text-xs text-red-400 font-mono py-2">
+                    Unable to load integrations — admin role required.
+                  </p>
+                )}
+                {!integrationsError && integrations.length === 0 && (
+                  <p className="py-4 text-center text-xs text-slate-500">No integrations configured yet.</p>
+                )}
+                {integrations.map((integ) => (
+                  <IntegrationRow key={integ.id} integration={integ} />
+                ))}
+              </GlassCard>
+              <GlassCard className="p-4" animate={false}>
+                <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3">Add Integration</h3>
+                <div className="grid grid-cols-2 gap-2">
+                  {Object.entries(INTEGRATION_TYPE_LABELS).map(([type, label]) => (
+                    <button
+                      key={type}
+                      className="flex items-center gap-2 rounded-lg border border-white/8 bg-white/3 px-3 py-2.5 text-xs text-slate-400 hover:bg-white/6 hover:text-slate-200 transition-all"
+                    >
+                      <Webhook size={11} className="text-indigo-400 shrink-0" />
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </GlassCard>
+            </>
+          )}
+
+          {activeSection === 'team' && (
             <div className="flex items-center justify-center h-48 text-slate-600">
               <div className="text-center">
-                <Settings size={32} className="mx-auto mb-3 opacity-30" />
-                <p className="text-sm">Settings coming soon</p>
+                <Users size={32} className="mx-auto mb-3 opacity-30" />
+                <p className="text-sm">Team management requires tenant configuration.</p>
+                <p className="text-xs mt-1">Configure a tenant via the enterprise API to manage members.</p>
               </div>
             </div>
           )}

@@ -21,7 +21,7 @@ const ELEMENT_TYPES = [
   'textarea','table','label','image','div','span','element',
 ];
 
-const LOCATOR_STRATEGIES = ['xpath','css','id','name','text'];
+const LOCATOR_STRATEGIES = ['xpath','css','id','name','text','role','testid'];
 
 const PLATFORMS = ['web','android','ios','desktop','api'];
 
@@ -34,6 +34,7 @@ const ELEMENT_TYPE_COLOR: Record<string, string> = {
 
 const STRATEGY_COLOR: Record<string, string> = {
   xpath: '#a195ff', css: '#45c08a', id: '#5b8cff', name: '#4dd1e1', text: '#f0b558',
+  role: '#f06262', testid: '#e879f9',
 };
 
 const PLATFORM_ICON: Record<string, React.ElementType> = {
@@ -44,11 +45,13 @@ const PLATFORM_ICON: Record<string, React.ElementType> = {
 
 function getLocator(el: PageElement): string {
   switch (el.locator_strategy) {
-    case 'css':  return el.css_selector;
-    case 'id':   return el.id_attr ? `#${el.id_attr}` : el.id_attr;
-    case 'name': return el.name_attr;
-    case 'text': return el.name;
-    default:     return el.xpath;
+    case 'css':    return el.css_selector;
+    case 'id':     return el.id_attr ? `#${el.id_attr}` : el.id_attr;
+    case 'name':   return el.name_attr;
+    case 'text':   return el.name;
+    case 'role':   return el.name_attr ? `[role="${el.name_attr}"]` : el.css_selector;
+    case 'testid': return el.css_selector ? el.css_selector : el.id_attr ? `[data-testid="${el.id_attr}"]` : '';
+    default:       return el.xpath;
   }
 }
 
@@ -323,6 +326,32 @@ export default function PageRepositoryPage() {
           </div>
         </div>
       </motion.div>
+
+      {/* ── Workflow progress strip ──────────────────────────────────────────── */}
+      <div className="shrink-0 border-b border-[var(--color-line-subtle)] bg-[var(--color-surface-1)] px-6 py-2">
+        <div className="flex items-center gap-1 overflow-x-auto">
+          {([
+            { label: '① Test Cases',       href: '/test-configuration', active: false },
+            { label: '② Pages & Elements', href: '/page-repository',   active: true  },
+            { label: '③ Test Steps',       href: '/test-configuration', active: false },
+            { label: '④ Architecture',     href: '/architecture',       active: false },
+            { label: '⑤ Execution',        href: '/executions',         active: false },
+          ] as const).map((s, i, arr) => (
+            <span key={s.label} className="flex items-center gap-1 shrink-0">
+              <a href={s.href}
+                className={[
+                  'rounded px-2.5 py-1 text-[10px] font-mono transition-colors',
+                  s.active
+                    ? 'bg-[rgba(77,209,225,0.15)] text-[#4dd1e1] border border-[rgba(77,209,225,0.3)]'
+                    : 'text-[var(--color-fg-subtle)] hover:text-[var(--color-fg-default)] hover:bg-[var(--color-surface-2)]',
+                ].join(' ')}>
+                {s.label}
+              </a>
+              {i < arr.length - 1 && <span className="text-[var(--color-fg-subtle)] text-[10px]">›</span>}
+            </span>
+          ))}
+        </div>
+      </div>
 
       {/* ── 3-column layout ─────────────────────────────────────────────────── */}
       <div className="flex min-h-0 flex-1 overflow-hidden">

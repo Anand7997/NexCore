@@ -37,7 +37,17 @@ def _to_step_response(step) -> TestStepResponse:
         step_order=step.step_order,
         name=step.name,
         description=step.description or "",
-        intent=step.intent,
+        # Normalized fields
+        action_type=step.action_type or step.intent or "",
+        page_id=step.page_id,
+        page_element_id=step.page_element_id,
+        api_endpoint_id=step.api_endpoint_id,
+        input_value=step.input_value or "",
+        assertion_type=step.assertion_type or "",
+        secondary_action=step.secondary_action or "",
+        secondary_value=step.secondary_value or "",
+        # Legacy fields
+        intent=step.intent or "",
         target=step.target or "",
         expected_result=step.expected_result or "",
         test_data=step.test_data or {},
@@ -54,6 +64,8 @@ def _to_case_response(test_case) -> TestCaseResponse:
     return TestCaseResponse(
         id=test_case.id,
         module_id=test_case.module_id,
+        project_id=test_case.project_id,
+        testing_type_id=test_case.testing_type_id,
         name=test_case.name,
         description=test_case.description or "",
         status=test_case.status,

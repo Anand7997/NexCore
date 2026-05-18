@@ -146,6 +146,8 @@ class TestConfigurationRepository:
             raise TestConfigurationError("Module not found")
         test_case = TestCaseModel(
             module_id=module_id,
+            project_id=schema.project_id or module.project_id,
+            testing_type_id=schema.testing_type_id,
             name=schema.name,
             description=schema.description,
             status=schema.status,
@@ -185,6 +187,10 @@ class TestConfigurationRepository:
             test_case.tags = schema.tags
         if schema.default_variables is not None:
             test_case.default_variables = schema.default_variables
+        if schema.project_id is not None:
+            test_case.project_id = schema.project_id
+        if schema.testing_type_id is not None:
+            test_case.testing_type_id = schema.testing_type_id
         await self.db.commit()
         return await self.get_case(case_id)
 
@@ -222,9 +228,19 @@ class TestConfigurationRepository:
             step_order=next_order,
             name=schema.name,
             description=schema.description,
+            # Normalized fields
+            action_type=schema.action_type or schema.intent,
+            page_id=schema.page_id,
+            page_element_id=schema.page_element_id,
+            api_endpoint_id=schema.api_endpoint_id,
+            input_value=schema.input_value,
+            expected_result=schema.expected_result,
+            assertion_type=schema.assertion_type,
+            secondary_action=schema.secondary_action,
+            secondary_value=schema.secondary_value,
+            # Legacy fields
             intent=schema.intent,
             target=schema.target,
-            expected_result=schema.expected_result,
             test_data=schema.test_data,
             tags=schema.tags,
             bindings=schema.bindings,
@@ -247,8 +263,28 @@ class TestConfigurationRepository:
             step.description = schema.description
         if schema.step_order is not None:
             step.step_order = schema.step_order
+        # Normalized fields
+        if schema.action_type is not None:
+            step.action_type = schema.action_type
+        if schema.page_id is not None:
+            step.page_id = schema.page_id
+        if schema.page_element_id is not None:
+            step.page_element_id = schema.page_element_id
+        if schema.api_endpoint_id is not None:
+            step.api_endpoint_id = schema.api_endpoint_id
+        if schema.input_value is not None:
+            step.input_value = schema.input_value
+        if schema.assertion_type is not None:
+            step.assertion_type = schema.assertion_type
+        if schema.secondary_action is not None:
+            step.secondary_action = schema.secondary_action
+        if schema.secondary_value is not None:
+            step.secondary_value = schema.secondary_value
+        # Legacy fields
         if schema.intent is not None:
             step.intent = schema.intent
+            if not schema.action_type:
+                step.action_type = schema.intent
         if schema.target is not None:
             step.target = schema.target
         if schema.expected_result is not None:

@@ -41,6 +41,9 @@ class NATSAITransport:
             import nats
             self._nc = await nats.connect(
                 self._nats_url,
+                allow_reconnect=False,
+                max_reconnect_attempts=0,
+                connect_timeout=1,
                 error_cb=self._on_error,
                 disconnected_cb=self._on_disconnected,
                 reconnected_cb=self._on_reconnected,

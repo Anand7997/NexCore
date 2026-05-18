@@ -1,11 +1,13 @@
 'use client';
+import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { BarChart3, Download, Calendar, TrendingUp, CheckCircle, AlertTriangle, Clock } from 'lucide-react';
+import { BarChart3, Calendar, TrendingUp, CheckCircle, AlertTriangle, Cpu } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell,
 } from 'recharts';
 import GlassCard from '@/components/ui/GlassCard';
+import { useExecutionSummary } from '@/lib/api/enterprise';
 
 const weeklyData = [
   { day: 'Mon', success: 342, failed: 18, skipped: 12 },
@@ -48,6 +50,40 @@ function CustomTooltip({ active, payload, label }: { active?: boolean; payload?:
 }
 
 export default function ReportsPage() {
+  const [days, setDays] = useState(7);
+  const { data: summary, isLoading } = useExecutionSummary(days);
+
+  const metrics = [
+    {
+      label: 'Total Executions',
+      value: summary ? summary.executions.total.toLocaleString() : '—',
+      sub: `${days}d window`,
+      icon: TrendingUp,
+      color: 'text-indigo-400',
+    },
+    {
+      label: 'Success Rate',
+      value: summary ? `${(summary.executions.success_rate * 100).toFixed(1)}%` : '—',
+      sub: `${summary?.executions.success ?? 0} passed`,
+      icon: CheckCircle,
+      color: 'text-emerald-400',
+    },
+    {
+      label: 'Failed',
+      value: summary ? summary.executions.failed.toLocaleString() : '—',
+      sub: `${summary?.executions.running ?? 0} running`,
+      icon: AlertTriangle,
+      color: 'text-red-400',
+    },
+    {
+      label: 'Active Agents',
+      value: summary ? `${summary.runtime_agents.active}/${summary.runtime_agents.total}` : '—',
+      sub: 'online agents',
+      icon: Cpu,
+      color: 'text-violet-400',
+    },
+  ];
+
   return (
     <div className="p-6 space-y-6">
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between">
@@ -55,37 +91,36 @@ export default function ReportsPage() {
           <BarChart3 size={20} className="text-violet-400" />
           <div>
             <h1 className="text-xl font-bold text-white">Reports & Analytics</h1>
-            <p className="text-xs text-slate-400 font-mono">Last 7 days • All platforms</p>
+            <p className="text-xs text-slate-400 font-mono">Last {days} days • All platforms</p>
           </div>
         </div>
         <div className="flex gap-2">
-          <button className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 border border-white/8 text-slate-300 text-xs hover:bg-white/10 transition-all">
-            <Calendar size={12} />
-            Last 7 days
-          </button>
-          <button className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 text-xs hover:bg-indigo-500/30 transition-all">
-            <Download size={12} />
-            Export PDF
-          </button>
+          {[7, 14, 30].map((d) => (
+            <button
+              key={d}
+              onClick={() => setDays(d)}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs transition-all ${
+                days === d
+                  ? 'bg-indigo-500/20 border border-indigo-500/30 text-indigo-300'
+                  : 'bg-white/5 border border-white/8 text-slate-300 hover:bg-white/10'
+              }`}
+            >
+              <Calendar size={12} />
+              {d}d
+            </button>
+          ))}
         </div>
       </motion.div>
 
       {/* Summary metrics */}
       <div className="grid grid-cols-4 gap-4">
-        {[
-          { label: 'Total Executions', value: '2,794', change: '+12.4%', icon: TrendingUp, color: 'text-indigo-400' },
-          { label: 'Success Rate', value: '94.3%', change: '+1.2%', icon: CheckCircle, color: 'text-emerald-400' },
-          { label: 'Failed Today', value: '34', change: '-18%', icon: AlertTriangle, color: 'text-red-400' },
-          { label: 'Avg Duration', value: '4.8s', change: '-8.3%', icon: Clock, color: 'text-violet-400' },
-        ].map((m, i) => (
+        {metrics.map((m, i) => (
           <GlassCard key={m.label} className="p-4" delay={i * 0.05}>
             <div className="flex items-center justify-between mb-2">
               <m.icon size={13} className={m.color} />
-              <span className={`text-[10px] font-mono font-bold ${
-                m.change.startsWith('+') ? 'text-emerald-400' : 'text-red-400'
-              }`}>{m.change}</span>
+              <span className="text-[10px] font-mono text-slate-500">{m.sub}</span>
             </div>
-            <div className="text-2xl font-bold text-white">{m.value}</div>
+            <div className={`text-2xl font-bold text-white ${isLoading ? 'opacity-40' : ''}`}>{m.value}</div>
             <div className="text-[10px] text-slate-500">{m.label}</div>
           </GlassCard>
         ))}

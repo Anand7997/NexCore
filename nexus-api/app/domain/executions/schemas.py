@@ -7,7 +7,11 @@ from pydantic import BaseModel, Field
 
 class ExecutionTriggerSchema(BaseModel):
     workflow_id: str
+    project_id: str | None = None
+    module_id: str | None = None
+    testing_type_id: str | None = None
     trigger: str = "manual"
+    triggered_by: str = ""
     environment: str = "dev"
     platform: str = "web"
     variables: dict[str, Any] = Field(default_factory=dict)

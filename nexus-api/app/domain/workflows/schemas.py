@@ -22,6 +22,7 @@ class WorkflowNodeSchema(BaseModel):
     type: str
     label: str
     description: str = ""
+    test_case_id: str | None = None
     config: dict[str, Any] = Field(default_factory=dict)
     position: WorkflowNodePositionSchema = Field(default_factory=WorkflowNodePositionSchema)
     timeout_seconds: int = 60
@@ -32,11 +33,14 @@ class WorkflowEdgeSchema(BaseModel):
     source_key: str
     target_key: str
     condition: str | None = None
+    execution_order: int = 0
 
 
 class WorkflowCreateSchema(BaseModel):
     name: str
     description: str = ""
+    project_id: str | None = None
+    module_id: str | None = None
     tags: list[str] = Field(default_factory=list)
     platforms: list[str] = Field(default_factory=list)
     variables: dict[str, Any] = Field(default_factory=dict)
@@ -48,6 +52,8 @@ class WorkflowUpdateSchema(BaseModel):
     name: str | None = None
     description: str | None = None
     status: str | None = None
+    project_id: str | None = None
+    module_id: str | None = None
     tags: list[str] | None = None
     variables: dict[str, Any] | None = None
     nodes: list[WorkflowNodeSchema] | None = None
@@ -60,6 +66,7 @@ class WorkflowNodeResponse(BaseModel):
     type: str
     label: str
     description: str
+    test_case_id: str | None
     config: dict[str, Any]
     position_x: float
     position_y: float
@@ -74,6 +81,7 @@ class WorkflowEdgeResponse(BaseModel):
     source_key: str
     target_key: str
     condition: str | None
+    execution_order: int
 
     model_config = {"from_attributes": True}
 
