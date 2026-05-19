@@ -96,10 +96,10 @@ function stepSecondaryAction(s: TestStep) { return asStr(s.test_data?.secondary_
 function resolveLocatorFromRepo(el: { locator_strategy: string; css_selector: string; id_attr: string; name_attr: string; xpath: string; name: string }): string {
   switch (el.locator_strategy) {
     case 'css':    return el.css_selector;
-    case 'id':     return el.id_attr ? `#${el.id_attr}` : '';
-    case 'name':   return el.name_attr;
-    case 'text':   return el.name;
-    case 'role':   return el.name_attr ? `[role="${el.name_attr}"]` : el.css_selector;
+    case 'id':     return el.css_selector || (el.id_attr ? `#${el.id_attr}` : '');
+    case 'name':   return el.css_selector || (el.name_attr ? `[name="${el.name_attr}"]` : '');
+    case 'text':   return el.css_selector || el.name;
+    case 'role':   return el.css_selector || (el.name_attr ? `[role="${el.name_attr}"]` : '');
     case 'testid': return el.css_selector || (el.id_attr ? `[data-testid="${el.id_attr}"]` : '');
     default:       return el.xpath;
   }

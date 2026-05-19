@@ -391,6 +391,10 @@ export interface PageElement {
   name_attr: string;
   locator_strategy: LocatorStrategy | string;
   tags: string[];
+  confidence_score?: number | null;
+  alternative_locators?: LocatorCandidate[] | null;
+  source_url?: string;
+  last_verified_at?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -449,4 +453,56 @@ export interface ElementUpdateInput {
   name_attr?: string;
   locator_strategy?: string;
   tags?: string[];
+}
+
+// ── Element Discovery Agent ────────────────────────────────────────────────
+
+export interface DiscoverRequestInput {
+  url: string;
+  page_name: string;
+  platform?: string;
+  save_mode?: 'auto' | 'preview';
+  min_confidence?: number;
+  include_hidden?: boolean;
+  page_id?: string | null;
+}
+
+export interface LocatorCandidate {
+  strategy: string;
+  locator: string;
+  verified: boolean;
+  element_count: number;
+  score: number;
+  reason: string;
+}
+
+export interface DiscoveredElement {
+  name: string;
+  element_type: string;
+  description: string;
+  best_locator: string;
+  locator_strategy: string;
+  xpath: string;
+  css_selector: string;
+  id_attr: string;
+  name_attr: string;
+  confidence_score: number;
+  alternative_locators: LocatorCandidate[];
+  tags: string[];
+}
+
+export interface DiscoverSummary {
+  url: string;
+  elements_found: number;
+  elements_saved: number;
+  low_confidence: number;
+  duration_ms: number;
+  has_error?: boolean;
+  error?: string;
+}
+
+export interface DiscoverResponse {
+  page: Record<string, unknown>;
+  summary: DiscoverSummary;
+  elements: DiscoveredElement[];
 }

@@ -7,14 +7,14 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowDown, ArrowUp, BookOpen, Code2, Eye, EyeOff, FileText,
   Globe, Hash, Layers3, Link2, Monitor, Plus, Save, Search,
-  Smartphone, Trash2, Tag, Type,
+  Smartphone, Scan, Trash2, Tag, Type,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import {
   useAllPages, useCreateElement, useCreatePage, useDeleteElement,
-  useDeletePage, useUpdateElement, useUpdatePage,
+  useDeletePage, useDiscoverElements, useUpdateElement, useUpdatePage,
 } from '@/lib/api/pageRepository';
-import type { PageDetail, PageElement } from '@/lib/api/types';
+import type { DiscoveredElement, PageDetail, PageElement } from '@/lib/api/types';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -48,10 +48,10 @@ const PLATFORM_ICON: Record<string, React.ElementType> = {
 function getLocator(el: PageElement): string {
   switch (el.locator_strategy) {
     case 'css':    return el.css_selector;
-    case 'id':     return el.id_attr ? `#${el.id_attr}` : el.id_attr;
-    case 'name':   return el.name_attr;
-    case 'text':   return el.name;
-    case 'role':   return el.name_attr ? `[role="${el.name_attr}"]` : el.css_selector;
+    case 'id':     return el.css_selector || (el.id_attr ? `#${el.id_attr}` : '');
+    case 'name':   return el.css_selector || (el.name_attr ? `[name="${el.name_attr}"]` : '');
+    case 'text':   return el.css_selector || el.name;
+    case 'role':   return el.css_selector || (el.name_attr ? `[role="${el.name_attr}"]` : '');
     case 'testid': return el.css_selector ? el.css_selector : el.id_attr ? `[data-testid="${el.id_attr}"]` : '';
     default:       return el.xpath;
   }
@@ -100,13 +100,18 @@ function ElementRow({
   const bd = 'border-r border-[var(--color-line-subtle)] px-2 py-2';
   const typeColor = ELEMENT_TYPE_COLOR[type] ?? '#8b8c97';
   const stratColor = STRATEGY_COLOR[strategy] ?? '#8b8c97';
+  const confidence = typeof el.confidence_score === 'number' ? Math.round(el.confidence_score * 100) : null;
+  const needsReview = (el.tags ?? []).includes('needs-review') || (confidence !== null && confidence < 75);
 
   return (
     <motion.tr
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.02, duration: 0.18 }}
-      className="group border-b border-[var(--color-line-subtle)]/40 hover:bg-[rgba(255,255,255,0.018)] transition-colors"
+      className={[
+        'group border-b border-[var(--color-line-subtle)]/40 hover:bg-[rgba(255,255,255,0.018)] transition-colors',
+        needsReview ? 'bg-yellow-500/[0.035]' : '',
+      ].join(' ')}
     >
       {/* Index */}
       <td className={`${bd} w-8 text-center`}>
@@ -117,6 +122,12 @@ function ElementRow({
       <td className={`${bd} min-w-[140px]`}>
         <input value={name} onChange={(e) => setName(e.target.value)} onBlur={() => save()}
           className={ic} placeholder="Element name…" />
+        {confidence !== null && (
+          <div className="mt-1 flex items-center gap-1.5 text-[9px] font-mono">
+            <span className={needsReview ? 'text-yellow-400' : 'text-emerald-400'}>{confidence}%</span>
+            {needsReview && <span className="rounded border border-yellow-500/25 bg-yellow-500/10 px-1 text-yellow-400">review</span>}
+          </div>
+        )}
       </td>
 
       {/* Type */}
@@ -227,9 +238,13 @@ export default function PageRepositoryPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const { data: allPages = [], isLoading } = useAllPages();
-  const [selPageId,  setSelPageId]  = useState<string | null>(null);
-  const [search,     setSearch]     = useState('');
-  const [showEditor, setShowEditor] = useState(true);
+  const [selPageId,   setSelPageId]   = useState<string | null>(null);
+  const [search,      setSearch]      = useState('');
+  const [showEditor,  setShowEditor]  = useState(true);
+  const [discoverUrl, setDiscoverUrl] = useState('');
+  const [discoverSummary, setDiscoverSummary] = useState<{
+    found: number; saved: number; lowConf: number; durationMs: number; error?: string;
+  } | null>(null);
 
   const selPage = allPages.find((p) => p.id === selPageId) ?? null;
 
@@ -243,6 +258,46 @@ export default function PageRepositoryPage() {
   const createElement = useCreateElement(selPageId ?? '');
   const updateElem   = useUpdateElement();
   const deleteElem   = useDeleteElement();
+  const discoverElem = useDiscoverElements();
+
+  function doDiscover() {
+    if (!discoverUrl.trim()) return;
+    let pageName: string;
+    try {
+      pageName = selPage?.name || `Page from ${new URL(discoverUrl).hostname}`;
+    } catch {
+      setDiscoverSummary({ found: 0, saved: 0, lowConf: 0, durationMs: 0, error: 'Invalid URL' });
+      return;
+    }
+    setDiscoverSummary(null);
+    discoverElem.mutate(
+      {
+        url: discoverUrl.trim(),
+        page_name: pageName,
+        platform: selPage?.platform || 'web',
+        save_mode: 'auto',
+        min_confidence: 0.75,
+        page_id: selPage?.id ?? null,
+      },
+      {
+        onSuccess: (res) => {
+          setDiscoverSummary({
+            found: res.summary.elements_found,
+            saved: res.summary.elements_saved,
+            lowConf: res.summary.low_confidence,
+            durationMs: res.summary.duration_ms,
+            error: res.summary.error,
+          });
+          if (res.page && 'id' in res.page) {
+            setSelPageId(res.page.id as string);
+          }
+        },
+        onError: () => {
+          setDiscoverSummary({ found: 0, saved: 0, lowConf: 0, durationMs: 0, error: 'Discovery request failed' });
+        },
+      },
+    );
+  }
 
   // Auto-select first page
   useEffect(() => {
@@ -362,6 +417,67 @@ export default function PageRepositoryPage() {
               {i < arr.length - 1 && <span className="text-[var(--color-fg-subtle)] text-[10px]">›</span>}
             </span>
           ))}
+        </div>
+      </div>
+
+      {/* ── Element Discovery Agent Bar ──────────────────────────────────────── */}
+      <div className="shrink-0 border-b border-[var(--color-line-subtle)] bg-[var(--color-surface-2)]/50 px-6 py-2.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <Scan size={13} className="text-[#e879f9] shrink-0" />
+          <span className="text-[10px] font-mono uppercase tracking-[0.14em] text-[var(--color-fg-subtle)] shrink-0">Element Discovery Agent</span>
+          <div className="flex flex-1 items-center gap-2 min-w-0">
+            <input
+              value={discoverUrl}
+              onChange={(e) => setDiscoverUrl(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') doDiscover(); }}
+              placeholder="https://example.com/login"
+              className="flex-1 min-w-[200px] rounded-md border border-[var(--color-line-default)] bg-[var(--color-surface-1)] px-3 py-1.5 text-[11px] font-mono text-[var(--color-fg-default)] outline-none transition-colors focus:border-[#e879f9]/50 placeholder:text-[var(--color-fg-subtle)]/40"
+            />
+            <Button
+              variant="glass"
+              size="sm"
+              onClick={doDiscover}
+              disabled={discoverElem.isPending || !discoverUrl.trim()}
+              className="shrink-0"
+            >
+              {discoverElem.isPending ? (
+                <span className="flex items-center gap-1.5">
+                  <span className="inline-block w-3 h-3 border-2 border-[var(--color-fg-subtle)] border-t-transparent rounded-full animate-spin" />
+                  Discovering…
+                </span>
+              ) : (
+                <><Scan size={11} /> Discover</>
+              )}
+            </Button>
+          </div>
+          {discoverSummary && (
+            <div className={[
+              'flex items-center gap-2 rounded-md border px-2.5 py-1 text-[10px] font-mono',
+              discoverSummary.error
+                ? 'border-red-500/30 bg-red-500/10 text-red-400'
+                : discoverSummary.lowConf > 0
+                  ? 'border-yellow-500/30 bg-yellow-500/10 text-yellow-400'
+                  : 'border-green-500/30 bg-green-500/10 text-green-400',
+            ].join(' ')}>
+              {discoverSummary.error ? (
+                <span>Error: {discoverSummary.error}</span>
+              ) : (
+                <span className="flex items-center gap-2">
+                  <span>Found {discoverSummary.found}</span>
+                  <span className="opacity-40">·</span>
+                  <span>Saved {discoverSummary.saved}</span>
+                  {discoverSummary.lowConf > 0 && (
+                    <>
+                      <span className="opacity-40">·</span>
+                      <span className="text-yellow-400">{discoverSummary.lowConf} need review</span>
+                    </>
+                  )}
+                  <span className="opacity-40">·</span>
+                  <span className="text-[var(--color-fg-subtle)]">{discoverSummary.durationMs}ms</span>
+                </span>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

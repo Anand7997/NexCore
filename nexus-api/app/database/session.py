@@ -91,6 +91,13 @@ _MIGRATIONS: list[str] = [
     "ALTER TABLE execution_artifacts ADD COLUMN IF NOT EXISTS test_step_id VARCHAR(36) REFERENCES test_steps(id)",
     "CREATE INDEX IF NOT EXISTS ix_execution_artifacts_test_case_id ON execution_artifacts(test_case_id)",
     "CREATE INDEX IF NOT EXISTS ix_execution_artifacts_test_step_id ON execution_artifacts(test_step_id)",
+
+    # ── page_elements: Element Discovery Agent columns ──
+    "ALTER TABLE page_elements ADD COLUMN IF NOT EXISTS confidence_score DOUBLE PRECISION",
+    "ALTER TABLE page_elements ADD COLUMN IF NOT EXISTS alternative_locators JSON",
+    "ALTER TABLE page_elements ADD COLUMN IF NOT EXISTS source_url TEXT DEFAULT ''",
+    "ALTER TABLE page_elements ADD COLUMN IF NOT EXISTS last_verified_at TIMESTAMP",
+    "ALTER TABLE page_elements ADD COLUMN IF NOT EXISTS discovery_metadata JSON",
 ]
 
 

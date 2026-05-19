@@ -12,6 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.session import get_db
 from app.database.models import PageRepositoryModel, PageElementModel
+from app.page_discovery.schemas import DiscoveryRequest, DiscoveryResponse
+from app.page_discovery.service import discover_elements
 
 router = APIRouter(prefix="/page-repository", tags=["page-repository"])
 
@@ -30,6 +32,10 @@ class PageElementResponse(BaseModel):
     name_attr: str
     locator_strategy: str
     tags: list[str]
+    confidence_score: Optional[float] = None
+    alternative_locators: Optional[list[dict[str, Any]]] = None
+    source_url: str = ""
+    last_verified_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 
@@ -105,6 +111,10 @@ def _elem(e: PageElementModel) -> PageElementResponse:
         id_attr=e.id_attr or "", name_attr=e.name_attr or "",
         locator_strategy=e.locator_strategy or "xpath",
         tags=e.tags or [],
+        confidence_score=e.confidence_score if e.confidence_score is not None else None,
+        alternative_locators=e.alternative_locators if e.alternative_locators is not None else None,
+        source_url=e.source_url or "",
+        last_verified_at=e.last_verified_at,
         created_at=e.created_at, updated_at=e.updated_at,
     )
 
@@ -236,3 +246,161 @@ async def get_all(db: AsyncSession = Depends(get_db)):
         .order_by(PageRepositoryModel.name)
     )
     return [_page_detail(p) for p in result.scalars().all()]
+
+
+# ── Element Discovery Agent ──────────────────────────────────────────────────
+
+@router.post("/discover", response_model=DiscoveryResponse)
+async def discover_page_elements(
+    body: DiscoveryRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Launch Playwright headless, inspect the page, discover UI elements,
+    generate and score locator candidates, then auto-save into the repository.
+
+    Idempotent: re-running on the same URL updates rather than duplicates.
+    """
+    # 1. Run the Playwright-backed discovery
+    result = await discover_elements(body)
+    if result.summary.has_error:
+        return result
+
+    # 2. Save results to the repository if save_mode == "auto"
+    if body.save_mode == "auto" and result.elements:
+        # Find or create the page
+        existing_page = None
+        if body.page_id:
+            existing_page = await _load(body.page_id, db)
+        if existing_page is None:
+            page_query = (
+                select(PageRepositoryModel)
+                .where(PageRepositoryModel.name == body.page_name)
+                .where(PageRepositoryModel.platform == body.platform)
+                .options(selectinload(PageRepositoryModel.elements))
+                .limit(1)
+            )
+            existing_page = (await db.execute(page_query)).scalars().first()
+        if existing_page is None:
+            page_query = (
+                select(PageRepositoryModel)
+                .where(PageRepositoryModel.url_pattern == body.url)
+                .where(PageRepositoryModel.platform == body.platform)
+                .options(selectinload(PageRepositoryModel.elements))
+                .limit(1)
+            )
+            existing_page = (await db.execute(page_query)).scalars().first()
+
+        if existing_page:
+            page = existing_page
+            # Update URL pattern if empty
+            if not page.url_pattern:
+                page.url_pattern = body.url
+            page.updated_at = datetime.utcnow()
+        else:
+            page = PageRepositoryModel(
+                name=body.page_name,
+                url_pattern=body.url,
+                description=f"Auto-discovered from {body.url}",
+                platform=body.platform,
+                tags=["auto-discovered"],
+            )
+            db.add(page)
+            await db.flush()
+
+        # Build lookups so rescans update elements instead of duplicating them.
+        existing_by_locator: dict[str, PageElementModel] = {}
+        existing_by_name: dict[str, PageElementModel] = {}
+        for el in (page.elements or []):
+            for locator in (el.css_selector, el.xpath, el.id_attr, el.name_attr):
+                if locator:
+                    existing_by_locator[locator.strip()] = el
+            existing_by_name[el.name.strip().lower()] = el
+
+        now = datetime.utcnow()
+        saved_count = 0
+
+        for disc_el in result.elements:
+            is_low_conf = disc_el.confidence_score < body.min_confidence
+
+            candidate_key = (disc_el.best_locator or disc_el.css_selector or disc_el.xpath or "").strip()
+            existing = existing_by_locator.get(candidate_key) if candidate_key else None
+            if existing is None:
+                existing = existing_by_name.get(disc_el.name.strip().lower())
+
+            if existing:
+                # Update changed locators but preserve manual edits for low confidence
+                if is_low_conf:
+                    continue  # Keep existing manual elements for low confidence
+                existing.xpath = disc_el.xpath or existing.xpath
+                existing.css_selector = disc_el.css_selector or existing.css_selector
+                existing.id_attr = disc_el.id_attr or existing.id_attr
+                existing.name_attr = disc_el.name_attr or existing.name_attr
+                existing.locator_strategy = disc_el.locator_strategy or existing.locator_strategy
+                existing.confidence_score = disc_el.confidence_score
+                existing.alternative_locators = [
+                    {
+                        "strategy": a.strategy,
+                        "locator": a.locator,
+                        "verified": a.verified,
+                        "element_count": a.element_count,
+                        "score": a.score,
+                        "reason": a.reason,
+                    }
+                    for a in disc_el.alternative_locators
+                ]
+                existing.source_url = body.url
+                existing.last_verified_at = now
+                existing.tags = sorted(set((existing.tags or []) + disc_el.tags))
+                existing.updated_at = now
+                saved_count += 1
+            else:
+                # Create new element
+                alt_locators = [
+                    {
+                        "strategy": a.strategy,
+                        "locator": a.locator,
+                        "verified": a.verified,
+                        "element_count": a.element_count,
+                        "score": a.score,
+                        "reason": a.reason,
+                    }
+                    for a in disc_el.alternative_locators
+                ]
+                elem = PageElementModel(
+                    page_id=page.id,
+                    name=disc_el.name,
+                    element_type=disc_el.element_type,
+                    description=disc_el.description,
+                    xpath=disc_el.xpath,
+                    css_selector=disc_el.css_selector,
+                    id_attr=disc_el.id_attr,
+                    name_attr=disc_el.name_attr,
+                    locator_strategy=disc_el.locator_strategy,
+                    tags=disc_el.tags,
+                    confidence_score=disc_el.confidence_score,
+                    alternative_locators=alt_locators,
+                    source_url=body.url,
+                    last_verified_at=now,
+                    discovery_metadata={"url": body.url, "mode": body.save_mode},
+                )
+                db.add(elem)
+                saved_count += 1
+
+        await db.commit()
+
+        # Update summary with actual saved count
+        result.summary.elements_saved = saved_count
+        result.summary.low_confidence = sum(
+            1 for e in result.elements if e.confidence_score < body.min_confidence
+        )
+
+        # Update page info in response
+        result.page = {
+            "id": page.id,
+            "name": page.name,
+            "url_pattern": page.url_pattern,
+            "platform": page.platform,
+        }
+
+    return result

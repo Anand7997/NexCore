@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from './client';
 import type {
+  DiscoverRequestInput, DiscoverResponse,
   ElementCreateInput, ElementUpdateInput,
   PageCreateInput, PageDetail, PageElement, PageListItem, PageUpdateInput,
 } from './types';
@@ -86,6 +87,17 @@ export function useDeleteElement() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (elementId: string) => api.delete(`/page-repository/elements/${elementId}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: KEYS.all }),
+  });
+}
+
+// ── Element Discovery Agent ────────────────────────────────────────────────
+
+export function useDiscoverElements() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: DiscoverRequestInput) =>
+      api.post<DiscoverResponse>('/page-repository/discover', input),
     onSuccess: () => qc.invalidateQueries({ queryKey: KEYS.all }),
   });
 }

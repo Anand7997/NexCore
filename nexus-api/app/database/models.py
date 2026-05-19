@@ -261,6 +261,13 @@ class PageElementModel(Base):
     name_attr: Mapped[str] = mapped_column(String(255), default="")
     locator_strategy: Mapped[str] = mapped_column(String(30), default="xpath")
     tags: Mapped[list[str]] = mapped_column(JSON, default=list)
+    # ── Element Discovery Agent fields ──
+    confidence_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    alternative_locators: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
+    source_url: Mapped[str] = mapped_column(Text, default="")
+    last_verified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    discovery_metadata: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    # ── Timestamps ──
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
