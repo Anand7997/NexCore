@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowDown, ArrowUp, BookOpen, Code2, Eye, EyeOff, FileText,
@@ -217,6 +219,13 @@ function PageCard({ page, isSelected, onClick }: { page: PageDetail | import('@/
 // ── Main Page ──────────────────────────────────────────────────────────────────
 
 export default function PageRepositoryPage() {
+  const router = useRouter();
+  useEffect(() => {
+    router.prefetch('/test-configuration');
+    router.prefetch('/architecture');
+    router.prefetch('/executions');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const { data: allPages = [], isLoading } = useAllPages();
   const [selPageId,  setSelPageId]  = useState<string | null>(null);
   const [search,     setSearch]     = useState('');
@@ -316,7 +325,10 @@ export default function PageRepositoryPage() {
 
             <div className="flex items-center gap-1.5 border-l border-[var(--color-line-default)] pl-3">
               <Button variant="neon" size="sm"
-                onClick={() => createPage.mutate({ name: `Page ${allPages.length + 1}`, url_pattern: '', platform: 'web', description: '', tags: [] })}>
+                onClick={() => createPage.mutate(
+                  { name: `Page ${allPages.length + 1}`, url_pattern: '', platform: 'web', description: '', tags: [] },
+                  { onSuccess: (p) => setSelPageId(p.id) },
+                )}>
                 <Plus size={11} /> New Page
               </Button>
               <Button variant="glass" size="sm" disabled={!selPage} onClick={addElement}>
@@ -338,7 +350,7 @@ export default function PageRepositoryPage() {
             { label: '⑤ Execution',        href: '/executions',         active: false },
           ] as const).map((s, i, arr) => (
             <span key={s.label} className="flex items-center gap-1 shrink-0">
-              <a href={s.href}
+              <Link href={s.href}
                 className={[
                   'rounded px-2.5 py-1 text-[10px] font-mono transition-colors',
                   s.active
@@ -346,7 +358,7 @@ export default function PageRepositoryPage() {
                     : 'text-[var(--color-fg-subtle)] hover:text-[var(--color-fg-default)] hover:bg-[var(--color-surface-2)]',
                 ].join(' ')}>
                 {s.label}
-              </a>
+              </Link>
               {i < arr.length - 1 && <span className="text-[var(--color-fg-subtle)] text-[10px]">›</span>}
             </span>
           ))}

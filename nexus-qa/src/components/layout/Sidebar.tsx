@@ -1,7 +1,8 @@
 'use client';
 
+import { useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   BarChart3,
@@ -112,8 +113,16 @@ function HexLogo({ size = 24 }: { size?: number }) {
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const { sidebarCollapsed, toggleSidebar, toggleCommandPalette } = useUIStore();
   const collapsed = sidebarCollapsed;
+
+  // Pre-warm Turbopack compilation for every route on mount so first clicks are instant
+  useEffect(() => {
+    const allHrefs = GROUPS.flatMap((g) => g.items.map((i) => i.href));
+    allHrefs.forEach((href) => router.prefetch(href));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <motion.aside

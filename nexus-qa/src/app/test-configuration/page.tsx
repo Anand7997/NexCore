@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowDown, ArrowUp, ChevronDown, ChevronRight, Eye, EyeOff, FileText,
@@ -380,6 +382,13 @@ function CaseCard({ tc, isSelected, onClick }: { tc: TestCase; isSelected: boole
 type EditorMode = 'project' | 'module' | 'case';
 
 export default function TestConfigurationPage() {
+  const router = useRouter();
+  useEffect(() => {
+    router.prefetch('/page-repository');
+    router.prefetch('/architecture');
+    router.prefetch('/executions');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const { data, isLoading } = useTestConfigurationTree();
   const projects   = data?.projects    ?? [];
   const tagCatalog = data?.tag_catalog ?? [];
@@ -392,6 +401,7 @@ export default function TestConfigurationPage() {
   const [caseSearch,  setCaseSearch]    = useState('');
   const [editorMode,  setEditorMode]    = useState<EditorMode>('project');
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [requestedProjectId, setRequestedProjectId] = useState<string | null>(null);
 
   const [pd, setPd] = useState({ name:'', description:'', status:'active', tags:'' });
   const [md, setMd] = useState({ name:'', description:'', status:'active', tags:'' });
@@ -417,20 +427,28 @@ export default function TestConfigurationPage() {
   const updateAnyStep  = useUpdateAnyTestStep();
   const deleteStepHook = useDeleteTestStep();
 
-  // Auto-select first project/module/case on load
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setRequestedProjectId(params.get('projectId'));
+  }, []);
+
+  // Auto-select the requested project, or the first project/module/case on load
   useEffect(() => {
     if (!projects.length) return;
-    const proj = projects.find((p) => p.id === selProjectId) ?? projects[0];
+    const requested = requestedProjectId ? projects.find((p) => p.id === requestedProjectId) : null;
+    const proj = requested ?? projects.find((p) => p.id === selProjectId) ?? projects[0];
     if (proj.id !== selProjectId) {
       setSelProjectId(proj.id);
       setExpandedIds((prev) => new Set([...prev, proj.id]));
+      if (requested) setEditorMode('project');
     }
     const mod = proj.modules.find((m) => m.id === selModuleId) ?? proj.modules[0] ?? null;
     if ((mod?.id ?? null) !== selModuleId) setSelModuleId(mod?.id ?? null);
     const tc = mod?.test_cases.find((c) => c.id === selCaseId) ?? mod?.test_cases[0] ?? null;
     if ((tc?.id ?? null) !== selCaseId) setSelCaseId(tc?.id ?? null);
+    if (requested) setRequestedProjectId(null);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projects]);
+  }, [projects, requestedProjectId]);
 
   useEffect(() => {
     if (!selProject) return;
@@ -574,15 +592,24 @@ export default function TestConfigurationPage() {
             {/* Actions */}
             <div className="flex items-center gap-1.5 border-l border-[var(--color-line-default)] pl-3">
               <Button variant="glass" size="sm"
-                onClick={() => createProject.mutate({ name: `Project ${projects.length + 1}`, description: 'Execution-ready test catalog.', status: 'active', tags: ['new'] })}>
+                onClick={() => createProject.mutate(
+                  { name: `Project ${projects.length + 1}`, description: 'Execution-ready test catalog.', status: 'active', tags: ['new'] },
+                  { onSuccess: (p) => { setSelProjectId(p.id); setExpandedIds((prev) => new Set([...prev, p.id])); setEditorMode('project'); } },
+                )}>
                 <Plus size={11} /> Project
               </Button>
               <Button variant="glass" size="sm" disabled={!selProject}
-                onClick={() => selProject && createModule.mutate({ name: `Module ${selProject.modules.length + 1}`, description: '', status: 'active', tags: [] })}>
+                onClick={() => selProject && createModule.mutate(
+                  { name: `Module ${selProject.modules.length + 1}`, description: '', status: 'active', tags: [] },
+                  { onSuccess: (m) => { setSelModuleId(m.id); setEditorMode('module'); } },
+                )}>
                 <Plus size={11} /> Module
               </Button>
               <Button variant="glass" size="sm" disabled={!selModule}
-                onClick={() => selModule && createCase.mutate({ name: `Test Case ${selModule.test_cases.length + 1}`, description: '', status: 'draft', test_type: 'functional', priority: 'p2', execution_mode: 'automated', platforms: ['web'], tags: ['new'], default_variables: {} })}>
+                onClick={() => selModule && createCase.mutate(
+                  { name: `Test Case ${selModule.test_cases.length + 1}`, description: '', status: 'draft', test_type: 'functional', priority: 'p2', execution_mode: 'automated', platforms: ['web'], tags: ['new'], default_variables: {} },
+                  { onSuccess: (c) => { setSelCaseId(c.id); setEditorMode('case'); } },
+                )}>
                 <Plus size={11} /> Case
               </Button>
               <Button variant="neon" size="sm" disabled={!selCase} onClick={() => addStep()}>
@@ -613,7 +640,7 @@ export default function TestConfigurationPage() {
             { label: '⑤ Execution', href: '/executions', active: false            },
           ] as const).map((s, i, arr) => (
             <span key={s.label} className="flex items-center gap-1 shrink-0">
-              <a href={s.href}
+              <Link href={s.href}
                 className={[
                   'rounded px-2.5 py-1 text-[10px] font-mono transition-colors',
                   s.active
@@ -621,7 +648,7 @@ export default function TestConfigurationPage() {
                     : 'text-[var(--color-fg-subtle)] hover:text-[var(--color-fg-default)] hover:bg-[var(--color-surface-2)]',
                 ].join(' ')}>
                 {s.label}
-              </a>
+              </Link>
               {i < arr.length - 1 && <span className="text-[var(--color-fg-subtle)] text-[10px]">›</span>}
             </span>
           ))}

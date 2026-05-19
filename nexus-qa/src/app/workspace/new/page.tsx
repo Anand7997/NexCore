@@ -23,6 +23,7 @@ import {
   ToggleRight,
   Zap,
 } from 'lucide-react';
+import { useCreateTestProject } from '@/lib/api/testConfiguration';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -178,6 +179,21 @@ function Toggle({ on, onToggle, color }: { on: boolean; onToggle: () => void; co
       {on ? <ToggleRight size={22} /> : <ToggleLeft size={22} />}
     </button>
   );
+}
+
+function csvToTags(value: string) {
+  return value.split(',').map((tag) => tag.trim()).filter(Boolean);
+}
+
+function buildProjectTags(form: FormData) {
+  return [
+    ...csvToTags(form.tags),
+    form.appType,
+    form.executionStrategy,
+    form.environment,
+    ...form.platforms,
+    ...form.validations,
+  ].filter((tag, index, tags): tag is string => Boolean(tag) && tags.indexOf(tag) === index);
 }
 
 // ─── Step contents ─────────────────────────────────────────────────────────────
@@ -568,7 +584,11 @@ function StepRuntime({ form, setForm }: { form: FormData; setForm: (f: FormData)
 
 // ─── Success State ─────────────────────────────────────────────────────────────
 
-function SuccessState({ projectName }: { projectName: string }) {
+function SuccessState({ projectName, projectId }: { projectName: string; projectId: string | null }) {
+  const testConfigurationHref = projectId
+    ? `/test-configuration?projectId=${encodeURIComponent(projectId)}`
+    : '/test-configuration';
+
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.94 }}
@@ -640,9 +660,9 @@ function SuccessState({ projectName }: { projectName: string }) {
         className="mt-3 flex flex-col gap-2 w-full max-w-md"
       >
         {[
-          { step: 1, label: 'Configure Test Cases & Modules',   href: '/test-configuration', icon: Brain,  color: '#5b8cff', note: 'Create projects, modules, and test cases' },
+          { step: 1, label: 'Configure Test Cases & Modules',   href: testConfigurationHref, icon: Brain,  color: '#5b8cff', note: 'Create projects, modules, and test cases' },
           { step: 2, label: 'Configure Pages & Object Repository', href: '/page-repository',  icon: Database, color: '#4dd1e1', note: 'Add pages, elements, and locators' },
-          { step: 3, label: 'Configure Test Steps',             href: '/test-configuration', icon: Zap,    color: '#45c08a', note: 'Map steps to pages, elements, and actions' },
+          { step: 3, label: 'Configure Test Steps',             href: testConfigurationHref, icon: Zap,    color: '#45c08a', note: 'Map steps to pages, elements, and actions' },
           { step: 4, label: 'Build Test Architecture',          href: '/architecture',       icon: Layers, color: '#a195ff', note: 'Connect test cases into execution workflows' },
           { step: 5, label: 'Run Execution',                    href: '/executions',         icon: Rocket, color: '#f0b558', note: 'Execute workflow and view live results' },
         ].map(({ step, label, href, icon: Icon, color, note }, i) => (
@@ -706,11 +726,14 @@ const DEFAULT_FORM: FormData = {
 };
 
 export default function NewWorkspacePage() {
+  const createProject = useCreateTestProject();
   const [currentStep, setCurrentStep] = useState(0);
   const [form, setForm] = useState<FormData>(DEFAULT_FORM);
   const [direction, setDirection] = useState<1 | -1>(1);
   const [launching, setLaunching] = useState(false);
   const [launched, setLaunched] = useState(false);
+  const [createdProjectId, setCreatedProjectId] = useState<string | null>(null);
+  const [launchError, setLaunchError] = useState<string | null>(null);
 
   const canProceed = useCallback(() => {
     if (currentStep === 0) return form.projectName.trim().length > 0;
@@ -737,16 +760,29 @@ export default function NewWorkspacePage() {
   };
 
   const handleLaunch = async () => {
+    if (launching) return;
     setLaunching(true);
-    await new Promise(r => setTimeout(r, 1800));
-    setLaunching(false);
-    setLaunched(true);
+    setLaunchError(null);
+    try {
+      const project = await createProject.mutateAsync({
+        name: form.projectName.trim(),
+        description: form.description.trim(),
+        status: 'active',
+        tags: buildProjectTags(form),
+      });
+      setCreatedProjectId(project.id);
+      setLaunched(true);
+    } catch (error) {
+      setLaunchError(error instanceof Error ? error.message : 'Project creation failed.');
+    } finally {
+      setLaunching(false);
+    }
   };
 
   if (launched) {
     return (
       <div className="flex h-full items-stretch">
-        <SuccessState projectName={form.projectName} />
+        <SuccessState projectName={form.projectName} projectId={createdProjectId} />
       </div>
     );
   }
@@ -1045,16 +1081,20 @@ export default function NewWorkspacePage() {
         </button>
 
         <div className="flex items-center gap-2">
-          {STEPS.map((_, i) => (
-            <div
-              key={i}
-              className="h-1 rounded-full transition-all"
-              style={{
-                width: i === currentStep ? '20px' : '6px',
-                background: i < currentStep ? '#45c08a' : i === currentStep ? '#8b79ff' : 'var(--color-surface-3)',
-              }}
-            />
-          ))}
+          {launchError ? (
+            <span className="max-w-sm text-center text-xs text-red-300">{launchError}</span>
+          ) : (
+            STEPS.map((_, i) => (
+              <div
+                key={i}
+                className="h-1 rounded-full transition-all"
+                style={{
+                  width: i === currentStep ? '20px' : '6px',
+                  background: i < currentStep ? '#45c08a' : i === currentStep ? '#8b79ff' : 'var(--color-surface-3)',
+                }}
+              />
+            ))
+          )}
         </div>
 
         <button

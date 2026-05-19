@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   BarChart3,
@@ -89,6 +89,7 @@ const COPILOT_SUGGESTIONS: Record<string, string[]> = {
 
 function CommandPalette() {
   const { commandPaletteOpen, setCommandPaletteOpen } = useUIStore();
+  const router = useRouter();
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -147,7 +148,7 @@ function CommandPalette() {
       const cmd = flatFiltered[selectedIndex];
       if (cmd) {
         setCommandPaletteOpen(false);
-        window.location.href = cmd.href;
+        router.push(cmd.href);
       }
     }
   }

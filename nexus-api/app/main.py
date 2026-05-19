@@ -46,6 +46,8 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger(__name__)
+# NATS is optional — suppress reconnect-spam when the server isn't running
+logging.getLogger('nats').setLevel(logging.CRITICAL)
 
 async def _init_intelligence() -> None:
     """Initialise Phase-6 intelligence services on startup.
@@ -86,8 +88,7 @@ async def _start_nats_bridge(bus: Any) -> None:
         nc = await nats_lib.connect(
             settings.nats_url,
             allow_reconnect=False,
-            max_reconnect_attempts=0,
-            connect_timeout=1,
+            connect_timeout=2,
         )
 
         async def _on_progress(msg: Any) -> None:

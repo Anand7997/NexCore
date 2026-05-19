@@ -24,14 +24,19 @@ async function forwardRequest(
 
     const res = await fetch(upstreamUrl, init);
     const text = await res.text();
+    const contentType = res.headers.get('content-type') ?? 'application/json';
 
-    return new NextResponse(text, {
+    // Ensure we never return empty body with JSON content-type (causes JSON.parse crash in Next.js)
+    const body = text || (res.status === 204 ? '' : JSON.stringify({ error: 'empty_response', status: res.status }));
+
+    return new NextResponse(body, {
       status: res.status,
-      headers: { 'Content-Type': res.headers.get('content-type') ?? 'application/json' },
+      headers: { 'Content-Type': contentType },
     });
-  } catch {
+  } catch (err: unknown) {
+    const isTimeout = err instanceof Error && err.name === 'TimeoutError';
     return NextResponse.json(
-      { error: 'control_plane_unavailable' },
+      { error: isTimeout ? 'control_plane_timeout' : 'control_plane_unavailable' },
       { status: 502 },
     );
   }
