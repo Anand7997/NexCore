@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterator
 from typing import TypeVar
 
 from pydantic import BaseModel
@@ -15,7 +15,7 @@ class AbstractAIProvider(ABC):
         """Generate a structured AI response validated against the given Pydantic schema."""
         ...
 
-    async def generate_stream(self, prompt: str, schema: type[T]) -> AsyncGenerator[str, None]:
+    async def generate_stream(self, prompt: str, schema: type[T]) -> AsyncIterator[str]:
         """
         Yield raw text chunks of the AI response.
         Default: single yield of the full JSON response.

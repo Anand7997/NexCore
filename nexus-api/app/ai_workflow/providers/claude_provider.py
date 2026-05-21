@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterator
 from typing import TypeVar
 
 from pydantic import BaseModel, ValidationError
@@ -65,7 +65,7 @@ class ClaudeProvider(AbstractAIProvider):
             logger.error("Claude response failed schema validation: %s\nRaw: %s", exc, raw[:500])
             raise ValueError(f"AI response did not match expected schema: {exc}") from exc
 
-    async def generate_stream(self, prompt: str, schema: type[T]) -> AsyncGenerator[str, None]:
+    async def generate_stream(self, prompt: str, schema: type[T]) -> AsyncIterator[str]:
         """Yield raw text chunks from Claude's streaming API."""
         client = self._get_client()
         async with client.messages.stream(

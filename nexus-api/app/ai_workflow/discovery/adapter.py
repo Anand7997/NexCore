@@ -81,7 +81,11 @@ class BrowserDiscoveryAdapter:
         # Resolve page_id or create via Playwright adapter's helper
         resolved_page_id = page_id
         if not resolved_page_id:
-            # We need a page_id to associate elements; fall through to Playwright
+            logger.warning(
+                "_mcp_elements_to_discovery: page_id is None — %d MCP elements discarded, "
+                "falling back to Playwright to create page record",
+                len(parsed),
+            )
             from app.ai_workflow.discovery.playwright_adapter import PlaywrightDiscoveryAdapter
             adapter = PlaywrightDiscoveryAdapter()
             return await adapter.discover(url, page_name, platform, save_mode, page_id, db)

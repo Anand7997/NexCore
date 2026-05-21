@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterator
 from typing import TypeVar
 
 from pydantic import BaseModel
@@ -88,6 +88,6 @@ class NullProvider(AbstractAIProvider):
 
         return schema.model_validate({})
 
-    async def generate_stream(self, prompt: str, schema: type[T]) -> AsyncGenerator[str, None]:
+    async def generate_stream(self, prompt: str, schema: type[T]) -> AsyncIterator[str]:
         result = await self.generate(prompt, schema)
         yield result.model_dump_json()
