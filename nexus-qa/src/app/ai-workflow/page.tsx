@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   AlertTriangle,
@@ -273,15 +273,16 @@ const ELEMENT_TYPE_ICONS: Record<string, string> = {
   checkbox: '☐', radio: '◎', form: '⬜', image: '▣', element: '◇',
 };
 
+const DISCOVERY_FEED_TYPES = ['button', 'input', 'link', 'select', 'form', 'element'];
+
 function ElementDiscoveryFeed({ count, lowConf, isRunning }: {
   count: number; lowConf: number; isRunning: boolean;
 }) {
-  const TYPES = ['button', 'input', 'link', 'select', 'form', 'element'];
-  const cards = Array.from({ length: Math.max(count, 0) }, (_, i) => ({
+  const cards = useMemo(() => Array.from({ length: Math.max(count, 0) }, (_, i) => ({
     id: i,
-    type: TYPES[i % TYPES.length],
+    type: DISCOVERY_FEED_TYPES[i % DISCOVERY_FEED_TYPES.length],
     conf: i < lowConf ? 0.45 : 0.85 + (i % 3) * 0.04,
-  }));
+  })), [count, lowConf]);
 
   return (
     <div className="space-y-3">
@@ -408,13 +409,15 @@ function useCountUp(target: number, duration = 600) {
   useEffect(() => {
     if (target === 0) { setValue(0); return; }
     const start = Date.now();
+    let rafId: number;
     const tick = () => {
       const elapsed = Date.now() - start;
       const progress = Math.min(elapsed / duration, 1);
       setValue(Math.round(target * progress));
-      if (progress < 1) requestAnimationFrame(tick);
+      if (progress < 1) rafId = requestAnimationFrame(tick);
     };
-    requestAnimationFrame(tick);
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
   }, [target, duration]);
   return value;
 }
@@ -548,9 +551,11 @@ function InputStep({ onStart, isPending }: {
   }
 
   async function readFile(file: File) {
-    if (file.type === 'text/plain') {
+    if (file.type === 'text/plain' || file.name.endsWith('.txt')) {
       const text = await file.text();
       setBrd(text);
+    } else {
+      setErrors((e) => ({ ...e, brd: 'Only .txt files can be read directly. Please paste your BRD text.' }));
     }
   }
 
@@ -588,7 +593,7 @@ function InputStep({ onStart, isPending }: {
                 <Upload size={16} className="text-[var(--color-fg-subtle)]" />
               </div>
               <p className="text-sm font-medium text-[var(--color-fg-muted)]">Drop your BRD here</p>
-              <p className="text-[11px] text-[var(--color-fg-subtle)] mt-1">.txt &middot; .pdf &middot; .docx &mdash; or click to browse</p>
+              <p className="text-[11px] text-[var(--color-fg-subtle)] mt-1">.txt files supported — or paste text directly</p>
             </div>
           )}
           {isDragging && (
@@ -602,7 +607,7 @@ function InputStep({ onStart, isPending }: {
             <Upload size={10} /> Replace file
           </button>
         )}
-        <input ref={fileRef} type="file" accept=".txt,.pdf,.docx" className="hidden"
+        <input ref={fileRef} type="file" accept=".txt" className="hidden"
           onChange={(e) => { const f = e.target.files?.[0]; if (f) readFile(f); }} />
         {errors.brd && <p className="text-[10px] text-red-400 mt-1">{errors.brd}</p>}
       </div>
@@ -653,7 +658,7 @@ function InputStep({ onStart, isPending }: {
 // ── Step 2: Model Selection ────────────────────────────────────────────────────
 
 function ModelSelectionStep({ onSelectModel, isPending }: {
-  onSelectModel: (provider: string, modelId: string) => void; isPending: boolean;
+  onSelectModel: (model: AIModelInfo) => void; isPending: boolean;
 }) {
   const { data: modelsData, isLoading } = useAIModels();
   const [selected, setSelected] = useState<AIModelInfo | null>(null);
@@ -703,7 +708,7 @@ function ModelSelectionStep({ onSelectModel, isPending }: {
         </div>
       )}
       <Button variant="neon" size="md" disabled={!selected || isPending}
-        onClick={() => selected && onSelectModel(selected.provider, selected.model_id)}
+        onClick={() => selected && onSelectModel(selected)}
         className="w-full justify-center gap-2">
         {isPending ? <><Loader2 size={14} className="animate-spin" /> Processing&hellip;</> : <><Sparkles size={14} />{selected ? `Generate with ${selected.display_name}` : 'Select a model'}</>}
       </Button>
@@ -957,8 +962,12 @@ function ReviewStep({ workflowId }: { workflowId: string }) {
         <button
           onClick={() => {
             const blob = new Blob([JSON.stringify(review, null, 2)], { type: 'application/json' });
-            const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-            a.download = 'workflow-review.json'; a.click();
+            const a = document.createElement('a');
+            const objectUrl = URL.createObjectURL(blob);
+            a.href = objectUrl;
+            a.download = 'workflow-review.json';
+            a.click();
+            URL.revokeObjectURL(objectUrl);
           }}
           className="ml-auto text-[11px] text-[var(--color-fg-subtle)] hover:text-[var(--color-fg-muted)] flex items-center gap-1 transition-colors"
         >
@@ -1006,12 +1015,10 @@ export default function AIWorkflowPage() {
     setActiveStep('discovery');
   }
 
-  async function handleModelSelected(provider: string, modelId: string) {
-    const modelsRes = await fetch('/api/ai-workflows/models').then((r) => r.json()).catch(() => ({ models: [] })) as { models: AIModelInfo[] };
-    const found = modelsRes.models.find((m: AIModelInfo) => m.model_id === modelId) ?? null;
-    setSelectedModel(found);
+  async function handleModelSelected(model: AIModelInfo) {
+    setSelectedModel(model);
     if (workflowId) {
-      await generateScenarios.mutateAsync({ ai_provider: provider, ai_model: modelId });
+      await generateScenarios.mutateAsync({ ai_provider: model.provider, ai_model: model.model_id });
       setActiveStep('scenarios');
     }
   }
