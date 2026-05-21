@@ -13,10 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai_workflow.agents.app_discovery import AppDiscoveryAgent
 from app.ai_workflow.agents.brd_analysis import BRDAnalysisAgent
-from app.ai_workflow.agents.locator_ranking import LocatorRankingAgent
 from app.ai_workflow.agents.page_configuration import PageConfigurationAgent
 from app.ai_workflow.agents.review_validation import ReviewAndValidationAgent
-from app.ai_workflow.agents.scenario_generation import ScenarioGenerationAgent
 from app.ai_workflow.agents.testcase_generation import TestCaseGenerationAgent
 from app.ai_workflow.agents.teststep_binding import TestStepBindingAgent
 from app.ai_workflow.discovery.adapter import BrowserDiscoveryAdapter
@@ -47,9 +45,14 @@ _JSON_FENCE_RE = _re.compile(r"```(?:json)?\s*(.*?)\s*```", _re.DOTALL)
 
 
 def _parse_streamed_json(raw: str, schema: type[T]) -> T:
+    from pydantic import ValidationError
     match = _JSON_FENCE_RE.search(raw)
     cleaned = match.group(1) if match else raw.strip()
-    return schema.model_validate(json.loads(cleaned))
+    try:
+        return schema.model_validate(json.loads(cleaned))
+    except (json.JSONDecodeError, ValidationError) as exc:
+        logger.error("Streamed JSON parse failed: %s\nRaw (first 500): %s", exc, raw[:500])
+        raise ValueError(f"Streamed AI response did not match expected schema: {exc}") from exc
 
 
 def _build_provider(ai_provider: str, ai_model: str) -> AbstractAIProvider:
@@ -268,10 +271,12 @@ async def _run_scenario_generation(workflow_id: str, ai_provider: str, ai_model:
             # Stream scenario generation — update current_message every ~50 chars
             chunks: list[str] = []
             char_count = 0
+            last_db_update = 0
             async for chunk in provider.generate_stream(scenario_prompt, ScenarioList):
                 chunks.append(chunk)
                 char_count += len(chunk)
-                if char_count % 50 < len(chunk):
+                if char_count - last_db_update >= 50:
+                    last_db_update = char_count
                     preview = "".join(chunks).replace("\n", " ").strip()[:120]
                     await _update_state(
                         db, workflow_id, WorkflowState.SCENARIOS_GENERATING,
