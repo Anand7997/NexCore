@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-import time
 from dataclasses import dataclass, field
 
 import httpx
@@ -52,10 +51,10 @@ class MCPElement:
         sel = self.selector.lower()
         if "data-testid" in sel or "[testid]" in sel:
             return "testid"
-        if self.id_attr:
-            return "id"
         if self.aria_label:
             return "aria-label"
+        if self.id_attr:
+            return "id"
         if self.css_selector:
             return "css"
         return "xpath"
@@ -84,7 +83,7 @@ class MCPPlaywrightAdapter:
     def parse_elements(raw: dict) -> list[MCPElement]:
         """
         Parse MCP server response into MCPElement list.
-        Handles both 'elements' list format and 'accessibility_tree' format.
+        Handles flat 'elements' list, 'nodes' list, and nested 'page.elements' format.
         """
         elements: list[MCPElement] = []
 
@@ -94,6 +93,8 @@ class MCPPlaywrightAdapter:
             # Try nested: {"page": {"elements": [...]}}
             page = raw.get("page") or {}
             raw_elements = page.get("elements") or []
+        if not isinstance(raw_elements, list):
+            raw_elements = []
 
         for item in raw_elements:
             selector = (
@@ -118,15 +119,14 @@ class MCPPlaywrightAdapter:
             id_attr = item.get("id") or item.get("id_attr") or ""
             name_attr = item.get("name") or item.get("name_attr") or ""
             text = item.get("text") or item.get("innerText") or item.get("textContent") or ""
-            if isinstance(text, str):
-                text = text.strip()[:120]
+            text = str(text).strip()[:120]
             xpath = item.get("xpath") or item.get("full_xpath") or ""
             css_sel = item.get("css") or item.get("css_selector") or selector
 
             # Score the confidence based on what attributes are available
             confidence = _STRATEGY_CONFIDENCE["xpath"]  # default
             for key, score in _STRATEGY_CONFIDENCE.items():
-                if key in (item.get("strategy") or "") or (key == "id" and id_attr) or (key == "aria-label" and aria_label):
+                if (item.get("strategy") or "") == key or (key == "id" and id_attr) or (key == "aria-label" and aria_label):
                     confidence = max(confidence, score)
             # Boost if data-testid present
             if "testid" in selector.lower() or "data-testid" in selector.lower():
