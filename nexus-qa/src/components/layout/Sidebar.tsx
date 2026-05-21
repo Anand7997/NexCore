@@ -20,6 +20,7 @@ import {
   Play,
   Plus,
   Settings2,
+  Sparkles,
   Target,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -51,6 +52,7 @@ const GROUPS: NavGroup[] = [
     label: 'Intelligence',
     items: [
       { href: '/architecture', label: 'Architecture', icon: Boxes },
+      { href: '/ai-workflow', label: 'AI Workflow', icon: Sparkles },
       { href: '/page-repository', label: 'Page Repository', icon: BookOpen },
       { href: '/intent-studio', label: 'Intent Studio', icon: Target },
       { href: '/test-configuration', label: 'Test Config', icon: FlaskConical },

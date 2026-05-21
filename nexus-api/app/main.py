@@ -23,6 +23,7 @@ from app.events.types import BaseEvent
 from app.execution.artifacts import init_artifact_store
 from app.execution.registry import register_plugin, list_plugins
 from app.realtime.gateway import get_gateway
+from app.ai_workflow import router as ai_workflow_router
 from app.api.routes import (
     workflows,
     executions,
@@ -220,6 +221,7 @@ app.add_middleware(
 )
 
 # Mount routers
+app.include_router(ai_workflow_router.router, prefix="/api")
 app.include_router(workflows.router, prefix="/api")
 app.include_router(executions.router, prefix="/api")
 app.include_router(artifacts.router, prefix="/api")

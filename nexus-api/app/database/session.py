@@ -115,6 +115,7 @@ async def run_migrations() -> None:
 
 async def init_db() -> None:
     from app.database import models  # noqa: F401 – ensure all models are registered
+    from app.ai_workflow import models as ai_workflow_models  # noqa: F401
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     # Apply column additions to pre-existing tables

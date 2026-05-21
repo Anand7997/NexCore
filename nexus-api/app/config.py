@@ -40,6 +40,14 @@ class Settings(BaseSettings):
     keycloak_client_id: str = "nexus-qa"
     keycloak_audience: str = "nexus-qa-api"
 
+    # ── AI Workflow ───────────────────────────────────────────────────────────
+    anthropic_api_key: str = ""
+    default_ai_provider: str = "claude"
+    default_ai_model: str = "claude-sonnet-4-20250514"
+    ai_workflow_timeout_seconds: int = 600
+    mcp_playwright_url: str = ""
+    playwright_fallback: bool = True
+
     # ── Phase 6: AI Intelligence ──────────────────────────────────────────────
     # NATS transport (Python worker ↔ NestJS AI gateway)
     nats_url: str = "nats://localhost:4222"
