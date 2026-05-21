@@ -16,6 +16,7 @@ from app.page_discovery.schemas import (
 logger = logging.getLogger(__name__)
 
 _MCP_MIN_ELEMENTS = 5  # fall back to Playwright if MCP returns fewer than this
+_LOW_CONFIDENCE_THRESHOLD = 0.6  # elements below this score are flagged for review
 
 
 class BrowserDiscoveryAdapter:
@@ -64,7 +65,7 @@ class BrowserDiscoveryAdapter:
 
     async def _mcp_elements_to_discovery(
         self,
-        parsed,
+        parsed: list,
         raw: dict,
         url: str,
         page_name: str,
@@ -73,10 +74,9 @@ class BrowserDiscoveryAdapter:
         page_id: str | None,
         db: AsyncSession,
     ) -> DiscoveryResponse:
-        from app.ai_workflow.discovery.mcp_adapter import MCPElement
         from app.database.models import PageElementModel
 
-        t0 = time.monotonic()
+        t0 = time.monotonic()  # measures DB write time only; MCP discovery time is not included
 
         # Resolve page_id or create via Playwright adapter's helper
         resolved_page_id = page_id
@@ -89,6 +89,7 @@ class BrowserDiscoveryAdapter:
         low_confidence = 0
         saved = 0
         discovered_elements: list[DiscoveredElement] = []
+        # TODO: upsert by (page_id, name) to prevent duplicates on workflow retry
 
         for mcp_el in parsed:
             alt_locators: list[LocatorCandidate] = []
@@ -123,7 +124,7 @@ class BrowserDiscoveryAdapter:
             )
             db.add(el_model)
             saved += 1
-            if mcp_el.confidence < 0.6:
+            if mcp_el.confidence < _LOW_CONFIDENCE_THRESHOLD:
                 low_confidence += 1
 
             discovered_elements.append(DiscoveredElement(
@@ -140,7 +141,11 @@ class BrowserDiscoveryAdapter:
                 tags=mcp_el.tags,
             ))
 
-        await db.commit()
+        if save_mode == "preview":
+            await db.rollback()
+            saved = 0
+        else:
+            await db.commit()
 
         duration_ms = int((time.monotonic() - t0) * 1000)
         summary = DiscoverySummary(
