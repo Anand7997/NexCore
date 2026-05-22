@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from './client';
 import type {
+  AIBrdExtractResponse,
   AIModelsResponse,
   AIReviewResponse,
   AIScenarioConfirmRequest,
@@ -23,6 +24,12 @@ export function useAIModels() {
     queryFn: () => api.get<AIModelsResponse>('/ai-workflows/models'),
     staleTime: 60_000,
   });
+}
+
+export function extractAIBrdFile(file: File) {
+  const body = new FormData();
+  body.append('file', file);
+  return api.postForm<AIBrdExtractResponse>('/ai-workflows/brd/extract', body);
 }
 
 export function useAIWorkflow(workflowId: string | null, enabled: boolean) {

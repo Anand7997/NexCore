@@ -4,6 +4,9 @@
   "private": true,
   "scripts": {
     "start": "scripts\\start.bat",
-    "dev": "scripts\\start.bat"
+    "dev": "scripts\\start.bat -Reload"
+  },
+  "dependencies": {
+    "framer-motion": "^12.40.0"
   }
 }

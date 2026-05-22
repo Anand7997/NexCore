@@ -4,3 +4,5 @@ qdrant-client==1.18.0
 sentence-transformers==5.5.0
 nats-py==2.14.0
 openai==2.8.0
+anthropic>=0.28.0
+truststore>=0.10.0

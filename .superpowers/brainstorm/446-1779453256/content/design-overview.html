@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Antigravity Glass — Full Design</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#030306;color:#e2e8f0;font-family:'Inter',sans-serif;padding:32px 24px 80px;font-size:14px}
+h2{font-size:22px;font-weight:800;background:linear-gradient(135deg,#fff 0%,#8b5cf6 60%,#06b6d4 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:6px}
+.sub{color:#475569;font-size:13px;margin-bottom:32px;line-height:1.6}
+.mono{font-family:'JetBrains Mono',monospace}
+.section{margin-bottom:48px}
+.section-label{font-family:'JetBrains Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:.2em;color:#8b5cf6;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.section-label::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,rgba(139,92,246,.3),transparent)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+.grid4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px}
+
+/* SHELL MOCKUP */
+.shell{width:100%;height:400px;background:#030306;border-radius:14px;border:1px solid rgba(255,255,255,.06);overflow:hidden;position:relative;display:flex;flex-direction:column}
+.shell-topbar{height:44px;background:rgba(255,255,255,.02);border-bottom:1px solid rgba(255,255,255,.05);display:flex;align-items:center;padding:0 16px;gap:10px;position:relative;overflow:hidden}
+.shell-topbar::before{content:'';position:absolute;inset:0;background:linear-gradient(90deg,rgba(139,92,246,.06),rgba(6,182,212,.04),transparent);pointer-events:none}
+.tb-logo{width:26px;height:26px;border-radius:6px;background:linear-gradient(135deg,#8b5cf6,#06b6d4);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;color:#fff;flex-shrink:0}
+.tb-title{font-size:11px;font-weight:700;color:#f1f5f9;letter-spacing:.04em}
+.tb-breadcrumb{font-size:10px;color:#475569;flex:1}
+.tb-pill{padding:3px 10px;border-radius:99px;font-size:9px;font-family:'JetBrains Mono',monospace;font-weight:600;letter-spacing:.08em}
+.tb-pill.running{background:rgba(59,130,246,.15);color:#60a5fa;border:1px solid rgba(59,130,246,.25)}
+.tb-pill.ai{background:rgba(139,92,246,.15);color:#a78bfa;border:1px solid rgba(139,92,246,.25)}
+.tb-dot{width:6px;height:6px;border-radius:50%;animation:blink 1.5s ease-in-out infinite}
+.tb-dot.v{background:#8b5cf6;box-shadow:0 0 6px #8b5cf6}
+.tb-dot.c{background:#06b6d4;box-shadow:0 0 6px #06b6d4;animation-delay:-.5s}
+.tb-dot.g{background:#10b981;box-shadow:0 0 6px #10b981;animation-delay:-1s}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+.shell-body{flex:1;display:flex;overflow:hidden}
+.sidebar{width:52px;background:rgba(255,255,255,.015);border-right:1px solid rgba(255,255,255,.05);display:flex;flex-direction:column;align-items:center;padding:12px 0;gap:6px;position:relative;overflow:hidden}
+.sidebar::before{content:'';position:absolute;top:0;bottom:0;right:0;width:1px;background:linear-gradient(180deg,transparent,rgba(139,92,246,.3) 30%,rgba(6,182,212,.2) 70%,transparent)}
+.sb-item{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px;transition:.2s;cursor:pointer;position:relative}
+.sb-item.active{background:rgba(139,92,246,.2);box-shadow:0 0 12px rgba(139,92,246,.3),inset 0 1px 0 rgba(255,255,255,.08)}
+.sb-item.active::before{content:'';position:absolute;left:-12px;top:50%;transform:translateY(-50%);width:3px;height:16px;background:#8b5cf6;border-radius:0 2px 2px 0;box-shadow:0 0 8px #8b5cf6}
+.sb-item:not(.active){opacity:.35}
+.sb-divider{width:20px;height:1px;background:rgba(255,255,255,.08);margin:4px 0}
+.main{flex:1;position:relative;overflow:hidden;background:radial-gradient(ellipse at 20% 10%,rgba(139,92,246,.06) 0%,transparent 50%),radial-gradient(ellipse at 80% 80%,rgba(6,182,212,.05) 0%,transparent 50%),#030306}
+
+/* Aurora orbs */
+.orb{position:absolute;border-radius:50%;filter:blur(50px);pointer-events:none;animation:orb-drift ease-in-out infinite}
+.orb1{width:200px;height:200px;background:rgba(139,92,246,.18);top:-50px;left:-30px;animation-duration:8s}
+.orb2{width:150px;height:150px;background:rgba(6,182,212,.14);bottom:20px;right:0;animation-duration:10s;animation-delay:-4s}
+.orb3{width:100px;height:100px;background:rgba(59,130,246,.12);top:40%;left:40%;animation-duration:6s;animation-delay:-2s}
+@keyframes orb-drift{0%,100%{transform:translate(0,0)}33%{transform:translate(10px,-12px)}66%{transform:translate(-8px,8px)}}
+
+/* Floating cards */
+.f-card{position:absolute;background:rgba(255,255,255,.03);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px 14px;box-shadow:0 8px 32px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.06);animation:card-levitate ease-in-out infinite}
+@keyframes card-levitate{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
+.fc1{top:16px;left:16px;width:140px;animation-duration:4s}
+.fc2{top:16px;right:50px;width:120px;animation-duration:5s;animation-delay:-2s}
+.fc3{bottom:24px;left:80px;width:160px;animation-duration:4.5s;animation-delay:-1s}
+.fc-label{font-family:'JetBrains Mono',monospace;font-size:8px;color:rgba(255,255,255,.3);text-transform:uppercase;letter-spacing:.12em;margin-bottom:4px}
+.fc-val{font-size:18px;font-weight:800;line-height:1}
+.fc-val.v{background:linear-gradient(135deg,#fff,#8b5cf6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.fc-val.c{background:linear-gradient(135deg,#fff,#06b6d4);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.fc-val.g{background:linear-gradient(135deg,#fff,#10b981);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.fc-sub{font-size:9px;color:rgba(255,255,255,.25);margin-top:3px}
+.center-orb{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:60px;height:60px;border-radius:50%;background:linear-gradient(135deg,#8b5cf6,#06b6d4);box-shadow:0 0 40px rgba(139,92,246,.5),0 0 80px rgba(139,92,246,.2);animation:orb-pulse 2s ease-in-out infinite;display:flex;align-items:center;justify-content:center}
+@keyframes orb-pulse{0%,100%{box-shadow:0 0 40px rgba(139,92,246,.5),0 0 80px rgba(139,92,246,.2)}50%{box-shadow:0 0 60px rgba(139,92,246,.7),0 0 120px rgba(139,92,246,.3)}}
+.ring{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);border-radius:50%;border:1px solid rgba(139,92,246,.2);animation:ring-expand ease-out infinite}
+.ring1{width:100px;height:100px;animation-duration:2.5s}
+.ring2{width:140px;height:140px;animation-duration:2.5s;animation-delay:.4s}
+.ring3{width:180px;height:180px;animation-duration:2.5s;animation-delay:.8s}
+@keyframes ring-expand{0%{opacity:.6;transform:translate(-50%,-50%) scale(.8)}100%{opacity:0;transform:translate(-50%,-50%) scale(1.2)}}
+
+/* COMPONENT SHOWCASE */
+.comp-card{border-radius:12px;padding:16px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06)}
+.comp-title{font-size:11px;font-weight:700;color:#f1f5f9;margin-bottom:4px;letter-spacing:.02em}
+.comp-desc{font-size:11px;color:#475569;line-height:1.5;margin-bottom:10px}
+.comp-tag{font-family:'JetBrains Mono',monospace;font-size:9px;padding:2px 7px;border-radius:4px;background:rgba(139,92,246,.12);color:#a78bfa;border:1px solid rgba(139,92,246,.2)}
+.comp-preview{border-radius:8px;height:60px;display:flex;align-items:center;justify-content:center;margin-bottom:10px;overflow:hidden;position:relative}
+
+/* PAGE MAP */
+.page-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.page-item{border-radius:10px;padding:12px;border:1px solid rgba(255,255,255,.05);background:rgba(255,255,255,.02);transition:.2s}
+.page-item:hover{border-color:rgba(139,92,246,.3);background:rgba(139,92,246,.05)}
+.pi-name{font-size:11px;font-weight:600;color:#e2e8f0;margin-bottom:4px}
+.pi-tag{font-size:9px;color:#475569;font-family:'JetBrains Mono',monospace}
+.pi-feature{font-size:9px;margin-top:6px;padding:3px 7px;border-radius:4px;display:inline-block}
+.pi-feat-spline{background:rgba(139,92,246,.12);color:#a78bfa}
+.pi-feat-orbital{background:rgba(6,182,212,.1);color:#67e8f9}
+.pi-feat-glass{background:rgba(255,255,255,.06);color:#94a3b8}
+.pi-feat-neon{background:rgba(59,130,246,.1);color:#93c5fd}
+
+/* TOKEN TABLE */
+.token-table{width:100%;border-collapse:collapse}
+.token-table td{padding:8px 12px;border-bottom:1px solid rgba(255,255,255,.04);font-size:12px;vertical-align:middle}
+.token-table td:first-child{font-family:'JetBrains Mono',monospace;color:#a78bfa;font-size:10px;width:220px}
+.token-table td:nth-child(2){color:#64748b;font-size:11px}
+.color-swatch{width:16px;height:16px;border-radius:4px;display:inline-block;vertical-align:middle;margin-right:8px}
+</style>
+</head>
+<body>
+
+<div style="text-align:center;margin-bottom:48px">
+  <div style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.25em;color:#8b5cf6;text-transform:uppercase;margin-bottom:10px">NEXUS QA — ANTIGRAVITY GLASS DESIGN SYSTEM</div>
+  <h2 style="font-size:30px">Full App Redesign Spec</h2>
+  <p class="sub" style="max-width:600px;margin:10px auto 0">Design System First approach. 5 new components, 1 globals.css overhaul, 16 pages upgraded. All existing functionality preserved.</p>
+</div>
+
+<!-- SECTION 1: SHELL MOCKUP -->
+<div class="section">
+  <div class="section-label">01 — AppShell Redesign</div>
+  <div style="margin-bottom:12px">
+    <p style="color:#94a3b8;font-size:13px;line-height:1.7">New collapsed sidebar with aurora gradient edge, aurora-tinted topbar, ambient orbs bleeding through the main canvas. Every page inherits this shell — the redesign is immediately global.</p>
+  </div>
+  <div class="shell">
+    <!-- Topbar -->
+    <div class="shell-topbar">
+      <div class="tb-logo">N</div>
+      <span class="tb-title">NEXUS QA</span>
+      <span style="color:#334155;font-size:10px;margin:0 4px">/</span>
+      <span class="tb-breadcrumb">Dashboard</span>
+      <div style="display:flex;gap:6px;margin-right:8px">
+        <div class="tb-dot v"></div>
+        <div class="tb-dot c"></div>
+        <div class="tb-dot g"></div>
+      </div>
+      <div class="tb-pill running">47 RUNNING</div>
+      <div class="tb-pill ai" style="margin-left:4px">AI ONLINE</div>
+    </div>
+    <!-- Body -->
+    <div class="shell-body">
+      <!-- Sidebar -->
+      <div class="sidebar">
+        <div class="sb-item active">⌘</div>
+        <div class="sb-divider"></div>
+        <div class="sb-item">⬡</div>
+        <div class="sb-item">⚡</div>
+        <div class="sb-item">◎</div>
+        <div class="sb-item">⊞</div>
+        <div class="sb-divider"></div>
+        <div class="sb-item">⤴</div>
+        <div class="sb-item">⊕</div>
+        <div class="sb-item">▣</div>
+        <div class="sb-divider" style="margin-top:auto"></div>
+        <div class="sb-item">✦</div>
+        <div class="sb-item">⚙</div>
+      </div>
+      <!-- Main canvas -->
+      <div class="main">
+        <div class="orb orb1"></div>
+        <div class="orb orb2"></div>
+        <div class="orb orb3"></div>
+        <div class="ring ring1"></div>
+        <div class="ring ring2"></div>
+        <div class="ring ring3"></div>
+        <div class="center-orb">
+          <span style="font-size:18px;color:rgba(255,255,255,.9)">N</span>
+        </div>
+        <div class="f-card fc1">
+          <div class="fc-label">Active</div>
+          <div class="fc-val v">47</div>
+          <div class="fc-sub">↑ 12 this hour</div>
+        </div>
+        <div class="f-card fc2">
+          <div class="fc-label">Success</div>
+          <div class="fc-val g">98.4%</div>
+          <div class="fc-sub">▲ 0.3%</div>
+        </div>
+        <div class="f-card fc3">
+          <div class="fc-label">AI Healed</div>
+          <div class="fc-val c">124</div>
+          <div class="fc-sub">Auto-recoveries</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SECTION 2: COMPONENT LIBRARY -->
+<div class="section">
+  <div class="section-label">02 — New Component Library (5 components)</div>
+  <div class="grid3" style="margin-bottom:12px">
+
+    <div class="comp-card">
+      <div class="comp-preview" style="background:radial-gradient(ellipse at 30% 50%,rgba(139,92,246,.2),transparent 60%),radial-gradient(ellipse at 70% 50%,rgba(6,182,212,.15),transparent 60%),#030306">
+        <div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#8b5cf6,#06b6d4);box-shadow:0 0 30px rgba(139,92,246,.5);animation:orb-pulse 2s ease-in-out infinite"></div>
+        <div style="position:absolute;width:60px;height:60px;border-radius:50%;border:1px solid rgba(139,92,246,.2);animation:ring-expand 2.5s ease-out infinite"></div>
+      </div>
+      <div class="comp-title">AuroraBackground</div>
+      <div class="comp-desc">Full-page aurora orbs with radial gradient drift. Wraps every page. Configurable palette per route.</div>
+      <span class="comp-tag">new</span>
+    </div>
+
+    <div class="comp-card">
+      <div class="comp-preview" style="background:#030306;gap:8px;padding:8px">
+        <div style="background:rgba(255,255,255,.03);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:8px 12px;box-shadow:inset 0 1px 0 rgba(255,255,255,.06);min-width:90px;text-align:center">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:8px;color:rgba(255,255,255,.3);text-transform:uppercase;letter-spacing:.1em">Executions</div>
+          <div style="font-size:18px;font-weight:800;background:linear-gradient(135deg,#fff,#8b5cf6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">47</div>
+        </div>
+      </div>
+      <div class="comp-title">GlassCard + FloatingMetricCard</div>
+      <div class="comp-desc">Upgraded glassmorphism with hover levitation spring animation. Replaces current MetricCard.</div>
+      <span class="comp-tag">upgrade</span>
+    </div>
+
+    <div class="comp-card">
+      <div class="comp-preview" style="background:#030306;overflow:hidden">
+        <div style="position:relative;width:100%;height:100%">
+          <!-- Mini orbital -->
+          <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:20px;height:20px;border-radius:50%;background:linear-gradient(135deg,#8b5cf6,#06b6d4);box-shadow:0 0 15px rgba(139,92,246,.6)"></div>
+          <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:50px;height:50px;border-radius:50%;border:1px solid rgba(255,255,255,.08)"></div>
+          <div style="position:absolute;top:14px;left:50%;transform:translateX(-50%);width:8px;height:8px;border-radius:50%;background:#06b6d4;box-shadow:0 0 8px #06b6d4"></div>
+          <div style="position:absolute;bottom:8px;left:30%;width:8px;height:8px;border-radius:50%;background:#8b5cf6;box-shadow:0 0 8px #8b5cf6"></div>
+          <div style="position:absolute;bottom:16px;right:28%;width:8px;height:8px;border-radius:50%;background:#10b981;box-shadow:0 0 8px #10b981"></div>
+        </div>
+      </div>
+      <div class="comp-title">OrbitalTimeline</div>
+      <div class="comp-desc">RadialOrbitalTimeline integrated on AI Workflow page. Shows workflow phases orbiting a central core.</div>
+      <span class="comp-tag">new · ai-workflow page</span>
+    </div>
+
+    <div class="comp-card">
+      <div class="comp-preview" style="background:#030306;overflow:hidden">
+        <div style="position:relative;width:80%;height:100%;display:flex;align-items:center;justify-content:center">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:rgba(255,255,255,.3)">3D Scene loads here</div>
+          <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center,rgba(139,92,246,.1),transparent)"></div>
+        </div>
+      </div>
+      <div class="comp-title">SplineHero</div>
+      <div class="comp-desc">Lazy-loaded Spline 3D scene in dashboard hero or AI Workflow page. Suspended with aurora fallback.</div>
+      <span class="comp-tag">new · @splinetool/react-spline</span>
+    </div>
+
+    <div class="comp-card">
+      <div class="comp-preview" style="background:#030306;overflow:hidden;align-items:flex-end;padding:4px 8px;gap:3px;justify-content:flex-start">
+        <div style="width:3px;height:20px;background:rgba(139,92,246,.5);border-radius:2px;animation:bar-pulse 1.5s ease-in-out infinite"></div>
+        <div style="width:3px;height:35px;background:rgba(139,92,246,.7);border-radius:2px;animation:bar-pulse 1.5s ease-in-out infinite;animation-delay:.15s"></div>
+        <div style="width:3px;height:15px;background:rgba(6,182,212,.5);border-radius:2px;animation:bar-pulse 1.5s ease-in-out infinite;animation-delay:.3s"></div>
+        <div style="width:3px;height:40px;background:rgba(139,92,246,.9);border-radius:2px;animation:bar-pulse 1.5s ease-in-out infinite;animation-delay:.45s"></div>
+        <div style="width:3px;height:28px;background:rgba(6,182,212,.7);border-radius:2px;animation:bar-pulse 1.5s ease-in-out infinite;animation-delay:.6s"></div>
+        <div style="width:3px;height:45px;background:#8b5cf6;border-radius:2px;box-shadow:0 0 6px #8b5cf6;animation:bar-pulse 1.5s ease-in-out infinite;animation-delay:.75s"></div>
+        <div style="width:3px;height:22px;background:rgba(139,92,246,.5);border-radius:2px;animation:bar-pulse 1.5s ease-in-out infinite;animation-delay:.9s"></div>
+        <style>@keyframes bar-pulse{0%,100%{opacity:.7}50%{opacity:1}}</style>
+      </div>
+      <div class="comp-title">ParticleField + NeonBadge</div>
+      <div class="comp-desc">Ambient floating particles across dark backgrounds. NeonBadge replaces flat status badges with glow states.</div>
+      <span class="comp-tag">upgrade</span>
+    </div>
+
+    <div class="comp-card">
+      <div class="comp-preview" style="background:#030306;flex-direction:column;gap:4px;padding:8px">
+        <div style="width:100%;height:3px;background:rgba(255,255,255,.05);border-radius:2px;overflow:hidden"><div style="width:70%;height:100%;background:linear-gradient(90deg,#8b5cf6,#06b6d4);border-radius:2px"></div></div>
+        <div style="display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:8px;color:rgba(255,255,255,.25)"><span>7 / 10 nodes</span><span>70%</span></div>
+        <div style="display:flex;gap:4px;margin-top:4px">
+          <div style="width:12px;height:12px;border-radius:50%;background:#10b981;box-shadow:0 0 6px #10b981"></div>
+          <div style="width:12px;height:12px;border-radius:50%;background:#10b981;box-shadow:0 0 6px #10b981"></div>
+          <div style="width:12px;height:12px;border-radius:50%;background:#3b82f6;box-shadow:0 0 6px #3b82f6;animation:blink 1s ease-in-out infinite"></div>
+          <div style="width:12px;height:12px;border-radius:50%;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.1)"></div>
+        </div>
+      </div>
+      <div class="comp-title">ExecutionProgress + NodeDots</div>
+      <div class="comp-desc">Neon progress bar with gradient fill. Node status dots with glow per state (success/running/pending/failed).</div>
+      <span class="comp-tag">upgrade</span>
+    </div>
+
+  </div>
+</div>
+
+<!-- SECTION 3: 16 PAGES MAP -->
+<div class="section">
+  <div class="section-label">03 — All 16 Pages — What Changes</div>
+  <div class="page-grid">
+    <div class="page-item"><div class="pi-name">/ Dashboard</div><div class="pi-tag">Command Center</div><div><span class="pi-feature pi-feat-spline">Spline 3D hero</span></div><div style="font-size:9px;color:#475569;margin-top:4px">Floating metric cards, orbital activity ring, aurora bg</div></div>
+    <div class="page-item"><div class="pi-name">/workflows</div><div class="pi-tag">ReactFlow Canvas</div><div><span class="pi-feature pi-feat-glass">Glass panels</span></div><div style="font-size:9px;color:#475569;margin-top:4px">Neon edge flows, aurora node palette, glass inspector</div></div>
+    <div class="page-item"><div class="pi-name">/executions</div><div class="pi-tag">Execution Monitor</div><div><span class="pi-feature pi-feat-neon">Neon status</span></div><div style="font-size:9px;color:#475569;margin-top:4px">Split glass panels, levitating stat cards, neon timeline</div></div>
+    <div class="page-item"><div class="pi-name">/ai-workflow</div><div class="pi-tag">AI Orchestrator</div><div><span class="pi-feature pi-feat-orbital">OrbitalTimeline</span></div><div style="font-size:9px;color:#475569;margin-top:4px">Radial orbital + Spline 3D, glass token stream</div></div>
+    <div class="page-item"><div class="pi-name">/knowledge-graph</div><div class="pi-tag">Entity Graph</div><div><span class="pi-feature pi-feat-neon">Node glows</span></div><div style="font-size:9px;color:#475569;margin-top:4px">Aurora bg, neon node halos, glass detail panel</div></div>
+    <div class="page-item"><div class="pi-name">/architecture</div><div class="pi-tag">System Topology</div><div><span class="pi-feature pi-feat-glass">Glass nodes</span></div><div style="font-size:9px;color:#475569;margin-top:4px">Antigravity topology nodes, animated connections</div></div>
+    <div class="page-item"><div class="pi-name">/agents</div><div class="pi-tag">Agent Fleet</div><div><span class="pi-feature pi-feat-glass">Float cards</span></div><div style="font-size:9px;color:#475569;margin-top:4px">Agent cards as floating glass tiles with health orbs</div></div>
+    <div class="page-item"><div class="pi-name">/ai-analysis</div><div class="pi-tag">Failure Intel</div><div><span class="pi-feature pi-feat-neon">AI glow</span></div><div style="font-size:9px;color:#475569;margin-top:4px">Cyan AI accent, glass insight cards, confidence bars</div></div>
+    <div class="page-item"><div class="pi-name">/page-repository</div><div class="pi-tag">Page Objects</div><div><span class="pi-feature pi-feat-glass">Glass grid</span></div><div style="font-size:9px;color:#475569;margin-top:4px">Floating page cards with screenshot previews</div></div>
+    <div class="page-item"><div class="pi-name">/intent-studio</div><div class="pi-tag">Intent Capture</div><div><span class="pi-feature pi-feat-glass">Glass form</span></div><div style="font-size:9px;color:#475569;margin-top:4px">Aurora hero, glass form fields with neon focus rings</div></div>
+    <div class="page-item"><div class="pi-name">/test-configuration</div><div class="pi-tag">Test Setup</div><div><span class="pi-feature pi-feat-glass">Glass table</span></div><div style="font-size:9px;color:#475569;margin-top:4px">Glass rows, neon checkboxes, collapsible sections</div></div>
+    <div class="page-item"><div class="pi-name">/matrix</div><div class="pi-tag">Parity Matrix</div><div><span class="pi-feature pi-feat-neon">Neon cells</span></div><div style="font-size:9px;color:#475569;margin-top:4px">Heatmap cells with color-coded glow states</div></div>
+    <div class="page-item"><div class="pi-name">/reports</div><div class="pi-tag">Analytics</div><div><span class="pi-feature pi-feat-glass">Aurora charts</span></div><div style="font-size:9px;color:#475569;margin-top:4px">Charts with gradient fills, glass export panels</div></div>
+    <div class="page-item"><div class="pi-name">/settings</div><div class="pi-tag">Configuration</div><div><span class="pi-feature pi-feat-glass">Glass sections</span></div><div style="font-size:9px;color:#475569;margin-top:4px">Tabbed glass panels, neon toggles, aurora accents</div></div>
+    <div class="page-item"><div class="pi-name">/workspace/new</div><div class="pi-tag">New Project</div><div><span class="pi-feature pi-feat-spline">Aurora hero</span></div><div style="font-size:9px;color:#475569;margin-top:4px">Full-bleed aurora, stepped glass wizard</div></div>
+    <div class="page-item"><div class="pi-name">/test-designer</div><div class="pi-tag">Step Authoring</div><div><span class="pi-feature pi-feat-glass">Glass editor</span></div><div style="font-size:9px;color:#475569;margin-top:4px">Monaco-style glass editor, neon step nodes</div></div>
+  </div>
+</div>
+
+<!-- SECTION 4: DESIGN TOKENS -->
+<div class="section">
+  <div class="section-label">04 — Design Token Changes (globals.css)</div>
+  <table class="token-table">
+    <tr><td>--color-bg-base</td><td><span class="color-swatch" style="background:#030306"></span>#030306 (deeper, purer black)</td></tr>
+    <tr><td>--color-surface-1</td><td><span class="color-swatch" style="background:rgba(255,255,255,.03)"></span>rgba(255,255,255,.03) — ultra-thin glass base</td></tr>
+    <tr><td>--glass-blur</td><td>backdrop-filter: blur(20px) — increased from 12px</td></tr>
+    <tr><td>--glow-violet-lg</td><td>0 0 40px rgba(139,92,246,.5), 0 0 80px rgba(139,92,246,.2)</td></tr>
+    <tr><td>--aurora-orb-1</td><td>radial-gradient violet 180px — new ambient layer</td></tr>
+    <tr><td>--aurora-orb-2</td><td>radial-gradient cyan 140px — new ambient layer</td></tr>
+    <tr><td>--levitate-anim</td><td>card-levitate 4s ease-in-out infinite — new</td></tr>
+    <tr><td>--particle-anim</td><td>particle-drift linear 3-5s infinite — new</td></tr>
+    <tr><td>--font-weight-display</td><td>800 (was 700) — heavier impact headings</td></tr>
+    <tr><td>--border-glass</td><td>1px solid rgba(255,255,255,.07) — uniform glass border</td></tr>
+  </table>
+</div>
+
+<!-- SECTION 5: INSTALL LIST -->
+<div class="section">
+  <div class="section-label">05 — New Dependencies to Install</div>
+  <div class="grid2">
+    <div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:14px">
+      <div style="font-size:11px;font-weight:700;color:#f1f5f9;margin-bottom:10px">npm install</div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:11px;line-height:2;color:#94a3b8">
+        @splinetool/react-spline<br>
+        @splinetool/runtime<br>
+        class-variance-authority<br>
+        @radix-ui/react-slot<br>
+        lucide-react (already in package.json ✓)
+      </div>
+    </div>
+    <div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:14px">
+      <div style="font-size:11px;font-weight:700;color:#f1f5f9;margin-bottom:10px">Already installed ✓</div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:11px;line-height:2;color:#94a3b8">
+        framer-motion ^12.38.0<br>
+        lucide-react ^1.14.0<br>
+        tailwindcss v4<br>
+        @radix-ui/react-* (most)<br>
+        class-variance-authority ^0.7.1
+      </div>
+    </div>
+  </div>
+</div>
+
+<div style="text-align:center;margin-top:40px;padding:20px;background:rgba(139,92,246,.05);border:1px solid rgba(139,92,246,.15);border-radius:12px">
+  <div style="font-size:13px;color:#a78bfa;font-weight:600;margin-bottom:6px">Does this design look right?</div>
+  <div style="font-size:12px;color:#475569">Reply in the terminal to approve and move to the implementation plan, or request changes.</div>
+</div>
+
+</body>
+</html>

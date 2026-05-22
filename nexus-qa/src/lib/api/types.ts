@@ -537,6 +537,7 @@ export interface AIWorkflowStateResponse {
   project_id: string | null;
   module_id: string | null;
   page_id: string | null;
+  page_name: string | null;
   elements_saved: number;
   scenarios: AIScenarioPreview[];
   testcases_created: number;
@@ -544,6 +545,32 @@ export interface AIWorkflowStateResponse {
   unmapped_steps: number;
   low_confidence_locators: number;
   errors: string[];
+  activity_log: AIWorkflowActivityItem[];
+  scraped_candidates: AIScrapedCandidatePreview[];
+  selected_elements: AIScrapedCandidatePreview[];
+}
+
+export interface AIWorkflowActivityItem {
+  timestamp: string;
+  state: string;
+  message: string;
+  detail?: string | null;
+}
+
+export interface AIScrapedCandidatePreview {
+  candidate_id: string;
+  name: string;
+  element_type: string;
+  locator_strategy: string;
+  best_locator: string;
+  xpath: string;
+  css_selector: string;
+  confidence_score: number;
+  tags: string[];
+  selected: boolean;
+  match_reason?: string | null;
+  matched_steps: string[];
+  element_id?: string;
 }
 
 export interface AIWorkflowCreateRequest {
@@ -551,10 +578,17 @@ export interface AIWorkflowCreateRequest {
   webpage_url: string;
   project_name: string;
   module_name?: string;
+  page_name?: string;
   platform?: string;
   save_mode?: string;
   ai_provider: string;
   ai_model: string;
+}
+
+export interface AIBrdExtractResponse {
+  filename: string;
+  text: string;
+  characters: number;
 }
 
 export interface AIModelInfo {
@@ -563,6 +597,8 @@ export interface AIModelInfo {
   display_name: string;
   tier: 'fast' | 'balanced' | 'best';
   best_for: string;
+  configured: boolean;
+  setup_hint?: string | null;
 }
 
 export interface AIModelsResponse {

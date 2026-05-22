@@ -1,0 +1,42 @@
+<h2>How should we execute the full redesign?</h2>
+<p class="subtitle">All 3 preserve existing functionality (ReactFlow, xterm, TanStack Query, WebSocket). This is about the visual & motion layer.</p>
+
+<div class="options">
+
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Design System First (Recommended)</h3>
+      <p>Build the Antigravity Glass component library first — <strong>AuroraOrb, GlassCard, ParticleField, NeonBadge, SplineHero, OrbitalTimeline</strong> — then systematically apply across all 16 pages. Every page shares the same tokens. Single globals.css overhaul.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul><li>Pixel-perfect consistency</li><li>Easy to update theme-wide</li><li>Each page is fast to assemble</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Longer before first page ships</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Shell → Hero Pages → Remaining</h3>
+      <p>Redesign <strong>AppShell + globals.css first</strong> (every page benefits immediately), then Dashboard, Workflows, Executions, AI Workflow, Knowledge Graph, then the rest. Ship visible wins fast.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul><li>Visible progress immediately</li><li>Test look on real pages early</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Some inconsistency mid-execution</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>globals.css + Token Overhaul Only</h3>
+      <p>Upgrade the design tokens, shadows, glass classes, and motion variants in globals.css. No new components — just make the existing ones look dramatically better. Fastest path.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul><li>Zero risk to functionality</li><li>Complete in one session</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Can't add Spline, Orbital, particles</li><li>Less "wow factor"</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+</div>

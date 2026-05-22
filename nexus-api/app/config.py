@@ -1,10 +1,16 @@
+from pathlib import Path
 from typing import Any
 
 from pydantic import field_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+_ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=str(_ENV_FILE), extra="ignore")
+
     app_name: str = "NEXUS QA Orchestration API"
     app_version: str = "1.0.0"
     debug: bool = True
@@ -45,6 +51,8 @@ class Settings(BaseSettings):
     default_ai_provider: str = "claude"
     default_ai_model: str = "claude-sonnet-4-20250514"
     ai_workflow_timeout_seconds: int = 600
+    ai_workflow_llm_call_timeout_seconds: int = 180
+    ai_workflow_testcase_concurrency: int = 2
     mcp_playwright_url: str = ""
     playwright_fallback: bool = True
 
@@ -59,6 +67,7 @@ class Settings(BaseSettings):
     # Embedding model
     embedding_model: str = "all-MiniLM-L6-v2"
     embedding_dim: int = 384
+    warmup_embeddings_on_startup: bool = False
     use_openai_embeddings: bool = False
     openai_api_key: str = ""
 
@@ -68,9 +77,6 @@ class Settings(BaseSettings):
         if isinstance(value, str) and value.lower() in {"release", "prod", "production"}:
             return False
         return value
-
-    class Config:
-        env_file = ".env"
 
 
 settings = Settings()

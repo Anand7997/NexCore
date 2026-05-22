@@ -3,7 +3,8 @@
 ## Product Identity
 
 - Product name: AI Workflow
-- Primary agent: TestGenerationAgent
+- Primary orchestrator: AIWorkflowService
+- Primary generation agent: TestGenerationAgent
 - Platform: Nexus QA
 - Backend: FastAPI in `nexus-api`
 - Frontend: Next.js in `nexus-qa`
@@ -15,10 +16,10 @@
 ## Architecture Overview
 
 ```text
-User Input: BRD + Webpage URL + Project Info
+User Input: BRD + Webpage URL + Project/Module/Page Info
         |
         v
-TestGenerationAgent
+AIWorkflowService
         |
         v
 +------------------------------------------------+
@@ -36,13 +37,13 @@ TestGenerationAgent
 Existing APIs: Page Repository + Test Configuration
 ```
 
-The system must behave like an autonomous QA engineer. The user gives a BRD and a webpage URL. AI Workflow creates or reuses a project and module, discovers page elements, verifies locators, saves Page Repository data, generates scenarios, lets the user select scenarios, and then creates mapped test cases and test steps.
+The system must behave like an autonomous QA engineer. The user gives a BRD, webpage URL, project name, module name, and page name. AI Workflow creates or reuses only the project/module first, lets the user choose an LLM provider/model, generates scenarios, lets the user select scenarios, and drafts test cases/test steps. Only after those test steps exist does it create the page, scrape raw element candidates into a temporary mini panel, select the necessary candidates from the drafted steps, and save only those selected elements into the Page Repository.
 
 ## Plan 1 - Backend Orchestrator And AI Foundation
 
-### 1. New Backend Domain
+### 1. Backend Domain
 
-Create a new backend package:
+Use or extend the backend package:
 
 ```text
 nexus-api/app/ai_workflow/
@@ -89,15 +90,15 @@ Add `router.py` with these endpoints:
 
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
-| `POST` | `/ai-workflows` | Start a workflow from BRD, URL, project info, and model choice |
+| `POST` | `/ai-workflows` | Start a workflow from BRD, URL, project info, and default model choice |
 | `GET` | `/ai-workflows/{workflow_id}` | Poll workflow state, progress, counters, and errors |
 | `GET` | `/ai-workflows/models` | List configured providers and models |
-| `POST` | `/ai-workflows/{workflow_id}/scenarios/generate` | Generate scenarios after discovery |
+| `POST` | `/ai-workflows/{workflow_id}/scenarios/generate` | Generate scenarios after model selection |
 | `POST` | `/ai-workflows/{workflow_id}/scenarios/confirm` | Save selected scenario IDs |
 | `POST` | `/ai-workflows/{workflow_id}/testcases/generate` | Generate test cases and steps |
 | `GET` | `/ai-workflows/{workflow_id}/review` | Return final review summary |
 
-Register this router in the backend application startup with the existing API routers.
+Register this router in the backend application startup with the existing API routers. In this repo the FastAPI app applies the global `/api` prefix, so backend routes are served as `/api/ai-workflows/...`; the frontend API client can continue calling `/ai-workflows/...` if it already prepends `/api`.
 
 ### 3. Workflow State Machine
 
@@ -130,16 +131,20 @@ Each transition must be atomic and persisted. `GET /ai-workflows/{workflow_id}` 
 - progress percentage
 - current message
 - project/module/page IDs
-- element/scenario/testcase/teststep counters
+- element/scenario/test case/test step counters
 - unmapped step count
 - low-confidence locator count
 - accumulated errors
+- raw scraped candidates for the UI mini panel
+- selected candidates that were saved as Page Repository elements
 
 Frontend polling target interval: 2 seconds.
 
+Use `TESTCASES_READY` after test case persistence and `REVIEW_READY` after review data is available. `COMPLETED` is the terminal success state after the review summary is ready.
+
 ### 4. Core Schemas
 
-Implement Pydantic schemas in `schemas.py`.
+Implement Pydantic schemas in `schemas.py`. Import `BaseModel` and `Field` from Pydantic, and use `Field(default_factory=...)` for list and dict defaults.
 
 #### WorkflowCreateRequest
 
@@ -149,6 +154,7 @@ class WorkflowCreateRequest(BaseModel):
     webpage_url: str
     project_name: str
     module_name: str | None = None
+    page_name: str | None = None
     platform: str = "web"
     save_mode: str = "auto"
     ai_provider: str
@@ -166,13 +172,14 @@ class WorkflowStateResponse(BaseModel):
     project_id: str | None = None
     module_id: str | None = None
     page_id: str | None = None
+    page_name: str | None = None
     elements_saved: int = 0
-    scenarios: list[ScenarioPreview] = []
+    scenarios: list[ScenarioPreview] = Field(default_factory=list)
     testcases_created: int = 0
     teststeps_created: int = 0
     unmapped_steps: int = 0
     low_confidence_locators: int = 0
-    errors: list[str] = []
+    errors: list[str] = Field(default_factory=list)
 ```
 
 #### ScenarioPreview
@@ -215,16 +222,16 @@ class DiscoveredElement(BaseModel):
     name: str | None = None
     test_id: str | None = None
     text: str | None = None
-    css_selector: str
-    xpath: str
-    is_visible: bool
-    is_enabled: bool
-    bounding_box: dict[str, float]
-    locator_candidates: list[LocatorCandidate]
+    css_selector: str = ""
+    xpath: str = ""
+    is_visible: bool = True
+    is_enabled: bool = True
+    bounding_box: dict[str, float] = Field(default_factory=dict)
+    locator_candidates: list[LocatorCandidate] = Field(default_factory=list)
     best_locator: LocatorCandidate | None = None
     ai_suggested_name: str | None = None
     ai_suggested_action: str | None = None
-    confidence: float
+    confidence: float = 0.0
 ```
 
 #### GeneratedTestStep
@@ -240,21 +247,46 @@ class GeneratedTestStep(BaseModel):
     assertion_type: str | None = None
     expected_result: str | None = None
     test_data: dict[str, Any] | None = None
-    tags: list[str] = []
+    tags: list[str] = Field(default_factory=list)
     needs_review: bool = False
     review_reason: str | None = None
-    confidence: float
+    confidence: float = 1.0
+```
+
+#### Workflow Interaction Schemas
+
+```python
+class GenerateScenariosRequest(BaseModel):
+    ai_provider: str | None = None
+    ai_model: str | None = None
+
+
+class ScenarioConfirmRequest(BaseModel):
+    scenario_ids: list[str]
+
+
+class ModelInfo(BaseModel):
+    provider: str
+    model_id: str
+    display_name: str
+    tier: Literal["fast", "balanced", "best"]
+    best_for: str
+    configured: bool = True
 ```
 
 ### 5. AI Provider Layer
 
-Create an abstraction in `providers/base.py`:
+Create an abstraction in `providers/base.py` with a `TypeVar` bound to `BaseModel` and `AsyncIterator` imported from `collections.abc`:
 
 ```python
 class AbstractAIProvider(ABC):
     @abstractmethod
-    async def generate(self, prompt: str, schema: type[BaseModel]) -> BaseModel:
+    async def generate(self, prompt: str, schema: type[T]) -> T:
         ...
+
+    async def generate_stream(self, prompt: str, schema: type[T]) -> AsyncIterator[str]:
+        result = await self.generate(prompt, schema)
+        yield result.model_dump_json()
 ```
 
 Implement:
@@ -317,6 +349,7 @@ Environment variables:
 ```env
 MCP_PLAYWRIGHT_URL=http://localhost:3001
 PLAYWRIGHT_FALLBACK=true
+# Optional only if wired into settings and URL validation
 DISCOVERY_ALLOW_PRIVATE_NETWORK=false
 ```
 
@@ -349,18 +382,19 @@ Rules:
 1. Persist workflow with state `CREATED`.
 2. Create or reuse project through existing Test Configuration repository/API.
 3. Create or reuse module.
-4. Create or reuse page.
-5. Trigger `BrowserDiscoveryAdapter`.
-6. Rank and verify locators.
-7. Save verified elements into Page Repository.
-8. Generate scenarios only after model selection.
-9. Persist generated scenario previews.
-10. Wait for user scenario confirmation.
-11. Generate test cases only for selected scenarios.
-12. Bind generated steps to `page_id` and `page_element_id` when available.
-13. Mark missing bindings as `needs_review = true`.
-14. Build final review summary.
-15. End in `COMPLETED` or `FAILED`.
+4. Wait for explicit provider/model selection. Use the selected provider/model from `GenerateScenariosRequest`; do not silently fall back to dummy output for missing real API keys.
+5. Generate and persist scenario previews.
+6. Wait for user scenario confirmation.
+7. Generate test case and test step drafts only for selected scenarios.
+8. Create or reuse the page using the user-provided `page_name`.
+9. Trigger `BrowserDiscoveryAdapter` in preview mode.
+10. Store all scraped candidates on the workflow record for the UI mini panel.
+11. Compare generated test steps with scraped candidates and select only necessary elements.
+12. Save only selected candidates into Page Repository.
+13. Bind generated steps to `page_id` and `page_element_id` where selected elements match.
+14. Mark missing bindings as `needs_review = true`.
+15. Build final review summary.
+16. Mark `TESTCASES_READY`, `PAGE_CREATED`, `DISCOVERY_RUNNING`, `DISCOVERY_DONE`, `LOCATORS_RANKED`, `PAGE_SAVED`, `REVIEW_READY`, then end in `COMPLETED` or `FAILED`.
 
 ### 9. AI Rules Enforced In Code
 
@@ -371,7 +405,7 @@ Rules:
 - AI can generate plans, names, classifications, scenarios, test cases, and test steps.
 - AI cannot be trusted as the final locator verifier.
 - If AI references an element that does not exist in Page Repository, do not invent one. Mark the step as `needs_review = true` with reason `"element not found in page repository"`.
-- Existing manual project, module, testcase, and page configuration data must not be overwritten.
+- Existing manual project, module, test case, and page configuration data must not be overwritten.
 
 ### 10. Backend Tests
 
@@ -431,9 +465,9 @@ Always visible vertical timeline:
 
 1. Input
 2. Model Selection
-3. Discovery
-4. Scenarios
-5. Test Generation
+3. Scenarios
+4. Test Generation
+5. Selective Binding
 6. Review
 
 Each item shows:
@@ -448,8 +482,7 @@ Each item shows:
 
 Show live counters:
 
-- elements found
-- locators verified
+- verified elements saved
 - scenarios ready
 - tests created
 - steps created
@@ -469,11 +502,14 @@ Fields:
 
 - BRD textarea, large and resizable
 - BRD character count
-- BRD upload placeholder accepting `.txt`, `.pdf`, `.docx`
+- BRD upload accepting `.docx`, `.txt`, and `.md`
+- DOCX files are sent to the backend extraction endpoint and converted to plain text before workflow creation
+- PDF content must be pasted as extracted text until PDF parsing is implemented
 - webpage URL input with HTTP/HTTPS validation
 - project name input
 - reuse existing project toggle
 - module name input
+- page name input
 - auto-detect module from BRD toggle
 - platform selector: Web default, Mobile, API
 - save mode selector: Auto default, Manual review
@@ -487,122 +523,70 @@ Validation:
 - BRD text or file is required
 - URL must be valid HTTP/HTTPS
 - project name is required
+- page name is required
 
 ### 6. Step 2 - Model Selection
 
-Show after discovery and before scenario generation.
+Show before scenario generation. The user first selects a provider, then selects a configured model for that provider.
 
-Model cards:
+Provider choices:
 
-| Label | Description | Default model |
-| --- | --- | --- |
-| Fast and Cheaper | Small BRDs and quick iterations | `gpt-4o-mini` |
-| Balanced | Good reasoning and moderate cost | `claude-sonnet-4-20250514` |
-| Best Reasoning | Complex BRDs and large apps | Claude Opus or GPT-4o |
+- OpenAI
+- Anthropic
 
-Each card shows:
+If the required API key is missing, show the provider/model as unavailable and do not generate dummy scenarios.
 
-- provider label
-- model name
-- speed indicator
-- cost indicator
-- best-for description
-- select button
-- highlighted selected state with checkmark
+### 7. Step 3 - Scenario Selection
 
-CTA:
+Show scenario cards in a two-column grid.
 
-- `Generate Scenarios with <Model Name>`
+### 8. Step 4 - Test Generation Progress
 
-### 7. Step 3 - Discovery Progress
+Show a progress bar and live feed while selected scenarios become test case and test step drafts.
+
+```text
+OK  Processing Scenario: User Login - Happy Path
+OK  Test Case draft created: TC-001
+OK  Step 1 drafted: Navigate to /login
+OK  Step 2 drafted: Enter email
+OK  Step 3 drafted: Enter password
+OK  Step 4 drafted: Click Login button
+```
+
+### 9. Step 5 - Selective Scrape And Binding
+
+Show a mini panel where raw scraped candidates are staged before they become Page Repository elements:
 
 Show a terminal-style live progress feed:
 
 ```text
 [00:01] OK  Project "NexusShop" created
 [00:02] OK  Module "Checkout" created
-[00:03] OK  Page record created for https://...
-[00:04] RUN Opening browser via MCP Playwright
-[00:06] RUN Collecting DOM snapshot
-[00:08] RUN Collecting accessibility tree
-[00:11] OK  247 elements discovered
-[00:18] OK  198 locators verified
-[00:20] RUN AI classifying elements
-[00:22] OK  Elements saved to Page Repository
+[00:03] OK  Test case drafts created
+[00:04] OK  Test steps drafted
+[00:05] OK  Page record created for https://...
+[00:06] RUN Opening browser via MCP Playwright
+[00:08] RUN Collecting DOM snapshot
+[00:11] OK  247 raw candidates staged
+[00:14] RUN AI selecting elements required by test steps
+[00:18] OK  24 necessary elements saved to Page Repository
+[00:20] OK  Test steps bound to selected elements
 ```
 
-Below the log, show a searchable and paginated element table:
+Below the log, show a compact candidate panel:
 
-- Element Name
-- Tag
-- Role
-- Best Locator Strategy
-- Locator String
-- Verified
-- Confidence
+- all scraped candidates
+- selected candidates
+- selected candidate locator
+- confidence
+- match reason
+- matched test step references
 
 Confidence color:
 
 - green: `>= 0.80`
 - amber: `>= 0.50` and `< 0.80`
 - red: `< 0.50`
-
-### 8. Step 4 - Scenario Selection
-
-Show scenario cards in a two-column grid.
-
-Each card contains:
-
-- title
-- business requirement covered
-- priority badge: High, Medium, Low
-- test type badge: Functional, Regression, Smoke, E2E
-- classification badge: Positive, Negative, Edge
-- pages involved
-- estimated test case count
-- confidence bar
-- select/deselect toggle
-
-Top controls:
-
-- Select All
-- Deselect All
-- filter by priority
-- filter by test type
-- filter by classification
-- counter: `X of Y scenarios selected`
-
-CTA:
-
-- `Generate Test Cases for X Scenarios`
-- Disabled until at least one scenario is selected.
-
-### 9. Step 5 - Test Generation Progress
-
-Show a progress bar and live feed:
-
-```text
-OK  Processing Scenario: User Login - Happy Path
-OK  Test Case created: TC-001
-OK  Step 1: Navigate to /login       [page: Login, action: navigate]
-OK  Step 2: Enter email              [element: email_input, action: fill]
-OK  Step 3: Enter password           [element: password_input, action: fill]
-OK  Step 4: Click Login button       [element: login_btn, action: click]
-OK  Step 5: Assert dashboard visible [element: dashboard_header, action: assert]
-WARN Step 6: Verify toast            [needs-review: element not found]
-```
-
-Color indicators:
-
-- green: fully mapped step
-- amber: needs review
-- red: failed step
-
-Running counters:
-
-- test cases created
-- steps mapped
-- steps needing review
 
 ### 10. Step 6 - Review Dashboard
 
@@ -620,7 +604,7 @@ Summary cards:
 Two-column detail section:
 
 - Left: Needs Review Items
-  - testcase name
+  - test case name
   - step number
   - description
   - reason
@@ -636,7 +620,7 @@ CTA row:
 
 - Open in Test Configuration
 - Open Page Repository
-- Export Summary as PDF
+- Export Summary as JSON or PDF
 - Run Another Workflow
 
 ### 11. Frontend Design Rules
@@ -663,59 +647,60 @@ Required checks:
 
 ## End-To-End Data Flow
 
-1. User fills BRD, URL, and project info.
+1. User fills BRD, URL, project, module, and page info.
 2. User clicks `Start AI Workflow`.
-3. Frontend calls `POST /ai-workflows`.
+3. Frontend API client calls `POST /ai-workflows`, which resolves to backend `POST /api/ai-workflows`.
 4. Backend returns `workflow_id`.
-5. Frontend polls `GET /ai-workflows/{workflow_id}` every 2 seconds.
+5. Frontend polls `GET /ai-workflows/{workflow_id}` every 2 seconds through the same `/api` client prefix.
 6. Backend creates or reuses project.
 7. Backend creates or reuses module.
-8. Backend creates or reuses page.
-9. Backend triggers `BrowserDiscoveryAdapter`.
-10. Discovery collects DOM and accessibility context.
-11. `LocatorRankingAgent` scores candidates.
-12. Playwright/MCP verifies candidates.
-13. Backend saves verified elements to Page Repository.
-14. UI shows model selection.
-15. User selects model.
-16. Frontend calls `POST /ai-workflows/{workflow_id}/scenarios/generate`.
-17. `BRDAnalysisAgent` and `ScenarioGenerationAgent` generate scenarios.
-18. UI shows selectable scenario cards.
-19. User confirms selected scenarios.
-20. Frontend calls `POST /ai-workflows/{workflow_id}/scenarios/confirm`.
-21. Frontend calls `POST /ai-workflows/{workflow_id}/testcases/generate`.
-22. `TestCaseGenerationAgent` creates test cases.
-23. `TestStepBindingAgent` maps steps to pages/elements/test data.
+8. UI shows model selection.
+9. User selects model.
+10. Frontend calls `POST /ai-workflows/{workflow_id}/scenarios/generate`.
+11. `BRDAnalysisAgent` and `ScenarioGenerationAgent` generate scenarios.
+12. UI shows selectable scenario cards.
+13. User confirms selected scenarios.
+14. Frontend calls `POST /ai-workflows/{workflow_id}/scenarios/confirm`.
+15. Frontend calls `POST /ai-workflows/{workflow_id}/testcases/generate`.
+16. `TestCaseGenerationAgent` creates test case and test step drafts.
+17. Backend creates or reuses the named page with the user-provided page name.
+18. Backend triggers `BrowserDiscoveryAdapter` in preview mode.
+19. Discovery collects DOM and accessibility context without saving every candidate.
+20. Raw candidates are stored on the workflow for the mini panel.
+21. The binding pass selects candidates required by generated test steps.
+22. Backend saves only selected candidates to Page Repository.
+23. Generated steps are bound to selected page elements.
 24. `ReviewAndValidationAgent` flags unmapped steps and low-confidence locators.
 25. Workflow reaches `COMPLETED`.
 26. UI shows final review dashboard.
 
 ## Integration With Existing APIs
 
-Never create a parallel project/module/testcase system. AI Workflow must reuse or wrap existing repository logic.
+Never create a parallel project/module/test case system. AI Workflow must reuse or wrap existing repository logic.
 
 | Existing API/domain | AI Workflow usage |
 | --- | --- |
-| `/page-repository` | Create/reuse page records |
+| `/page-repository/pages` | Create/reuse page records |
 | `/page-repository/discover` | Trigger element discovery or call same service internally |
 | Page Repository element model | Save verified elements |
 | `/page-repository/all` | Look up pages/elements during step binding |
-| `/test-configuration/projects/` | Create/reuse project |
+| `/test-configuration/projects` | Create/reuse project |
 | `/test-configuration/projects/{project_id}/modules/` | Create/reuse module |
 | `/test-configuration/modules/{module_id}/cases/` | Create test cases |
 | `/test-configuration/cases/{case_id}/steps/` | Create test steps |
 
 ## Acceptance Criteria Checklist
 
-- [ ] User can paste BRD and URL, then start a workflow.
-- [ ] Model selector appears before scenario generation.
+- [ ] User can paste BRD and URL, provide project/module/page names, then start a workflow.
+- [ ] Model selector appears before scenario generation and requires provider selection first.
+- [ ] Workflow creation stores a default model, and scenario generation can override it with the user's selected model.
 - [ ] Page Repository receives only Playwright/MCP-verified final locators.
 - [ ] Scenario list displays metadata and supports selection.
 - [ ] Test cases are generated only for selected scenarios.
 - [ ] Generated steps include `page_id`, `action_type`, and `page_element_id` where available.
 - [ ] Unmapped steps are marked `needs_review = true` with a reason.
 - [ ] Low-confidence locators are shown in the Review Dashboard.
-- [ ] Existing manual project/module/testcase/page data is not overwritten.
+- [ ] Existing manual project/module/test case/page data is not overwritten.
 - [ ] Backend Python compile check passes.
 - [ ] Frontend build passes.
 
@@ -741,10 +726,9 @@ Never create a parallel project/module/testcase system. AI Workflow must reuse o
 6. Add locator ranking and verified-element save path.
 7. Add scenario generation with `NullProvider`, then real providers.
 8. Add scenario confirmation.
-9. Add testcase/teststep generation and binding.
+9. Add test case/test step generation and binding.
 10. Add review summary.
 11. Build `/ai-workflow` frontend page.
 12. Add model selector, polling, scenario selection, generation feed, and review dashboard.
 13. Add tests.
 14. Run backend compile check and frontend build.
-

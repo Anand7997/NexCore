@@ -8,9 +8,11 @@ Startup sequence:
 4. Mount API routers
 """
 from __future__ import annotations
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from typing import Any
+from urllib.parse import urlparse
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -64,14 +66,18 @@ async def _init_intelligence() -> None:
     except Exception as exc:
         logger.warning("Qdrant init skipped (unavailable): %s", exc)
 
-    # Embedding model — trigger lazy load so first real request isn't slow
-    try:
-        from app.intelligence.embeddings import get_embedding_service
-        svc = get_embedding_service()
-        await svc.embed("warmup")
-        logger.info("Embedding model ready (%s)", getattr(svc, "_model_name", "unknown"))
-    except Exception as exc:
-        logger.warning("Embedding warmup skipped: %s", exc)
+    # Embedding model warmup is opt-in so health checks are not blocked by
+    # local model loading.
+    if settings.warmup_embeddings_on_startup:
+        try:
+            from app.intelligence.embeddings import get_embedding_service
+            svc = get_embedding_service()
+            await svc.embed("warmup")
+            logger.info("Embedding model ready (%s)", getattr(svc, "_model_name", "unknown"))
+        except Exception as exc:
+            logger.warning("Embedding warmup skipped: %s", exc)
+    else:
+        logger.info("Embedding warmup skipped (WARMUP_EMBEDDINGS_ON_STARTUP=false)")
 
 
 async def _start_nats_bridge(bus: Any) -> None:
@@ -84,12 +90,24 @@ async def _start_nats_bridge(bus: Any) -> None:
     from app.events.types import AIJobCompleted, AIJobProgress
 
     try:
+        parsed = urlparse(settings.nats_url)
+        host = parsed.hostname or "localhost"
+        port = parsed.port or 4222
+        reader, writer = await asyncio.wait_for(
+            asyncio.open_connection(host, port),
+            timeout=1.0,
+        )
+        writer.close()
+        await writer.wait_closed()
+
         import nats as nats_lib
-        from app.config import settings
-        nc = await nats_lib.connect(
-            settings.nats_url,
-            allow_reconnect=False,
-            connect_timeout=2,
+        nc = await asyncio.wait_for(
+            nats_lib.connect(
+                settings.nats_url,
+                allow_reconnect=False,
+                connect_timeout=2,
+            ),
+            timeout=3.0,
         )
 
         async def _on_progress(msg: Any) -> None:

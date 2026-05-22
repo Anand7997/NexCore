@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.ai_workflow.state import WorkflowState
 
@@ -12,10 +12,42 @@ class WorkflowCreateRequest(BaseModel):
     webpage_url: str
     project_name: str
     module_name: str | None = None
+    page_name: str | None = None
     platform: str = "web"
     save_mode: str = "auto"
     ai_provider: str
     ai_model: str
+
+    @field_validator("brd_text")
+    @classmethod
+    def validate_brd_text(cls, value: str) -> str:
+        if "\x00" in value or value.startswith(("PK\x03\x04", "%PDF")):
+            raise ValueError(
+                "BRD text appears to contain binary file data. Upload or paste plain text."
+            )
+        return value
+
+    @field_validator(
+        "webpage_url",
+        "project_name",
+        "module_name",
+        "page_name",
+        "platform",
+        "save_mode",
+        "ai_provider",
+        "ai_model",
+    )
+    @classmethod
+    def reject_null_bytes(cls, value: str | None) -> str | None:
+        if isinstance(value, str) and "\x00" in value:
+            raise ValueError("Text fields cannot contain null bytes.")
+        return value
+
+
+class BrdExtractResponse(BaseModel):
+    filename: str
+    text: str
+    characters: int
 
 
 class ScenarioPreview(BaseModel):
@@ -31,6 +63,28 @@ class ScenarioPreview(BaseModel):
     selected: bool = False
 
 
+class WorkflowActivityItem(BaseModel):
+    timestamp: str
+    state: str
+    message: str
+    detail: str | None = None
+
+
+class ScrapedCandidatePreview(BaseModel):
+    candidate_id: str
+    name: str
+    element_type: str = "element"
+    locator_strategy: str = "xpath"
+    best_locator: str = ""
+    xpath: str = ""
+    css_selector: str = ""
+    confidence_score: float = 0.0
+    tags: list[str] = []
+    selected: bool = False
+    match_reason: str | None = None
+    matched_steps: list[str] = []
+
+
 class WorkflowStateResponse(BaseModel):
     workflow_id: str
     state: WorkflowState
@@ -39,6 +93,7 @@ class WorkflowStateResponse(BaseModel):
     project_id: str | None = None
     module_id: str | None = None
     page_id: str | None = None
+    page_name: str | None = None
     elements_saved: int = 0
     scenarios: list[ScenarioPreview] = []
     testcases_created: int = 0
@@ -46,6 +101,9 @@ class WorkflowStateResponse(BaseModel):
     unmapped_steps: int = 0
     low_confidence_locators: int = 0
     errors: list[str] = []
+    activity_log: list[WorkflowActivityItem] = []
+    scraped_candidates: list[ScrapedCandidatePreview] = []
+    selected_elements: list[ScrapedCandidatePreview] = []
 
 
 class LocatorCandidate(BaseModel):
@@ -104,11 +162,15 @@ class GenerateScenariosRequest(BaseModel):
 
 
 class ModelInfo(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
     provider: str
     model_id: str
     display_name: str
     tier: Literal["fast", "balanced", "best"]
     best_for: str
+    configured: bool = True
+    setup_hint: str | None = None
 
 
 class ModelsResponse(BaseModel):

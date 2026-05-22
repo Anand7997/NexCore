@@ -9,6 +9,7 @@ from typing import TypeVar
 from pydantic import BaseModel, ValidationError
 
 from app.ai_workflow.providers.base import AbstractAIProvider
+from app.ai_workflow.providers.http_client import build_async_http_client
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,7 @@ class ClaudeProvider(AbstractAIProvider):
         self._api_key = api_key
         self._model = model
         self._client = None  # lazy-initialised on first use
+        self._http_client = None
 
     def _get_client(self):
         if self._client is None:
@@ -34,7 +36,13 @@ class ClaudeProvider(AbstractAIProvider):
                 import anthropic  # type: ignore[import]
             except ImportError as exc:
                 raise RuntimeError("anthropic package is required for ClaudeProvider") from exc
-            self._client = anthropic.AsyncAnthropic(api_key=self._api_key)
+            self._http_client = build_async_http_client()
+            self._client = anthropic.AsyncAnthropic(
+                api_key=self._api_key,
+                http_client=self._http_client,
+                timeout=120,
+                max_retries=1,
+            )
         return self._client
 
     def _build_system_block(self, schema: type[T]) -> list[dict]:

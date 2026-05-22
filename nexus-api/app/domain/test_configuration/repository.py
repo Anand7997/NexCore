@@ -1,15 +1,26 @@
 """Async repository for Test Configuration persistence."""
 from __future__ import annotations
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.ai_workflow.models import AIWorkflowModel
 from app.database.models import (
+    ApiCollectionModel,
+    ApiEndpointModel,
+    ArtifactModel,
+    ExecutionModel,
+    ExecutionStepResultModel,
+    ExecutionTestCaseResultModel,
+    PageElementModel,
+    PageRepositoryModel,
     TestCaseModel,
     TestModuleModel,
     TestProjectModel,
     TestStepModel,
+    WorkflowModel,
+    WorkflowNodeModel,
 )
 from app.domain.test_configuration.schemas import (
     TestCaseCreateSchema,
@@ -90,6 +101,8 @@ class TestConfigurationRepository:
         project = await self.db.get(TestProjectModel, project_id)
         if project is None:
             return False
+        module_ids = await self._module_ids_for_project(project_id)
+        await self._cleanup_delete_dependencies(project_id=project_id, module_ids=module_ids)
         await self.db.delete(project)
         await self.db.commit()
         return True
@@ -134,9 +147,227 @@ class TestConfigurationRepository:
         module = await self.db.get(TestModuleModel, module_id)
         if module is None:
             return False
+        await self._cleanup_delete_dependencies(project_id=None, module_ids=[module_id])
         await self.db.delete(module)
         await self.db.commit()
         return True
+
+    async def _module_ids_for_project(self, project_id: str) -> list[str]:
+        result = await self.db.execute(
+            select(TestModuleModel.id).where(TestModuleModel.project_id == project_id)
+        )
+        return list(result.scalars().all())
+
+    async def _cleanup_delete_dependencies(
+        self,
+        *,
+        project_id: str | None,
+        module_ids: list[str],
+    ) -> None:
+        case_ids = await self._case_ids_for_modules(module_ids)
+        step_ids = await self._step_ids_for_cases(case_ids)
+        await self._clear_case_step_references(case_ids, step_ids)
+        await self._delete_page_repository_records(project_id=project_id, module_ids=module_ids)
+        await self._delete_api_collection_records(project_id=project_id, module_ids=module_ids)
+        await self._clear_project_module_references(project_id=project_id, module_ids=module_ids)
+
+    async def _case_ids_for_modules(self, module_ids: list[str]) -> list[str]:
+        if not module_ids:
+            return []
+        result = await self.db.execute(
+            select(TestCaseModel.id).where(TestCaseModel.module_id.in_(module_ids))
+        )
+        return list(result.scalars().all())
+
+    async def _step_ids_for_cases(self, case_ids: list[str]) -> list[str]:
+        if not case_ids:
+            return []
+        result = await self.db.execute(
+            select(TestStepModel.id).where(TestStepModel.test_case_id.in_(case_ids))
+        )
+        return list(result.scalars().all())
+
+    async def _clear_case_step_references(
+        self,
+        case_ids: list[str],
+        step_ids: list[str],
+    ) -> None:
+        if case_ids:
+            result_ids = await self._ids(
+                select(ExecutionTestCaseResultModel.id)
+                .where(ExecutionTestCaseResultModel.test_case_id.in_(case_ids))
+            )
+            await self.db.execute(
+                update(WorkflowNodeModel)
+                .where(WorkflowNodeModel.test_case_id.in_(case_ids))
+                .values(test_case_id=None)
+                .execution_options(synchronize_session=False)
+            )
+            await self.db.execute(
+                update(ArtifactModel)
+                .where(ArtifactModel.test_case_id.in_(case_ids))
+                .values(test_case_id=None)
+                .execution_options(synchronize_session=False)
+            )
+            step_result_filters = [ExecutionStepResultModel.test_case_id.in_(case_ids)]
+            if step_ids:
+                step_result_filters.append(ExecutionStepResultModel.test_step_id.in_(step_ids))
+            if result_ids:
+                step_result_filters.append(
+                    ExecutionStepResultModel.test_case_result_id.in_(result_ids)
+                )
+            await self.db.execute(
+                delete(ExecutionStepResultModel)
+                .where(or_(*step_result_filters))
+                .execution_options(synchronize_session=False)
+            )
+            await self.db.execute(
+                delete(ExecutionTestCaseResultModel)
+                .where(ExecutionTestCaseResultModel.test_case_id.in_(case_ids))
+                .execution_options(synchronize_session=False)
+            )
+        if step_ids:
+            await self.db.execute(
+                update(ArtifactModel)
+                .where(ArtifactModel.test_step_id.in_(step_ids))
+                .values(test_step_id=None)
+                .execution_options(synchronize_session=False)
+            )
+
+    async def _delete_page_repository_records(
+        self,
+        *,
+        project_id: str | None,
+        module_ids: list[str],
+    ) -> None:
+        page_filter = self._project_module_filter(PageRepositoryModel, project_id, module_ids)
+        if page_filter is None:
+            return
+        page_ids = await self._ids(select(PageRepositoryModel.id).where(page_filter))
+        if not page_ids:
+            return
+        element_ids = await self._ids(
+            select(PageElementModel.id).where(PageElementModel.page_id.in_(page_ids))
+        )
+        await self.db.execute(
+            update(TestStepModel)
+            .where(TestStepModel.page_id.in_(page_ids))
+            .values(page_id=None)
+            .execution_options(synchronize_session=False)
+        )
+        await self.db.execute(
+            update(ExecutionStepResultModel)
+            .where(ExecutionStepResultModel.page_id.in_(page_ids))
+            .values(page_id=None)
+            .execution_options(synchronize_session=False)
+        )
+        await self.db.execute(
+            update(AIWorkflowModel)
+            .where(AIWorkflowModel.page_id.in_(page_ids))
+            .values(page_id=None)
+            .execution_options(synchronize_session=False)
+        )
+        if element_ids:
+            await self.db.execute(
+                update(TestStepModel)
+                .where(TestStepModel.page_element_id.in_(element_ids))
+                .values(page_element_id=None)
+                .execution_options(synchronize_session=False)
+            )
+            await self.db.execute(
+                update(ExecutionStepResultModel)
+                .where(ExecutionStepResultModel.page_element_id.in_(element_ids))
+                .values(page_element_id=None)
+                .execution_options(synchronize_session=False)
+            )
+        await self.db.execute(
+            delete(PageElementModel)
+            .where(PageElementModel.page_id.in_(page_ids))
+            .execution_options(synchronize_session=False)
+        )
+        await self.db.execute(
+            delete(PageRepositoryModel)
+            .where(PageRepositoryModel.id.in_(page_ids))
+            .execution_options(synchronize_session=False)
+        )
+
+    async def _delete_api_collection_records(
+        self,
+        *,
+        project_id: str | None,
+        module_ids: list[str],
+    ) -> None:
+        collection_filter = self._project_module_filter(ApiCollectionModel, project_id, module_ids)
+        if collection_filter is None:
+            return
+        collection_ids = await self._ids(select(ApiCollectionModel.id).where(collection_filter))
+        if not collection_ids:
+            return
+        endpoint_ids = await self._ids(
+            select(ApiEndpointModel.id).where(ApiEndpointModel.api_collection_id.in_(collection_ids))
+        )
+        if endpoint_ids:
+            await self.db.execute(
+                update(TestStepModel)
+                .where(TestStepModel.api_endpoint_id.in_(endpoint_ids))
+                .values(api_endpoint_id=None)
+                .execution_options(synchronize_session=False)
+            )
+            await self.db.execute(
+                update(ExecutionStepResultModel)
+                .where(ExecutionStepResultModel.api_endpoint_id.in_(endpoint_ids))
+                .values(api_endpoint_id=None)
+                .execution_options(synchronize_session=False)
+            )
+        await self.db.execute(
+            delete(ApiEndpointModel)
+            .where(ApiEndpointModel.api_collection_id.in_(collection_ids))
+            .execution_options(synchronize_session=False)
+        )
+        await self.db.execute(
+            delete(ApiCollectionModel)
+            .where(ApiCollectionModel.id.in_(collection_ids))
+            .execution_options(synchronize_session=False)
+        )
+
+    async def _clear_project_module_references(
+        self,
+        *,
+        project_id: str | None,
+        module_ids: list[str],
+    ) -> None:
+        values: dict[str, None] = {}
+        if project_id is not None:
+            values["project_id"] = None
+        if module_ids:
+            values["module_id"] = None
+        if not values:
+            return
+        for model in (WorkflowModel, ExecutionModel, ExecutionTestCaseResultModel, AIWorkflowModel):
+            model_filter = self._project_module_filter(model, project_id, module_ids)
+            if model_filter is None:
+                continue
+            await self.db.execute(
+                update(model)
+                .where(model_filter)
+                .values(**values)
+                .execution_options(synchronize_session=False)
+            )
+
+    async def _ids(self, query) -> list[str]:
+        result = await self.db.execute(query)
+        return list(result.scalars().all())
+
+    @staticmethod
+    def _project_module_filter(model, project_id: str | None, module_ids: list[str]):
+        criteria = []
+        if project_id is not None:
+            criteria.append(model.project_id == project_id)
+        if module_ids:
+            criteria.append(model.module_id.in_(module_ids))
+        if not criteria:
+            return None
+        return or_(*criteria)
 
     async def create_test_case(
         self, module_id: str, schema: TestCaseCreateSchema

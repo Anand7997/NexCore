@@ -27,6 +27,7 @@ class AIWorkflowModel(Base):
     webpage_url: Mapped[str] = mapped_column(String(2048), default="")
     project_name: Mapped[str] = mapped_column(String(255), default="")
     module_name: Mapped[str] = mapped_column(String(255), default="")
+    page_name: Mapped[str] = mapped_column(String(255), default="")
     platform: Mapped[str] = mapped_column(String(50), default="web")
     save_mode: Mapped[str] = mapped_column(String(20), default="auto")
     ai_provider: Mapped[str] = mapped_column(String(50), default="")
@@ -50,6 +51,9 @@ class AIWorkflowModel(Base):
     low_confidence_locators: Mapped[int] = mapped_column(Integer, default=0)
     errors: Mapped[list[str]] = mapped_column(JSON, default=list)
 
+    activity_log: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    scraped_candidates: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    selected_elements: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
     review_data: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

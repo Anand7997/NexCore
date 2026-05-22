@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>NEXUS QA — Design Direction</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+  *{margin:0;padding:0;box-sizing:border-box}
+  :root{--neon-violet:#8b5cf6;--neon-cyan:#06b6d4;--neon-blue:#3b82f6;--neon-green:#10b981;--neon-amber:#f59e0b}
+  body{background:#050508;color:#e2e8f0;font-family:'Inter',sans-serif;min-height:100vh;padding:32px 24px 80px}
+
+  .header{text-align:center;margin-bottom:48px}
+  .header h1{font-size:13px;font-family:'JetBrains Mono',monospace;letter-spacing:.2em;color:#8b5cf6;text-transform:uppercase;margin-bottom:12px}
+  .header h2{font-size:28px;font-weight:800;background:linear-gradient(135deg,#fff 0%,#8b5cf6 50%,#06b6d4 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:8px}
+  .header p{color:#64748b;font-size:14px;max-width:520px;margin:0 auto;line-height:1.6}
+
+  .grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;max-width:1200px;margin:0 auto}
+
+  .direction{border-radius:16px;overflow:hidden;cursor:pointer;transition:transform .3s cubic-bezier(.22,.61,.36,1),box-shadow .3s;position:relative;border:1px solid rgba(255,255,255,.06)}
+  .direction:hover{transform:translateY(-4px) scale(1.01)}
+  .direction.selected{border-color:#8b5cf6;box-shadow:0 0 0 2px #8b5cf6,0 20px 60px rgba(139,92,246,.25)}
+
+  .direction-preview{height:340px;position:relative;overflow:hidden}
+  .direction-info{padding:20px;background:rgba(15,15,25,.9)}
+  .direction-info h3{font-size:16px;font-weight:700;margin-bottom:6px;color:#f1f5f9}
+  .direction-info p{font-size:12px;color:#64748b;line-height:1.6}
+  .direction-tag{display:inline-block;padding:3px 10px;border-radius:99px;font-size:10px;font-family:'JetBrains Mono',monospace;font-weight:700;letter-spacing:.1em;margin-top:10px;text-transform:uppercase}
+
+  /* === OPTION A: ANTIGRAVITY GLASS === */
+  .preview-a{background:radial-gradient(ellipse at 30% 20%,rgba(139,92,246,.15) 0%,transparent 60%),radial-gradient(ellipse at 70% 80%,rgba(6,182,212,.12) 0%,transparent 60%),#07070f}
+  .a-orb{position:absolute;border-radius:50%;filter:blur(40px);animation:orb-float 4s ease-in-out infinite}
+  .a-orb-1{width:160px;height:160px;background:rgba(139,92,246,.35);top:-30px;left:30px;animation-delay:0s}
+  .a-orb-2{width:120px;height:120px;background:rgba(6,182,212,.3);bottom:20px;right:20px;animation-delay:-2s}
+  .a-orb-3{width:80px;height:80px;background:rgba(59,130,246,.25);top:50%;left:50%;animation-delay:-1s}
+  @keyframes orb-float{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-14px) scale(1.05)}}
+
+  .a-card{position:absolute;border-radius:14px;backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);box-shadow:0 8px 32px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.08)}
+  .a-card-1{width:200px;height:90px;top:24px;left:20px;padding:14px;animation:card-float 5s ease-in-out infinite}
+  .a-card-2{width:160px;height:70px;top:130px;right:16px;padding:12px;animation:card-float 4s ease-in-out infinite;animation-delay:-1.5s}
+  .a-card-3{width:220px;height:80px;bottom:60px;left:30px;padding:12px;animation:card-float 6s ease-in-out infinite;animation-delay:-3s}
+  @keyframes card-float{0%,100%{transform:translateY(0) rotate(0deg)}50%{transform:translateY(-8px) rotate(.5deg)}}
+
+  .a-metric-label{font-family:'JetBrains Mono',monospace;font-size:9px;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.12em;margin-bottom:6px}
+  .a-metric-val{font-size:22px;font-weight:800;background:linear-gradient(135deg,#fff,#8b5cf6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+  .a-metric-val.cyan{background:linear-gradient(135deg,#fff,#06b6d4);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+  .a-metric-val.green{background:linear-gradient(135deg,#fff,#10b981);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+  .a-metric-sub{font-size:10px;color:rgba(255,255,255,.3);margin-top:2px}
+  .a-glow-ring{position:absolute;border-radius:50%;border:1px solid rgba(139,92,246,.3);animation:ring-pulse 3s ease-in-out infinite}
+  .a-glow-ring-1{width:80px;height:80px;top:140px;left:50%;transform:translateX(-50%);animation-delay:0s}
+  .a-glow-ring-2{width:110px;height:110px;top:127px;left:50%;transform:translateX(-50%);animation-delay:.5s;opacity:.5}
+  @keyframes ring-pulse{0%,100%{opacity:.6;transform:translateX(-50%) scale(1)}50%{opacity:.2;transform:translateX(-50%) scale(1.1)}}
+  .a-center-dot{position:absolute;width:32px;height:32px;top:150px;left:50%;transform:translateX(-50%);border-radius:50%;background:linear-gradient(135deg,#8b5cf6,#06b6d4);box-shadow:0 0 20px rgba(139,92,246,.6);animation:dot-pulse 2s ease-in-out infinite}
+  @keyframes dot-pulse{0%,100%{box-shadow:0 0 20px rgba(139,92,246,.6)}50%{box-shadow:0 0 40px rgba(139,92,246,.9),0 0 80px rgba(139,92,246,.3)}}
+  .a-particles{position:absolute;inset:0;overflow:hidden;pointer-events:none}
+  .a-particle{position:absolute;width:2px;height:2px;border-radius:50%;background:#8b5cf6;animation:particle-drift linear infinite}
+  @keyframes particle-drift{0%{opacity:0;transform:translateY(0)}20%{opacity:.8}100%{opacity:0;transform:translateY(-200px)}}
+
+  /* === OPTION B: NEURAL MATRIX === */
+  .preview-b{background:#030308;overflow:hidden}
+  .b-grid{position:absolute;inset:0;background-image:linear-gradient(rgba(59,130,246,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(59,130,246,.06) 1px,transparent 1px);background-size:32px 32px}
+  .b-scanline{position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,rgba(6,182,212,.6),transparent);animation:scan 3s linear infinite}
+  @keyframes scan{0%{top:0;opacity:.8}100%{top:100%;opacity:0}}
+  .b-node{position:absolute;border-radius:50%;display:flex;align-items:center;justify-content:center}
+  .b-node-inner{border-radius:50%;animation:node-glow 2s ease-in-out infinite}
+  @keyframes node-glow{0%,100%{box-shadow:0 0 8px currentColor}50%{box-shadow:0 0 20px currentColor,0 0 40px currentColor}}
+  .b-n1{width:50px;height:50px;top:30px;left:50%;transform:translateX(-50%)}
+  .b-n1 .b-node-inner{width:20px;height:20px;background:#06b6d4;color:#06b6d4}
+  .b-n2{width:40px;height:40px;top:120px;left:25%}
+  .b-n2 .b-node-inner{width:14px;height:14px;background:#8b5cf6;color:#8b5cf6}
+  .b-n3{width:40px;height:40px;top:120px;right:25%}
+  .b-n3 .b-node-inner{width:14px;height:14px;background:#3b82f6;color:#3b82f6}
+  .b-n4{width:36px;height:36px;top:210px;left:20%}
+  .b-n4 .b-node-inner{width:12px;height:12px;background:#10b981;color:#10b981}
+  .b-n5{width:36px;height:36px;top:210px;right:20%}
+  .b-n5 .b-node-inner{width:12px;height:12px;background:#f59e0b;color:#f59e0b}
+  svg.b-lines{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+  .b-line{stroke-dasharray:4 4;stroke-dashoffset:0;animation:dash-flow 2s linear infinite}
+  @keyframes dash-flow{to{stroke-dashoffset:-16}}
+  .b-panel{position:absolute;bottom:16px;left:12px;right:12px;background:rgba(3,5,20,.9);border:1px solid rgba(6,182,212,.2);border-radius:8px;padding:12px;font-family:'JetBrains Mono',monospace}
+  .b-panel-row{display:flex;justify-content:space-between;font-size:9px;margin-bottom:5px;color:#94a3b8}
+  .b-panel-row span:last-child{color:#06b6d4}
+  .b-badge{display:inline-block;padding:2px 8px;border-radius:3px;font-size:8px;text-transform:uppercase;letter-spacing:.1em;font-family:'JetBrains Mono',monospace}
+
+  /* === OPTION C: QUANTUM VOID === */
+  .preview-c{background:#020204}
+  .c-line{position:absolute;background:linear-gradient(90deg,transparent,rgba(139,92,246,.5),transparent);height:1px;animation:c-sweep 4s ease-in-out infinite}
+  .c-line-1{top:80px;left:0;right:0;animation-delay:0s}
+  .c-line-2{top:160px;left:0;right:0;animation-delay:-1.3s;background:linear-gradient(90deg,transparent,rgba(6,182,212,.4),transparent)}
+  .c-line-3{top:240px;left:0;right:0;animation-delay:-2.6s;background:linear-gradient(90deg,transparent,rgba(59,130,246,.3),transparent)}
+  @keyframes c-sweep{0%,100%{opacity:0;transform:scaleX(.5)}50%{opacity:1;transform:scaleX(1)}}
+  .c-block{position:absolute;border-left:2px solid}
+  .c-b1{top:20px;left:16px;right:60px;padding-left:12px;border-color:#8b5cf6}
+  .c-b2{top:100px;left:60px;right:16px;padding-left:12px;border-color:#06b6d4}
+  .c-b3{top:180px;left:16px;width:180px;padding-left:12px;border-color:#3b82f6}
+  .c-label{font-family:'JetBrains Mono',monospace;font-size:8px;text-transform:uppercase;letter-spacing:.15em;margin-bottom:4px}
+  .c-val{font-size:20px;font-weight:700;letter-spacing:-.02em;color:#f8fafc}
+  .c-sub{font-size:9px;color:#475569;margin-top:2px;font-family:'JetBrains Mono',monospace}
+  .c-chart{position:absolute;bottom:0;left:0;right:0;height:100px;overflow:hidden}
+  .c-bar{position:absolute;bottom:0;width:18px;border-radius:3px 3px 0 0;transition:height .3s}
+  .c-cursor{position:absolute;width:1px;background:#8b5cf6;box-shadow:0 0 8px #8b5cf6;animation:c-blink 1s step-end infinite}
+  @keyframes c-blink{0%,100%{opacity:1}50%{opacity:0}}
+
+  /* Selected state */
+  .select-indicator{display:none;position:absolute;top:12px;right:12px;width:28px;height:28px;border-radius:50%;background:#8b5cf6;align-items:center;justify-content:center;font-size:14px;color:white;z-index:10}
+  .direction.selected .select-indicator{display:flex}
+
+  .cta{text-align:center;margin-top:40px;color:#475569;font-size:13px}
+  .cta strong{color:#8b5cf6}
+
+  .tag-a{background:rgba(139,92,246,.15);color:#a78bfa;border:1px solid rgba(139,92,246,.3)}
+  .tag-b{background:rgba(6,182,212,.12);color:#67e8f9;border:1px solid rgba(6,182,212,.25)}
+  .tag-c{background:rgba(248,250,252,.06);color:#94a3b8;border:1px solid rgba(248,250,252,.1)}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.2em;color:#8b5cf6;text-transform:uppercase;margin-bottom:12px">NEXUS QA — UI REDESIGN</div>
+  <h2>Which design direction speaks to you?</h2>
+  <p style="color:#64748b;font-size:14px;max-width:520px;margin:12px auto 0;line-height:1.6">All three use your existing stack — framer-motion, Tailwind v4, shadcn primitives, 3D Spline, Radial Orbital. Pick the aesthetic that fits the platform's personality.</p>
+</div>
+
+<div class="grid">
+
+  <!-- OPTION A: ANTIGRAVITY GLASS -->
+  <div class="direction" id="opt-a" onclick="select('a')">
+    <div class="select-indicator">✓</div>
+    <div class="direction-preview preview-a">
+      <div class="a-orb a-orb-1"></div>
+      <div class="a-orb a-orb-2"></div>
+      <div class="a-orb a-orb-3"></div>
+      <div class="a-particles">
+        <div class="a-particle" style="left:15%;animation-duration:3s;animation-delay:0s"></div>
+        <div class="a-particle" style="left:30%;animation-duration:4s;animation-delay:-.8s;background:#06b6d4"></div>
+        <div class="a-particle" style="left:55%;animation-duration:2.5s;animation-delay:-1.6s"></div>
+        <div class="a-particle" style="left:72%;animation-duration:3.5s;animation-delay:-.3s;background:#3b82f6"></div>
+        <div class="a-particle" style="left:85%;animation-duration:2.8s;animation-delay:-2.1s"></div>
+      </div>
+      <!-- Floating glass cards -->
+      <div class="a-card a-card-1">
+        <div class="a-metric-label">Active Executions</div>
+        <div class="a-metric-val">47</div>
+        <div class="a-metric-sub">↑ 12 since last hour</div>
+      </div>
+      <div class="a-card a-card-2">
+        <div class="a-metric-label">Success Rate</div>
+        <div class="a-metric-val cyan">98.4%</div>
+        <div class="a-metric-sub">▲ 0.3%</div>
+      </div>
+      <div class="a-card a-card-3">
+        <div class="a-metric-label">AI Recoveries</div>
+        <div class="a-metric-val green">124</div>
+        <div class="a-metric-sub">Auto-healed this session</div>
+      </div>
+      <!-- Center pulse orb -->
+      <div class="a-glow-ring a-glow-ring-1"></div>
+      <div class="a-glow-ring a-glow-ring-2"></div>
+      <div class="a-center-dot"></div>
+    </div>
+    <div class="direction-info">
+      <h3>A — Antigravity Glass</h3>
+      <p>Floating glass cards with aurora glow orbs, particle drift, 3D depth layers. Cards levitate with physics-based spring animation. Orbital timeline for AI workflow phases. Spline 3D robot in hero.</p>
+      <div class="direction-tag tag-a">Recommended · Most Visual Impact</div>
+    </div>
+  </div>
+
+  <!-- OPTION B: NEURAL MATRIX -->
+  <div class="direction" id="opt-b" onclick="select('b')">
+    <div class="select-indicator">✓</div>
+    <div class="direction-preview preview-b">
+      <div class="b-grid"></div>
+      <div class="b-scanline"></div>
+      <svg class="b-lines" viewBox="0 0 300 340" preserveAspectRatio="none">
+        <line class="b-line" x1="150" y1="55" x2="88" y2="125" stroke="#06b6d4" stroke-width="1" opacity=".5"/>
+        <line class="b-line" x1="150" y1="55" x2="212" y2="125" stroke="#06b6d4" stroke-width="1" opacity=".5" style="animation-delay:-.5s"/>
+        <line class="b-line" x1="88" y1="139" x2="68" y2="210" stroke="#8b5cf6" stroke-width="1" opacity=".4" style="animation-delay:-1s"/>
+        <line class="b-line" x1="212" y1="139" x2="232" y2="210" stroke="#3b82f6" stroke-width="1" opacity=".4" style="animation-delay:-.8s"/>
+        <line class="b-line" x1="88" y1="139" x2="232" y2="210" stroke="#64748b" stroke-width=".5" opacity=".2" style="animation-delay:-1.5s"/>
+      </svg>
+      <div class="b-node b-n1"><div class="b-node-inner"></div></div>
+      <div class="b-node b-n2"><div class="b-node-inner"></div></div>
+      <div class="b-node b-n3"><div class="b-node-inner"></div></div>
+      <div class="b-node b-n4"><div class="b-node-inner"></div></div>
+      <div class="b-node b-n5"><div class="b-node-inner"></div></div>
+      <div class="b-panel">
+        <div class="b-panel-row"><span>WORKFLOW_ID</span><span>wf_8f3a2d</span></div>
+        <div class="b-panel-row"><span>STATUS</span><span style="color:#10b981">EXECUTING</span></div>
+        <div class="b-panel-row"><span>NODES</span><span>3/7 complete</span></div>
+        <div class="b-panel-row"><span>AI_CONFIDENCE</span><span>97.2%</span></div>
+      </div>
+    </div>
+    <div class="direction-info">
+      <h3>B — Neural Matrix</h3>
+      <p>Circuit-board grid, animated node graph, scan-line effects. Every interaction looks like signal traversal through a neural network. Data surfaces via monospace terminal panels with live dash-flow animations.</p>
+      <div class="direction-tag tag-b">High Technical Aesthetic</div>
+    </div>
+  </div>
+
+  <!-- OPTION C: QUANTUM VOID -->
+  <div class="direction" id="opt-c" onclick="select('c')">
+    <div class="select-indicator">✓</div>
+    <div class="direction-preview preview-c">
+      <div class="c-line c-line-1"></div>
+      <div class="c-line c-line-2"></div>
+      <div class="c-line c-line-3"></div>
+      <div class="c-block c-b1">
+        <div class="c-label" style="color:#a78bfa">EXECUTION STATUS</div>
+        <div class="c-val">LIVE</div>
+        <div class="c-sub">47 active · 3 queued</div>
+      </div>
+      <div class="c-block c-b2">
+        <div class="c-label" style="color:#67e8f9">INTELLIGENCE</div>
+        <div class="c-val">98.4%</div>
+        <div class="c-sub">AI confidence score</div>
+      </div>
+      <div class="c-block c-b3">
+        <div class="c-label" style="color:#93c5fd">AGENTS ONLINE</div>
+        <div class="c-val">12</div>
+        <div class="c-sub">+3 provisioned</div>
+      </div>
+      <div class="c-chart">
+        <div class="c-bar" style="left:5%;height:60%;background:rgba(139,92,246,.6)"></div>
+        <div class="c-bar" style="left:12%;height:80%;background:rgba(139,92,246,.8)"></div>
+        <div class="c-bar" style="left:19%;height:45%;background:rgba(139,92,246,.5)"></div>
+        <div class="c-bar" style="left:26%;height:90%;background:rgba(139,92,246,.9)"></div>
+        <div class="c-bar" style="left:33%;height:70%;background:rgba(6,182,212,.7)"></div>
+        <div class="c-bar" style="left:40%;height:55%;background:rgba(6,182,212,.5)"></div>
+        <div class="c-bar" style="left:47%;height:85%;background:rgba(6,182,212,.8)"></div>
+        <div class="c-bar" style="left:54%;height:40%;background:rgba(139,92,246,.5)"></div>
+        <div class="c-bar" style="left:61%;height:95%;background:rgba(139,92,246,.9);box-shadow:0 0 8px #8b5cf6"></div>
+        <div class="c-cursor" style="left:calc(61% + 20px);bottom:0;height:95%"></div>
+      </div>
+    </div>
+    <div class="direction-info">
+      <h3>C — Quantum Void</h3>
+      <p>Surgical precision on pure black. Colored left-border data blocks, razor-thin sweep lines, minimal animated charts. Form follows function — every pixel carries meaning. No decoration, maximum density.</p>
+      <div class="direction-tag tag-c">Maximum Density · Minimal Chrome</div>
+    </div>
+  </div>
+
+</div>
+
+<div class="cta">Click a card to select it, then type your choice in the terminal. <strong>You can also mix elements</strong> — e.g. "A with B's node graph style".</div>
+
+<script>
+function select(id){
+  document.querySelectorAll('.direction').forEach(d=>d.classList.remove('selected'));
+  document.getElementById('opt-'+id).classList.add('selected');
+  if(window.__recordChoice)window.__recordChoice(id,'Option '+id.toUpperCase());
+}
+</script>
+
+</body>
+</html>

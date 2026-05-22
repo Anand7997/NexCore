@@ -207,6 +207,9 @@ async def _verify_locator(page: Any, strategy: str, locator: str) -> dict[str, A
                 loc = page.get_by_role(match.group(1), name=name)
             else:
                 loc = page.locator(locator)
+        elif strategy == "xpath":
+            selector = locator if locator.startswith("xpath=") else f"xpath={locator}"
+            loc = page.locator(selector)
         else:
             loc = page.locator(locator)
         count = await loc.count()

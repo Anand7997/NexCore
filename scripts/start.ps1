@@ -1,3 +1,7 @@
+param(
+    [switch] $Reload
+)
+
 $ErrorActionPreference = "Stop"
 
 $root        = Resolve-Path (Join-Path $PSScriptRoot "..")
@@ -57,6 +61,59 @@ function Wait-ForBackend {
     throw "Backend did not become healthy within $MaxSeconds seconds."
 }
 
+function Get-NexusChildProcesses {
+    param([Parameter(Mandatory)] [int] $ParentId)
+
+    $children = @(Get-CimInstance Win32_Process -Filter "ParentProcessId=$ParentId" -ErrorAction SilentlyContinue)
+    foreach ($child in $children) {
+        Get-NexusChildProcesses -ParentId $child.ProcessId
+        $child
+    }
+}
+
+function Stop-NexusProcessTree {
+    param([System.Diagnostics.Process] $Process)
+
+    if (-not $Process) { return }
+
+    $processIds = @()
+    try {
+        $processIds += @(Get-NexusChildProcesses -ParentId $Process.Id | Select-Object -ExpandProperty ProcessId)
+    } catch { }
+
+    try {
+        if (-not $Process.HasExited) {
+            $processIds += $Process.Id
+        }
+    } catch {
+        $processIds += $Process.Id
+    }
+
+    foreach ($processId in ($processIds | Select-Object -Unique)) {
+        try {
+            Stop-Process -Id $processId -Force -ErrorAction Stop
+        } catch {
+            Write-Host "  Could not stop process ${processId}: $($_.Exception.Message)"
+        }
+    }
+}
+
+function Stop-NexusPortListeners {
+    param([Parameter(Mandatory)] [int[]] $Ports)
+
+    foreach ($conn in @(Get-NetTCPConnection -LocalPort $Ports -State Listen -ErrorAction SilentlyContinue)) {
+        try {
+            $owner = Get-CimInstance Win32_Process -Filter "ProcessId=$($conn.OwningProcess)" -ErrorAction Stop
+            $commandLine = [string]$owner.CommandLine
+            if ($commandLine.Contains([string]$root) -or $commandLine -match "uvicorn app\.main:app|next dev|npm run dev") {
+                Stop-Process -Id $conn.OwningProcess -Force -ErrorAction Stop
+            }
+        } catch {
+            Write-Host "  Could not stop listener on port $($conn.LocalPort): $($_.Exception.Message)"
+        }
+    }
+}
+
 $frontend = $null
 $backend  = $null
 
@@ -72,10 +129,15 @@ try {
     Write-Host "[1/2] Backend"
     Write-Host "  Python: $pythonExe"
 
+    $backendArgs = "-m uvicorn app.main:app --host $($env:NEXUS_API_HOST) --port $($env:NEXUS_API_PORT)"
+    if ($Reload) {
+        $backendArgs = "$backendArgs --reload"
+    }
+
     $backend = Start-NexusProcess `
         -Name "backend" `
         -FileName $pythonExe `
-        -Arguments "-m uvicorn app.main:app --host $($env:NEXUS_API_HOST) --port $($env:NEXUS_API_PORT) --reload" `
+        -Arguments $backendArgs `
         -WorkingDirectory $backendDir
 
     # Wait until /api/health responds before touching the frontend
@@ -110,10 +172,7 @@ finally {
     Write-Host ""
     Write-Host "Stopping NEXUS QA workspace..."
     foreach ($proc in @($frontend, $backend)) {
-        if ($proc -and -not $proc.HasExited) {
-            try   { $proc.Kill($true) }
-            catch { $proc.Kill() }
-            $proc.WaitForExit()
-        }
+        Stop-NexusProcessTree -Process $proc
     }
+    Stop-NexusPortListeners -Ports @([int]$env:NEXUS_API_PORT, [int]$env:NEXUS_QA_PORT)
 }

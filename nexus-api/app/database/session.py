@@ -98,6 +98,12 @@ _MIGRATIONS: list[str] = [
     "ALTER TABLE page_elements ADD COLUMN IF NOT EXISTS source_url TEXT DEFAULT ''",
     "ALTER TABLE page_elements ADD COLUMN IF NOT EXISTS last_verified_at TIMESTAMP",
     "ALTER TABLE page_elements ADD COLUMN IF NOT EXISTS discovery_metadata JSON",
+
+    # AI workflow: user-provided page name used for Page Repository creation
+    "ALTER TABLE ai_workflows ADD COLUMN IF NOT EXISTS page_name VARCHAR(255) DEFAULT ''",
+    "ALTER TABLE ai_workflows ADD COLUMN IF NOT EXISTS activity_log JSON DEFAULT '[]'::json",
+    "ALTER TABLE ai_workflows ADD COLUMN IF NOT EXISTS scraped_candidates JSON DEFAULT '[]'::json",
+    "ALTER TABLE ai_workflows ADD COLUMN IF NOT EXISTS selected_elements JSON DEFAULT '[]'::json",
 ]
 
 

@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Production-Grade Design Directions</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a0b;color:#e2e8f0;font-family:'Inter',sans-serif;padding:32px 24px 100px;font-size:13px}
+.mono{font-family:'JetBrains Mono',monospace}
+.page-header{text-align:center;margin-bottom:44px}
+.page-header h1{font-size:11px;font-family:'JetBrains Mono',monospace;letter-spacing:.18em;color:#6366f1;text-transform:uppercase;margin-bottom:10px}
+.page-header h2{font-size:26px;font-weight:700;color:#f8fafc;margin-bottom:8px;letter-spacing:-.02em}
+.page-header p{color:#64748b;font-size:13px;max-width:500px;margin:0 auto;line-height:1.6}
+
+.directions{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;max-width:1280px;margin:0 auto}
+.dir{border-radius:12px;overflow:hidden;cursor:pointer;border:1px solid #1e1e24;transition:all .2s;position:relative}
+.dir:hover{border-color:#374151;transform:translateY(-2px)}
+.dir.selected{border-color:#6366f1;box-shadow:0 0 0 1px #6366f1}
+.check{display:none;position:absolute;top:10px;right:10px;width:22px;height:22px;background:#6366f1;border-radius:50%;align-items:center;justify-content:center;font-size:11px;color:#fff;z-index:10;font-weight:700}
+.dir.selected .check{display:flex}
+
+.preview{height:360px;position:relative;overflow:hidden}
+.dir-info{padding:18px;border-top:1px solid #1a1a22}
+.dir-info h3{font-size:14px;font-weight:600;color:#f1f5f9;margin-bottom:5px}
+.dir-info p{font-size:12px;color:#64748b;line-height:1.6}
+.ref{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+.ref-tag{font-size:10px;font-family:'JetBrains Mono',monospace;padding:2px 8px;border-radius:3px;background:#111118;border:1px solid #1e1e24;color:#64748b}
+.badge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:4px;font-size:10px;font-weight:600;letter-spacing:.04em;font-family:'JetBrains Mono',monospace;text-transform:uppercase}
+.cta-note{text-align:center;margin-top:36px;font-size:12px;color:#334155}
+.cta-note strong{color:#6366f1}
+
+/* ===== OPTION A: LINEAR-STYLE ===== */
+.prev-a{background:#080810;font-family:'Inter',sans-serif}
+.a-layout{display:flex;height:100%}
+.a-sidebar{width:180px;background:#080810;border-right:1px solid #111118;padding:14px 0;display:flex;flex-direction:column;flex-shrink:0}
+.a-logo{padding:0 14px 14px;display:flex;align-items:center;gap:8px;border-bottom:1px solid #111118;margin-bottom:8px}
+.a-logo-mark{width:22px;height:22px;border-radius:5px;background:#6366f1;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#fff;flex-shrink:0}
+.a-logo-text{font-size:12px;font-weight:700;color:#f1f5f9;letter-spacing:.01em}
+.a-nav-section{padding:8px 14px 2px;font-size:9px;font-weight:600;color:#374151;text-transform:uppercase;letter-spacing:.1em;font-family:'JetBrains Mono',monospace}
+.a-nav-item{display:flex;align-items:center;gap:8px;padding:5px 14px;font-size:11px;color:#64748b;cursor:pointer;border-radius:0}
+.a-nav-item.active{color:#e2e8f0;background:#0d0d18}
+.a-nav-item.active::before{content:'';position:absolute;left:0;width:2px;height:18px;background:#6366f1;border-radius:0 2px 2px 0}
+.a-nav-item.active{position:relative}
+.a-dot{width:5px;height:5px;border-radius:50%;flex-shrink:0}
+.a-main{flex:1;overflow:hidden;display:flex;flex-direction:column}
+.a-topbar{height:38px;border-bottom:1px solid #111118;display:flex;align-items:center;padding:0 14px;gap:8px}
+.a-tb-title{font-size:12px;font-weight:600;color:#e2e8f0}
+.a-tb-crumb{font-size:11px;color:#334155}
+.a-tb-sep{color:#1e1e2e;font-size:10px}
+.a-content{flex:1;padding:14px;overflow:hidden}
+.a-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}
+.a-stat{background:#0d0d16;border:1px solid #111120;border-radius:7px;padding:10px 12px}
+.a-stat-label{font-size:9px;color:#374151;font-family:'JetBrains Mono',monospace;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px}
+.a-stat-val{font-size:18px;font-weight:700;color:#f1f5f9;letter-spacing:-.02em;line-height:1}
+.a-stat-sub{font-size:9px;color:#374151;margin-top:3px}
+.a-stat-sub.up{color:#10b981}
+.a-table{background:#0d0d16;border:1px solid #111120;border-radius:7px;overflow:hidden}
+.a-table-row{display:flex;align-items:center;padding:7px 12px;border-bottom:1px solid #111118;gap:8px}
+.a-table-row:last-child{border-bottom:none}
+.a-table-header{background:#0a0a14;border-bottom:1px solid #15151f}
+.a-table-header span{font-size:9px;font-weight:600;color:#374151;text-transform:uppercase;letter-spacing:.07em;font-family:'JetBrains Mono',monospace}
+.a-table-row span{font-size:10px;color:#64748b}
+.a-table-row .name{color:#c4c9d4;font-weight:500;font-size:10px;flex:1}
+.status-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.sd-green{background:#10b981}
+.sd-blue{background:#3b82f6;animation:blink-b 1.5s ease-in-out infinite}
+.sd-red{background:#ef4444}
+.sd-amber{background:#f59e0b}
+@keyframes blink-b{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* ===== OPTION B: VERCEL-STYLE ===== */
+.prev-b{background:#0a0a0d;font-family:'Inter',sans-serif}
+.b-layout{display:flex;flex-direction:column;height:100%}
+.b-topbar{height:44px;border-bottom:1px solid #1a1a1f;display:flex;align-items:center;padding:0 16px;gap:12px;background:#0a0a0d}
+.b-logo{font-size:16px;font-weight:800;color:#fff;letter-spacing:-.04em}
+.b-divider{width:1px;height:16px;background:#1a1a1f}
+.b-nav{display:flex;gap:0}
+.b-nav-item{font-size:11px;padding:0 12px;height:44px;display:flex;align-items:center;color:#6b7280;border-bottom:2px solid transparent;cursor:pointer;font-weight:500}
+.b-nav-item.active{color:#f9fafb;border-bottom-color:#f9fafb}
+.b-body{flex:1;display:flex;overflow:hidden}
+.b-sidebar{width:52px;border-right:1px solid #1a1a1f;display:flex;flex-direction:column;align-items:center;padding:12px 0;gap:4px}
+.b-icon{width:32px;height:32px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:13px;cursor:pointer}
+.b-icon.active{background:#1a1a24;color:#f9fafb}
+.b-icon:not(.active){color:#374151}
+.b-content{flex:1;padding:16px;overflow:hidden}
+.b-grid{display:grid;grid-template-columns:2fr 1fr;gap:12px;height:100%}
+.b-panel{background:#0f0f14;border:1px solid #1a1a1f;border-radius:8px;overflow:hidden}
+.b-panel-header{padding:10px 14px;border-bottom:1px solid #1a1a1f;display:flex;align-items:center;justify-content:space-between}
+.b-panel-title{font-size:11px;font-weight:600;color:#9ca3af}
+.b-panel-body{padding:12px 14px}
+.b-chart{height:60px;display:flex;align-items:flex-end;gap:3px;padding:0 2px}
+.b-bar{flex:1;border-radius:2px 2px 0 0;background:#1e1e28;position:relative;overflow:hidden}
+.b-bar-fill{position:absolute;bottom:0;left:0;right:0;border-radius:2px 2px 0 0;background:#6366f1}
+.b-bar.highlight .b-bar-fill{background:#818cf8}
+.b-row{display:flex;align-items:center;padding:7px 0;border-bottom:1px solid #12121a;gap:8px}
+.b-row:last-child{border-bottom:none}
+.b-row .label{font-size:10px;color:#6b7280;flex:1}
+.b-row .val{font-size:10px;font-family:'JetBrains Mono',monospace;color:#d1d5db;font-weight:600}
+.b-badge{padding:2px 7px;border-radius:3px;font-size:9px;font-family:'JetBrains Mono',monospace;font-weight:600}
+.bb-success{background:rgba(16,185,129,.1);color:#34d399;border:1px solid rgba(16,185,129,.15)}
+.bb-running{background:rgba(99,102,241,.1);color:#818cf8;border:1px solid rgba(99,102,241,.15)}
+.bb-fail{background:rgba(239,68,68,.1);color:#f87171;border:1px solid rgba(239,68,68,.15)}
+
+/* ===== OPTION C: DATADOG/GRAFANA-STYLE ===== */
+.prev-c{background:#111116;font-family:'Inter',sans-serif}
+.c-layout{display:flex;height:100%}
+.c-sidebar{width:44px;background:#0d0d11;border-right:1px solid #1d1d25;display:flex;flex-direction:column;align-items:center;padding:10px 0;gap:2px}
+.c-sb-icon{width:32px;height:28px;display:flex;align-items:center;justify-content:center;font-size:12px;border-radius:4px;cursor:pointer}
+.c-sb-icon.active{background:#1e1e2e;color:#7c3aed}
+.c-sb-icon:not(.active){color:#374151}
+.c-sb-divider{width:24px;height:1px;background:#1d1d25;margin:4px 0}
+.c-main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.c-topbar{height:40px;background:#0d0d11;border-bottom:1px solid #1d1d25;display:flex;align-items:center;padding:0 14px;gap:10px}
+.c-tb-text{font-size:11px;font-weight:600;color:#d1d5db;letter-spacing:.01em}
+.c-tb-sep{color:#1d1d25}
+.c-tb-breadcrumb{font-size:10px;color:#374151}
+.c-tb-right{margin-left:auto;display:flex;gap:6px;align-items:center}
+.c-pill{font-size:9px;font-family:'JetBrains Mono',monospace;padding:2px 8px;border-radius:3px;font-weight:600;letter-spacing:.06em}
+.c-pill.live{background:rgba(16,185,129,.1);color:#34d399;border:1px solid rgba(16,185,129,.15)}
+.c-pill.warn{background:rgba(245,158,11,.1);color:#fbbf24;border:1px solid rgba(245,158,11,.15)}
+.c-body{flex:1;padding:12px;overflow:hidden;display:grid;grid-template-columns:1fr 1fr 1fr;grid-template-rows:auto 1fr;gap:8px}
+.c-widget{background:#0d0d14;border:1px solid #1a1a22;border-radius:6px;padding:10px 12px;overflow:hidden}
+.c-widget.span2{grid-column:span 2}
+.c-widget-title{font-size:9px;font-family:'JetBrains Mono',monospace;color:#4b5563;text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between}
+.c-metric{font-size:22px;font-weight:700;color:#f9fafb;letter-spacing:-.03em;line-height:1}
+.c-metric-sub{font-size:9px;color:#374151;margin-top:4px;font-family:'JetBrains Mono',monospace}
+.c-sparkline{height:28px;display:flex;align-items:flex-end;gap:1px;margin-top:6px}
+.c-spark-bar{flex:1;border-radius:1px;background:#1e1e2c;min-height:2px}
+.c-line-chart{height:50px;position:relative;overflow:hidden;margin-top:6px}
+.c-line-path{position:absolute;inset:0}
+.c-exec-list{display:flex;flex-direction:column;gap:4px}
+.c-exec-row{display:flex;align-items:center;gap:6px;padding:5px 8px;background:#111118;border-radius:4px}
+.c-exec-id{font-size:9px;font-family:'JetBrains Mono',monospace;color:#4b5563;width:60px;flex-shrink:0}
+.c-exec-name{font-size:10px;color:#9ca3af;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.c-exec-dur{font-size:9px;font-family:'JetBrains Mono',monospace;color:#4b5563;flex-shrink:0}
+.c-exec-status{width:5px;height:5px;border-radius:50%;flex-shrink:0}
+</style>
+</head>
+<body>
+
+<div class="page-header">
+  <div style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.2em;color:#6366f1;text-transform:uppercase;margin-bottom:10px">NEXUS QA — REDESIGN</div>
+  <h2>Production-Grade Design Directions</h2>
+  <p>Clean, dense, professional. Built to work — not to impress at first glance. Pick the tool that feels right to you.</p>
+</div>
+
+<div class="directions">
+
+  <!-- OPTION A: LINEAR -->
+  <div class="dir" id="opt-a" onclick="sel('a')">
+    <div class="check">✓</div>
+    <div class="preview prev-a">
+      <div class="a-layout">
+        <div class="a-sidebar">
+          <div class="a-logo">
+            <div class="a-logo-mark">N</div>
+            <span class="a-logo-text">NEXUS QA</span>
+          </div>
+          <div class="a-nav-section">Command</div>
+          <div class="a-nav-item active"><span class="a-dot sd-blue"></span>Dashboard</div>
+          <div class="a-nav-section">Intelligence</div>
+          <div class="a-nav-item"><span class="a-dot" style="background:#1e1e2e"></span>Workflows</div>
+          <div class="a-nav-item"><span class="a-dot" style="background:#1e1e2e"></span>Executions</div>
+          <div class="a-nav-item"><span class="a-dot" style="background:#1e1e2e"></span>AI Workflow</div>
+          <div class="a-nav-section">Observe</div>
+          <div class="a-nav-item"><span class="a-dot" style="background:#1e1e2e"></span>Analysis</div>
+          <div class="a-nav-item"><span class="a-dot" style="background:#1e1e2e"></span>Reports</div>
+        </div>
+        <div class="a-main">
+          <div class="a-topbar">
+            <span class="a-tb-crumb">Dashboard</span>
+            <span class="a-tb-sep">·</span>
+            <span class="a-tb-crumb">Execution Command Center</span>
+            <span style="margin-left:auto;display:flex;gap:6px">
+              <span class="badge" style="background:rgba(59,130,246,.08);color:#60a5fa;border:1px solid rgba(59,130,246,.15)">● 47 RUNNING</span>
+            </span>
+          </div>
+          <div class="a-content">
+            <div class="a-stats">
+              <div class="a-stat">
+                <div class="a-stat-label">Active</div>
+                <div class="a-stat-val">47</div>
+                <div class="a-stat-sub up">↑ 12 this hour</div>
+              </div>
+              <div class="a-stat">
+                <div class="a-stat-label">Success Rate</div>
+                <div class="a-stat-val">98.4%</div>
+                <div class="a-stat-sub up">▲ 0.3%</div>
+              </div>
+              <div class="a-stat">
+                <div class="a-stat-label">AI Healed</div>
+                <div class="a-stat-val">124</div>
+                <div class="a-stat-sub" style="color:#374151">auto-recovered</div>
+              </div>
+              <div class="a-stat">
+                <div class="a-stat-label">Agents</div>
+                <div class="a-stat-val">12</div>
+                <div class="a-stat-sub up">all healthy</div>
+              </div>
+            </div>
+            <div class="a-table">
+              <div class="a-table-row a-table-header">
+                <span style="flex:1">Workflow</span>
+                <span style="width:60px">Platform</span>
+                <span style="width:50px">Status</span>
+                <span style="width:50px">Duration</span>
+              </div>
+              <div class="a-table-row">
+                <span class="status-dot sd-green"></span>
+                <span class="name">Checkout Flow E2E</span>
+                <span style="width:60px;color:#4b5563">web</span>
+                <span class="badge" style="background:rgba(16,185,129,.08);color:#34d399;border:1px solid rgba(16,185,129,.12);width:50px">PASS</span>
+                <span style="width:50px;color:#374151;font-family:'JetBrains Mono',monospace;font-size:9px">1m 23s</span>
+              </div>
+              <div class="a-table-row">
+                <span class="status-dot sd-blue"></span>
+                <span class="name">Auth Regression Suite</span>
+                <span style="width:60px;color:#4b5563">mobile</span>
+                <span class="badge" style="background:rgba(59,130,246,.08);color:#60a5fa;border:1px solid rgba(59,130,246,.12);width:50px">RUN</span>
+                <span style="width:50px;color:#374151;font-family:'JetBrains Mono',monospace;font-size:9px">0m 44s</span>
+              </div>
+              <div class="a-table-row">
+                <span class="status-dot sd-red"></span>
+                <span class="name">Payment API Validation</span>
+                <span style="width:60px;color:#4b5563">api</span>
+                <span class="badge" style="background:rgba(239,68,68,.08);color:#f87171;border:1px solid rgba(239,68,68,.12);width:50px">FAIL</span>
+                <span style="width:50px;color:#374151;font-family:'JetBrains Mono',monospace;font-size:9px">2m 01s</span>
+              </div>
+              <div class="a-table-row">
+                <span class="status-dot sd-green"></span>
+                <span class="name">Onboarding Journey</span>
+                <span style="width:60px;color:#4b5563">web</span>
+                <span class="badge" style="background:rgba(16,185,129,.08);color:#34d399;border:1px solid rgba(16,185,129,.12);width:50px">PASS</span>
+                <span style="width:50px;color:#374151;font-family:'JetBrains Mono',monospace;font-size:9px">3m 12s</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="dir-info">
+      <h3>A — Linear / Notion style</h3>
+      <p>Ultra-clean sidebar navigation, flat dark surfaces, tight typography hierarchy. Status-first layout — everything you need in one scan. Zero decoration, maximum clarity.</p>
+      <div class="ref">
+        <span class="ref-tag">inspired by Linear</span>
+        <span class="ref-tag">sidebar-first</span>
+        <span class="ref-tag">data-dense</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- OPTION B: VERCEL -->
+  <div class="dir" id="opt-b" onclick="sel('b')">
+    <div class="check">✓</div>
+    <div class="preview prev-b">
+      <div class="b-layout">
+        <div class="b-topbar">
+          <span class="b-logo">Nexus</span>
+          <div class="b-divider"></div>
+          <div class="b-nav">
+            <div class="b-nav-item active">Overview</div>
+            <div class="b-nav-item">Workflows</div>
+            <div class="b-nav-item">Executions</div>
+            <div class="b-nav-item">AI</div>
+            <div class="b-nav-item">Settings</div>
+          </div>
+          <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+            <span class="b-badge bb-running">● LIVE</span>
+          </div>
+        </div>
+        <div class="b-body">
+          <div class="b-sidebar">
+            <div class="b-icon active">◈</div>
+            <div class="b-icon">⚡</div>
+            <div class="b-icon">◎</div>
+            <div class="b-icon" style="margin-top:auto">⚙</div>
+          </div>
+          <div class="b-content">
+            <div class="b-grid">
+              <div style="display:flex;flex-direction:column;gap:10px">
+                <div class="b-panel" style="flex:0 0 auto">
+                  <div class="b-panel-header">
+                    <span class="b-panel-title">Execution History — Last 7 Days</span>
+                    <span class="b-badge bb-success">+4.2%</span>
+                  </div>
+                  <div class="b-panel-body">
+                    <div class="b-chart">
+                      <div class="b-bar"><div class="b-bar-fill" style="height:55%"></div></div>
+                      <div class="b-bar"><div class="b-bar-fill" style="height:72%"></div></div>
+                      <div class="b-bar"><div class="b-bar-fill" style="height:48%"></div></div>
+                      <div class="b-bar"><div class="b-bar-fill" style="height:85%"></div></div>
+                      <div class="b-bar"><div class="b-bar-fill" style="height:61%"></div></div>
+                      <div class="b-bar"><div class="b-bar-fill" style="height:90%"></div></div>
+                      <div class="b-bar highlight"><div class="b-bar-fill" style="height:100%"></div></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="b-panel" style="flex:1">
+                  <div class="b-panel-header"><span class="b-panel-title">Recent Executions</span></div>
+                  <div class="b-panel-body" style="padding:0">
+                    <div class="b-row" style="padding:6px 14px"><div class="status-dot sd-green" style="flex-shrink:0"></div><span class="label">Checkout Flow</span><span class="b-badge bb-success">pass</span></div>
+                    <div class="b-row" style="padding:6px 14px"><div class="status-dot sd-blue" style="flex-shrink:0"></div><span class="label">Auth Suite</span><span class="b-badge bb-running">running</span></div>
+                    <div class="b-row" style="padding:6px 14px"><div class="status-dot sd-red" style="flex-shrink:0"></div><span class="label">Payment API</span><span class="b-badge bb-fail">fail</span></div>
+                  </div>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:10px">
+                <div class="b-panel">
+                  <div class="b-panel-header"><span class="b-panel-title">Success Rate</span></div>
+                  <div class="b-panel-body">
+                    <div style="font-size:28px;font-weight:700;color:#f9fafb;letter-spacing:-.04em">98.4%</div>
+                    <div style="font-size:10px;color:#10b981;margin-top:4px">↑ 0.3% vs last week</div>
+                  </div>
+                </div>
+                <div class="b-panel">
+                  <div class="b-panel-header"><span class="b-panel-title">AI Insights</span></div>
+                  <div class="b-panel-body">
+                    <div class="b-row"><span class="label">Flaky detected</span><span class="val">3</span></div>
+                    <div class="b-row"><span class="label">Auto-healed</span><span class="val">124</span></div>
+                    <div class="b-row" style="border:none"><span class="label">Confidence</span><span class="val" style="color:#818cf8">97.2%</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="dir-info">
+      <h3>B — Vercel / GitHub style</h3>
+      <p>Top nav with sub-icon sidebar. Panels with charts and metrics, clean bar charts, status badges. Feels like a real SaaS product dashboard — polished without trying too hard.</p>
+      <div class="ref">
+        <span class="ref-tag">inspired by Vercel</span>
+        <span class="ref-tag">top-nav</span>
+        <span class="ref-tag">panel-based</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- OPTION C: DATADOG -->
+  <div class="dir" id="opt-c" onclick="sel('c')">
+    <div class="check">✓</div>
+    <div class="preview prev-c">
+      <div class="c-layout">
+        <div class="c-sidebar">
+          <div class="c-sb-icon active">◈</div>
+          <div class="c-sb-icon">⚡</div>
+          <div class="c-sb-icon">◎</div>
+          <div class="c-sb-divider"></div>
+          <div class="c-sb-icon">⬡</div>
+          <div class="c-sb-icon">⊞</div>
+          <div class="c-sb-icon">⊕</div>
+          <div class="c-sb-divider"></div>
+          <div class="c-sb-icon" style="margin-top:auto">⚙</div>
+        </div>
+        <div class="c-main">
+          <div class="c-topbar">
+            <span class="c-tb-text">NEXUS QA</span>
+            <span class="c-tb-sep">/</span>
+            <span class="c-tb-breadcrumb">Execution Command Center</span>
+            <div class="c-tb-right">
+              <span class="c-pill live">● LIVE</span>
+              <span class="c-pill warn">3 WARNINGS</span>
+            </div>
+          </div>
+          <div class="c-body">
+            <div class="c-widget">
+              <div class="c-widget-title">Active Executions</div>
+              <div class="c-metric">47</div>
+              <div class="c-metric-sub">↑ 12 vs 1h ago</div>
+              <div class="c-sparkline">
+                <div class="c-spark-bar" style="height:40%;background:#1e2040"></div>
+                <div class="c-spark-bar" style="height:60%;background:#1e2040"></div>
+                <div class="c-spark-bar" style="height:35%;background:#1e2040"></div>
+                <div class="c-spark-bar" style="height:70%;background:#2a2060"></div>
+                <div class="c-spark-bar" style="height:80%;background:#2a2060"></div>
+                <div class="c-spark-bar" style="height:100%;background:#7c3aed"></div>
+              </div>
+            </div>
+            <div class="c-widget">
+              <div class="c-widget-title">Success Rate</div>
+              <div class="c-metric">98.4%</div>
+              <div class="c-metric-sub" style="color:#10b981">▲ +0.3% 24h</div>
+              <div class="c-sparkline">
+                <div class="c-spark-bar" style="height:90%;background:#0d3025"></div>
+                <div class="c-spark-bar" style="height:88%;background:#0d3025"></div>
+                <div class="c-spark-bar" style="height:95%;background:#0d3025"></div>
+                <div class="c-spark-bar" style="height:97%;background:#10b981;opacity:.6"></div>
+                <div class="c-spark-bar" style="height:98%;background:#10b981;opacity:.8"></div>
+                <div class="c-spark-bar" style="height:98%;background:#10b981"></div>
+              </div>
+            </div>
+            <div class="c-widget">
+              <div class="c-widget-title">AI Confidence</div>
+              <div class="c-metric">97.2%</div>
+              <div class="c-metric-sub" style="color:#7c3aed">124 auto-healed</div>
+              <div class="c-sparkline">
+                <div class="c-spark-bar" style="height:94%;background:#1e1040"></div>
+                <div class="c-spark-bar" style="height:96%;background:#1e1040"></div>
+                <div class="c-spark-bar" style="height:93%;background:#1e1040"></div>
+                <div class="c-spark-bar" style="height:97%;background:#7c3aed;opacity:.6"></div>
+                <div class="c-spark-bar" style="height:97%;background:#7c3aed;opacity:.8"></div>
+                <div class="c-spark-bar" style="height:97%;background:#7c3aed"></div>
+              </div>
+            </div>
+            <div class="c-widget span2">
+              <div class="c-widget-title">Recent Executions <span style="color:#374151;font-weight:400">— last 10</span></div>
+              <div class="c-exec-list">
+                <div class="c-exec-row"><div class="c-exec-status" style="background:#10b981"></div><span class="c-exec-id">wf_3f2a</span><span class="c-exec-name">Checkout Flow E2E • web • prod</span><span class="c-exec-dur">1m 23s</span></div>
+                <div class="c-exec-row"><div class="c-exec-status" style="background:#3b82f6;animation:blink-b 1.5s ease-in-out infinite"></div><span class="c-exec-id">wf_8c1d</span><span class="c-exec-name">Auth Regression Suite • mobile • staging</span><span class="c-exec-dur">0m 44s</span></div>
+                <div class="c-exec-row"><div class="c-exec-status" style="background:#ef4444"></div><span class="c-exec-id">wf_2a9f</span><span class="c-exec-name">Payment API Validation • api • prod</span><span class="c-exec-dur">2m 01s</span></div>
+                <div class="c-exec-row"><div class="c-exec-status" style="background:#10b981"></div><span class="c-exec-id">wf_7e3b</span><span class="c-exec-name">Onboarding Journey • web • prod</span><span class="c-exec-dur">3m 12s</span></div>
+              </div>
+            </div>
+            <div class="c-widget">
+              <div class="c-widget-title">Agents Online</div>
+              <div class="c-metric">12 <span style="font-size:12px;color:#10b981;font-weight:500">/ 12</span></div>
+              <div class="c-metric-sub" style="color:#10b981">all healthy</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="dir-info">
+      <h3>C — Datadog / Grafana style</h3>
+      <p>Dense icon sidebar, widget-based dashboard, sparklines per metric, monospace data labels. Purpose-built observability tool feel — everything is a metric, everything is measurable.</p>
+      <div class="ref">
+        <span class="ref-tag">inspired by Datadog</span>
+        <span class="ref-tag">widget-grid</span>
+        <span class="ref-tag">observability-first</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<p class="cta-note">Click a card or type A, B, or C — or say <strong>"mix A sidebar + C widgets"</strong> etc.</p>
+
+<script>
+function sel(id){
+  document.querySelectorAll('.dir').forEach(d=>d.classList.remove('selected'));
+  document.getElementById('opt-'+id).classList.add('selected');
+  if(window.__recordChoice)window.__recordChoice(id,'Option '+id.toUpperCase());
+}
+</script>
+</body>
+</html>

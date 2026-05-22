@@ -6,12 +6,18 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.session import get_db
-from app.database.models import PageRepositoryModel, PageElementModel
+from app.ai_workflow.models import AIWorkflowModel
+from app.database.models import (
+    ExecutionStepResultModel,
+    PageElementModel,
+    PageRepositoryModel,
+    TestStepModel,
+)
 from app.page_discovery.schemas import DiscoveryRequest, DiscoveryResponse
 from app.page_discovery.service import discover_elements
 
@@ -149,6 +155,53 @@ async def _load(page_id: str, db: AsyncSession) -> PageRepositoryModel:
     return page
 
 
+async def _detach_page_references(page_id: str, db: AsyncSession) -> list[str]:
+    element_ids = list(
+        (
+            await db.execute(
+                select(PageElementModel.id).where(PageElementModel.page_id == page_id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    await db.execute(
+        update(TestStepModel)
+        .where(TestStepModel.page_id == page_id)
+        .values(page_id=None)
+        .execution_options(synchronize_session=False)
+    )
+    await db.execute(
+        update(ExecutionStepResultModel)
+        .where(ExecutionStepResultModel.page_id == page_id)
+        .values(page_id=None)
+        .execution_options(synchronize_session=False)
+    )
+    await db.execute(
+        update(AIWorkflowModel)
+        .where(AIWorkflowModel.page_id == page_id)
+        .values(page_id=None)
+        .execution_options(synchronize_session=False)
+    )
+
+    if element_ids:
+        await db.execute(
+            update(TestStepModel)
+            .where(TestStepModel.page_element_id.in_(element_ids))
+            .values(page_element_id=None)
+            .execution_options(synchronize_session=False)
+        )
+        await db.execute(
+            update(ExecutionStepResultModel)
+            .where(ExecutionStepResultModel.page_element_id.in_(element_ids))
+            .values(page_element_id=None)
+            .execution_options(synchronize_session=False)
+        )
+
+    return element_ids
+
+
 # ── Page routes ───────────────────────────────────────────────────────────────
 
 @router.get("/pages", response_model=list[PageListItem])
@@ -191,7 +244,17 @@ async def delete_page(page_id: str, db: AsyncSession = Depends(get_db)):
     page = result.scalar_one_or_none()
     if not page:
         raise HTTPException(status_code=404, detail="Page not found")
-    await db.delete(page)
+    await _detach_page_references(page_id, db)
+    await db.execute(
+        delete(PageElementModel)
+        .where(PageElementModel.page_id == page_id)
+        .execution_options(synchronize_session=False)
+    )
+    await db.execute(
+        delete(PageRepositoryModel)
+        .where(PageRepositoryModel.id == page_id)
+        .execution_options(synchronize_session=False)
+    )
     await db.commit()
 
 
@@ -231,7 +294,23 @@ async def delete_element(element_id: str, db: AsyncSession = Depends(get_db)):
     elem = result.scalar_one_or_none()
     if not elem:
         raise HTTPException(status_code=404, detail="Element not found")
-    await db.delete(elem)
+    await db.execute(
+        update(TestStepModel)
+        .where(TestStepModel.page_element_id == element_id)
+        .values(page_element_id=None)
+        .execution_options(synchronize_session=False)
+    )
+    await db.execute(
+        update(ExecutionStepResultModel)
+        .where(ExecutionStepResultModel.page_element_id == element_id)
+        .values(page_element_id=None)
+        .execution_options(synchronize_session=False)
+    )
+    await db.execute(
+        delete(PageElementModel)
+        .where(PageElementModel.id == element_id)
+        .execution_options(synchronize_session=False)
+    )
     await db.commit()
 
 
