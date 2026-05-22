@@ -50,3 +50,7 @@ pnpm-debug.log*
 # OS files
 .DS_Store
 Thumbs.db
+
+# Superpowers brainstorm session files
+.superpowers/
+.agent/
