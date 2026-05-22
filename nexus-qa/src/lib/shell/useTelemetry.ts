@@ -5,12 +5,12 @@ import { useExecutionStore } from '@/lib/stores/executionStore';
 import { useRealtimeStore } from '@/lib/stores/realtimeStore';
 
 export interface TelemetrySnapshot {
-  cpu: number;          // %
-  mem: number;          // GB
-  p95: number;          // ms
-  errRate: number;      // %
-  rps: number;          // requests / s (synthetic)
-  uptime: number;       // % (always > 99)
+  cpu: number;
+  mem: number;
+  p95: number;
+  errRate: number;
+  rps: number;
+  uptime: number;
   runId: string | null;
   shard: string;
 }
@@ -23,7 +23,13 @@ export interface TelemetrySeries {
   rps: number[];
 }
 
-const HISTORY = 20;
+const INITIAL_SERIES: TelemetrySeries = {
+  cpu:     [34, 31, 36, 38, 33, 35, 37, 32, 30, 34, 39, 36, 33, 35, 31, 34, 37, 35, 32, 34],
+  mem:     [4.7, 4.8, 4.6, 4.9, 5.0, 4.8, 4.7, 5.1, 4.9, 4.8, 4.6, 4.7, 5.0, 5.1, 4.9, 4.8, 4.7, 4.9, 5.0, 4.8],
+  p95:     [142, 138, 151, 146, 134, 148, 156, 139, 132, 145, 150, 141, 136, 152, 158, 149, 140, 137, 144, 150],
+  errRate: [0.25, 0.31, 0.22, 0.28, 0.35, 0.26, 0.30, 0.24, 0.21, 0.27, 0.33, 0.29, 0.23, 0.26, 0.32, 0.28, 0.24, 0.27, 0.31, 0.29],
+  rps:     [720, 760, 742, 805, 790, 735, 770, 812, 845, 780, 752, 768, 830, 810, 775, 748, 792, 835, 806, 761],
+};
 
 function jitter(prev: number, drift: number, min: number, max: number): number {
   const next = prev + (Math.random() - 0.5) * drift * 2;
@@ -32,26 +38,23 @@ function jitter(prev: number, drift: number, min: number, max: number): number {
 
 /**
  * Synthetic telemetry stream. When a real /api/telemetry endpoint exists,
- * replace the setInterval loop with a WebSocket subscription; the hook's
+ * replace the interval loop with a WebSocket subscription; the hook's
  * return shape is the contract.
  */
 export function useTelemetry(): { snapshot: TelemetrySnapshot; series: TelemetrySeries } {
   const executions = useExecutionStore((s) => s.executions);
   const events = useRealtimeStore((s) => s.events);
-  const seedRef = useRef<TelemetrySeries | null>(null);
-
-  if (seedRef.current === null) {
-    seedRef.current = {
-      cpu:     Array.from({ length: HISTORY }, () => 30 + Math.random() * 10),
-      mem:     Array.from({ length: HISTORY }, () => 4.5 + Math.random() * 0.8),
-      p95:     Array.from({ length: HISTORY }, () => 130 + Math.random() * 30),
-      errRate: Array.from({ length: HISTORY }, () => 0.2 + Math.random() * 0.5),
-      rps:     Array.from({ length: HISTORY }, () => 700 + Math.random() * 250),
-    };
-  }
+  const seedRef = useRef<TelemetrySeries>(INITIAL_SERIES);
 
   const [snapshot, setSnapshot] = useState<TelemetrySnapshot>({
-    cpu: 32, mem: 4.8, p95: 138, errRate: 0.3, rps: 720, uptime: 99.97, runId: null, shard: 'us-west · 3/3',
+    cpu: 34,
+    mem: 4.8,
+    p95: 150,
+    errRate: 0.29,
+    rps: 761,
+    uptime: 99.97,
+    runId: null,
+    shard: 'us-west / 3/3',
   });
 
   const [series, setSeries] = useState<TelemetrySeries>(seedRef.current);

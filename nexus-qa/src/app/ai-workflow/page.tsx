@@ -287,19 +287,37 @@ function CapabilityBars({ tier }: { tier: string }) {
 function ConfidenceRing({ value, size = 32 }: { value: number; size?: number }) {
   const r = (size - 4) / 2;
   const circ = 2 * Math.PI * r;
-  const color = value >= 0.8 ? '#34d399' : value >= 0.5 ? '#fbbf24' : '#f87171';
+  const color = value >= 0.8 ? '#06b6d4' : value >= 0.5 ? '#a78bfa' : '#f59e0b';
   return (
-    <svg width={size} height={size} className="shrink-0 -rotate-90">
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="currentColor"
-        strokeWidth={2} className="text-surface-3" />
-      <motion.circle cx={size / 2} cy={size / 2} r={r} fill="none"
-        stroke={color} strokeWidth={2} strokeLinecap="round"
-        strokeDasharray={circ}
-        initial={{ strokeDashoffset: circ }}
-        animate={{ strokeDashoffset: circ * (1 - value) }}
-        transition={{ duration: 0.8 }}
-      />
-    </svg>
+    <div className="relative" style={{ width: size, height: size }}>
+      <svg width={size} height={size} className="shrink-0 -rotate-90">
+        <defs>
+          <radialGradient id={`cr-glow-${size}`}>
+            <stop offset="0%" stopColor={color} stopOpacity="0.35" />
+            <stop offset="80%" stopColor={color} stopOpacity="0" />
+          </radialGradient>
+        </defs>
+        <circle cx={size / 2} cy={size / 2} r={r + 2} fill={`url(#cr-glow-${size})`} />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth={2} />
+        <motion.circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          stroke={color}
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeDasharray={circ}
+          initial={{ strokeDashoffset: circ }}
+          animate={{ strokeDashoffset: circ * (1 - value) }}
+          transition={{ duration: 0.7, ease: 'easeOut' }}
+          style={{ filter: `drop-shadow(0 0 6px ${color})` }}
+        />
+      </svg>
+      <span className="absolute inset-0 grid place-items-center font-mono text-[9px] font-semibold" style={{ color }}>
+        {Math.round(value * 100)}
+      </span>
+    </div>
   );
 }
 
@@ -947,17 +965,19 @@ function InputStep({ onStart, isPending }: {
           onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
           onDragLeave={() => setIsDragging(false)}
           onDrop={onDrop}
-          className={`relative rounded-xl border-2 border-dashed transition-all ${isDragging ? 'border-violet-500/60 bg-violet-500/10 scale-[1.01]' : 'border-(--color-line-default) hover:border-line-strong'}`}
+          className={`relative overflow-hidden rounded-xl border-2 border-dashed transition-all ${isDragging ? 'border-violet-500/60 bg-violet-500/10 scale-[1.01]' : 'border-(--color-line-default) hover:border-line-strong'}`}
         >
+          <span aria-hidden className="mc-hex-floor pointer-events-none absolute inset-0 rounded-xl opacity-60" />
+          <span aria-hidden className="mc-scanline" />
           {brd ? (
             <textarea
-              className="w-full bg-transparent px-4 py-3 text-xs font-mono text-(--color-fg-default) focus:outline-none min-h-40 resize-y leading-relaxed"
+              className="relative z-10 w-full bg-transparent px-4 py-3 text-xs font-mono text-(--color-fg-default) focus:outline-none min-h-40 resize-y leading-relaxed"
               value={brd}
               onChange={(e) => setBrd(e.target.value)}
             />
           ) : (
-            <div className="flex flex-col items-center justify-center py-10 cursor-pointer" onClick={() => fileRef.current?.click()}>
-              <div className="w-10 h-10 rounded-xl bg-(--color-surface-2) border border-(--color-line-default) flex items-center justify-center mb-3">
+            <div className="relative z-10 flex flex-col items-center justify-center py-10 cursor-pointer" onClick={() => fileRef.current?.click()}>
+              <div className="w-10 h-10 rounded-xl bg-violet-500/10 border border-violet-500/30 flex items-center justify-center mb-3 shadow-[0_0_20px_rgba(139,92,246,0.18)]">
                 <Upload size={16} className="text-(--color-fg-subtle)" />
               </div>
               <p className="text-sm font-medium text-(--color-fg-muted)">Drop your BRD here</p>
@@ -1462,8 +1482,48 @@ export default function AIWorkflowPage() {
   };
 
   return (
-    <div className="flex h-full min-h-0">
-      <div className="w-72 shrink-0 border-r border-(--color-line-subtle) bg-(--color-surface-1) p-3 overflow-y-auto">
+    <div className="flex h-full min-h-0 flex-col p-3">
+      <div className="mb-3 flex shrink-0 items-center justify-between rounded-xl border px-5 py-4"
+        style={{
+          background:
+            'radial-gradient(ellipse 80% 50% at 80% 20%, rgba(139,92,246,0.14), transparent 70%), rgba(139,92,246,0.04)',
+          borderColor: 'rgba(139,92,246,0.25)',
+          boxShadow: '0 0 0 1px rgba(139,92,246,0.06), 0 0 24px rgba(139,92,246,0.10)',
+        }}
+      >
+        <div>
+          <h1 className="text-[20px] font-semibold tracking-tight text-white">AI Workflow Orchestrator</h1>
+          <p className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.18em]" style={{ color: '#a78bfa' }}>
+            DISCOVERY / PLAN / HEAL / CONFIGURE / REVIEW
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5" aria-hidden>
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="relative h-6 w-6">
+                <span className="absolute inset-0 rounded-full"
+                  style={{
+                    background: i === 0 ? 'rgba(6,182,212,0.25)' : i === 1 ? 'rgba(139,92,246,0.25)' : 'rgba(167,139,250,0.25)',
+                    border: `1px solid ${i === 0 ? 'rgba(6,182,212,0.50)' : 'rgba(139,92,246,0.50)'}`,
+                    boxShadow: i === 0 ? '0 0 8px rgba(6,182,212,0.40)' : '0 0 8px rgba(139,92,246,0.40)',
+                  }}
+                />
+                <span className="absolute inset-[6px] rounded-full bg-white/10 animate-pulse" />
+              </div>
+            ))}
+          </div>
+          <span className="rounded-full border px-2.5 py-1 font-mono text-[10px] tracking-[0.08em]"
+            style={{
+              background: 'rgba(16,185,129,0.08)',
+              borderColor: 'rgba(16,185,129,0.30)',
+              color: '#6ee7b7',
+            }}
+          >3 AGENTS NOMINAL</span>
+        </div>
+      </div>
+
+      <div className="flex min-h-0 flex-1 overflow-hidden rounded-xl border border-(--color-line-subtle) bg-black/10">
+        <div className="w-72 shrink-0 border-r border-(--color-line-subtle) bg-(--color-surface-1) p-3 overflow-y-auto">
         <div className="px-2 mb-3">
           <div className="text-[10px] font-semibold text-(--color-fg-subtle) uppercase tracking-wider">10-stage AI pipeline</div>
           <div className="text-[9px] text-(--color-fg-subtle) mt-0.5">Project to page, scrape, XPath, and configured test steps</div>
@@ -1487,7 +1547,8 @@ export default function AIWorkflowPage() {
             </div>
           )}
         </div>
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="relative flex-1 overflow-y-auto p-6">
+          <span aria-hidden className="mc-scanline" />
           <AnimatePresence mode="wait">
             <motion.div key={activeStep} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>
@@ -1511,8 +1572,9 @@ export default function AIWorkflowPage() {
         </div>
       </div>
 
-      <div className="w-56 shrink-0 border-l border-(--color-line-subtle) bg-(--color-surface-1) p-3 overflow-y-auto">
-        <LiveIntelligence wf={wf} selectedModel={selectedModel} />
+        <div className="w-56 shrink-0 border-l border-(--color-line-subtle) bg-(--color-surface-1) p-3 overflow-y-auto">
+          <LiveIntelligence wf={wf} selectedModel={selectedModel} />
+        </div>
       </div>
     </div>
   );
