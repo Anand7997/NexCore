@@ -8,17 +8,32 @@ import {
   AlertTriangle,
   ArrowRight,
   ArrowUpRight,
+  BarChart3,
+  BookOpen,
+  Bot,
+  Boxes,
   Brain,
   CheckCircle2,
   ChevronRight,
   Clock,
+  Code2,
+  Cpu,
   Database,
+  FlaskConical,
   Globe,
+  Grid3X3,
+  GitBranch,
+  LayoutDashboard,
+  Microscope,
   Monitor,
+  Network,
+  Play,
   Plus,
   Server,
+  Settings2,
   Shield,
   Sparkles,
+  Target,
   TrendingUp,
   TrendingDown,
   Wifi,
@@ -76,12 +91,41 @@ interface ActivityEvent {
   ts: number;
 }
 
+interface RouteTile {
+  href: string;
+  name: string;
+  icon: React.ComponentType<{ size?: number; className?: string; style?: React.CSSProperties }>;
+  color: string;
+}
+
 // ─── Static data ─────────────────────────────────────────────────────────────
 
 const PROJECTS: ProjectItem[] = [
   { name: 'Airline Booking Suite', type: 'Web + Mobile + API', status: 'active', lastRun: '2m ago', successRate: 91, href: '/executions' },
   { name: 'Payment Gateway E2E', type: 'Web + API + Desktop', status: 'running', lastRun: 'now', successRate: 87, href: '/executions' },
   { name: 'Invoice Processing', type: 'Desktop + API', status: 'idle', lastRun: '1h ago', successRate: 98, href: '/executions' },
+];
+
+const MODULE_LIBRARY: RouteTile[] = [
+  { href: '/executions',         name: 'Executions',         icon: Play,            color: '#5b8cff' },
+  { href: '/execution-control',  name: 'Exec Control',       icon: Cpu,             color: '#4dd1e1' },
+  { href: '/workflows',          name: 'Workflows',          icon: GitBranch,       color: '#a195ff' },
+  { href: '/ai-workflow',        name: 'AI Workflow',        icon: Sparkles,        color: '#a195ff' },
+  { href: '/agents',             name: 'Agents',             icon: Bot,             color: '#45c08a' },
+  { href: '/ai-analysis',        name: 'AI Analysis',        icon: Brain,           color: '#4dd1e1' },
+  { href: '/ai-investigation',   name: 'AI Investigation',   icon: Microscope,      color: '#f0b558' },
+  { href: '/matrix',             name: 'Matrix',             icon: Grid3X3,         color: '#f0b558' },
+  { href: '/knowledge-graph',    name: 'Knowledge Graph',    icon: Network,         color: '#5b8cff' },
+  { href: '/test-designer',      name: 'Test Designer',      icon: Code2,           color: '#a195ff' },
+  { href: '/test-configuration', name: 'Test Config',        icon: FlaskConical,    color: '#45c08a' },
+  { href: '/testcases',          name: 'Test Cases',         icon: BookOpen,        color: '#4dd1e1' },
+  { href: '/page-repository',    name: 'Page Repository',    icon: Boxes,           color: '#f0b558' },
+  { href: '/intent-studio',      name: 'Intent Studio',      icon: Target,          color: '#a195ff' },
+  { href: '/reports',            name: 'Reports',            icon: BarChart3,       color: '#45c08a' },
+  { href: '/architecture',       name: 'Architecture',       icon: Globe,           color: '#5b8cff' },
+  { href: '/settings',           name: 'Settings',           icon: Settings2,       color: '#8b8c97' },
+  { href: '/workspace',          name: 'Workspace',          icon: LayoutDashboard, color: '#4dd1e1' },
+  { href: '/demo',               name: 'Demo',               icon: Activity,        color: '#8b8c97' },
 ];
 
 const INSIGHTS: InsightItem[] = [
@@ -512,6 +556,46 @@ function ActivityStream() {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+function ModuleLibraryTile({ tile, index }: { tile: RouteTile; index: number }) {
+  const Icon = tile.icon;
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.24, delay: 0.02 * index, ease: [0.22, 0.61, 0.36, 1] }}
+    >
+      <Link
+        href={tile.href}
+        className="group flex min-h-14 items-center gap-2.5 rounded-lg border px-3 py-2 transition-all hover:translate-x-[2px]"
+        style={{
+          background: `${tile.color}08`,
+          borderColor: `${tile.color}20`,
+        }}
+      >
+        <span
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border"
+          style={{ background: `${tile.color}12`, borderColor: `${tile.color}28` }}
+        >
+          <Icon size={13} style={{ color: tile.color }} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[11px] font-medium" style={{ color: 'var(--color-fg-muted)' }}>
+            {tile.name}
+          </span>
+          <span className="block truncate font-mono text-[9px]" style={{ color: 'var(--color-fg-subtle)' }}>
+            {tile.href}
+          </span>
+        </span>
+        <ArrowUpRight
+          size={11}
+          className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+          style={{ color: 'var(--color-accent-default)' }}
+        />
+      </Link>
+    </motion.div>
+  );
+}
+
 export default function CommandCenterPage() {
   // Live metric state
   const [metrics, setMetrics] = useState({
@@ -734,31 +818,20 @@ export default function CommandCenterPage() {
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3, delay: 0.34 }}
-            className="col-span-5 flex flex-col justify-between overflow-hidden rounded-xl border p-4"
+            className="col-span-5 flex min-h-0 flex-col overflow-hidden rounded-xl border p-4"
             style={{ background: 'var(--color-surface-1)', borderColor: 'var(--color-line-default)' }}
           >
-            <h2 className="mb-3 text-[10px] font-semibold uppercase tracking-widest" style={{ color: 'var(--color-fg-muted)' }}>
-              Quick Navigation
-            </h2>
-            <div className="grid grid-cols-2 gap-2">
-              {[
-                { label: 'Workflows', href: '/workflows', icon: Brain, color: '#a195ff' },
-                { label: 'Executions', href: '/executions', icon: Activity, color: '#5b8cff' },
-                { label: 'AI Analysis', href: '/ai-analysis', icon: Sparkles, color: '#4dd1e1' },
-                { label: 'Agents', href: '/agents', icon: Server, color: '#45c08a' },
-                { label: 'Matrix', href: '/matrix', icon: Globe, color: '#f0b558' },
-                { label: 'Settings', href: '/settings', icon: Shield, color: '#8b8c97' },
-              ].map(({ label, href, icon: Icon, color }) => (
-                <Link
-                  key={href}
-                  href={href}
-                  className="group flex items-center gap-2.5 rounded-lg border px-3 py-2.5 transition-all hover:border-(--color-accent-default)/30"
-                  style={{ background: `${color}08`, borderColor: `${color}20` }}
-                >
-                  <Icon size={13} style={{ color }} />
-                  <span className="text-[11px] font-medium" style={{ color: 'var(--color-fg-muted)' }}>{label}</span>
-                  <ArrowRight size={10} className="ml-auto opacity-0 transition-opacity group-hover:opacity-100" style={{ color: 'var(--color-accent-default)' }} />
-                </Link>
+            <div className="mb-3 flex shrink-0 items-center justify-between">
+              <h2 className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: 'var(--color-fg-muted)' }}>
+                All Modules
+              </h2>
+              <span className="font-mono text-[10px]" style={{ color: 'var(--color-fg-subtle)' }}>
+                {MODULE_LIBRARY.length} routes
+              </span>
+            </div>
+            <div className="grid min-h-0 flex-1 grid-cols-2 gap-2 overflow-y-auto pr-1">
+              {MODULE_LIBRARY.map((tile, index) => (
+                <ModuleLibraryTile key={tile.href} tile={tile} index={index} />
               ))}
             </div>
           </motion.section>
