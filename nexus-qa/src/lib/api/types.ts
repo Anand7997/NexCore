@@ -161,6 +161,16 @@ export interface TestStep {
   step_order: number;
   name: string;
   description: string;
+  action_type?: string;
+  page_id?: string | null;
+  page_element_id?: string | null;
+  api_endpoint_id?: string | null;
+  xpath?: string;
+  path_location?: string;
+  input_value?: string;
+  assertion_type?: string;
+  secondary_action?: string;
+  secondary_value?: string;
   intent: string;
   target: string;
   expected_result: string;
@@ -566,6 +576,11 @@ export interface AIScrapedCandidatePreview {
   xpath: string;
   css_selector: string;
   confidence_score: number;
+  input_type?: string | null;
+  placeholder?: string | null;
+  label?: string | null;
+  test_data_hints?: Record<string, unknown> | null;
+  locator_quality?: string | null;
   tags: string[];
   selected: boolean;
   match_reason?: string | null;

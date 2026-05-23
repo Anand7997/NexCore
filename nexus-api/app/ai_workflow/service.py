@@ -47,6 +47,40 @@ _GENERATED_CASE_BATCH = tuple[int, ScenarioPreview, list[GeneratedTestCase]]
 
 _JSON_FENCE_RE = _re.compile(r"```(?:json)?\s*(.*?)\s*```", _re.DOTALL)
 
+_MODEL_GENERATION_PROFILES: dict[str, dict[str, str]] = {
+    "fast": {
+        "scenario_count": "4 to 6",
+        "analysis_depth": (
+            "average-depth coverage focused on smoke, happy-path, and obvious negative flows"
+        ),
+    },
+    "balanced": {
+        "scenario_count": "6 to 10",
+        "analysis_depth": (
+            "balanced coverage of critical, common, negative, edge, and regression flows"
+        ),
+    },
+    "best": {
+        "scenario_count": "10 to 16",
+        "analysis_depth": (
+            "deep analysis of business rules, cross-page flows, edge cases, regressions, "
+            "risk areas, and failure modes"
+        ),
+    },
+}
+
+_MODEL_TIER_HINTS: tuple[tuple[str, str], ...] = (
+    ("nano", "fast"),
+    ("haiku", "fast"),
+    ("mini", "balanced"),
+    ("sonnet", "balanced"),
+    ("opus", "best"),
+    ("gpt-5.5", "best"),
+    ("gpt-5.4", "best"),
+    ("gpt-5", "best"),
+    ("gpt-4.1", "best"),
+)
+
 
 def _parse_streamed_json(raw: str, schema: type[T]) -> T:
     from pydantic import ValidationError
@@ -57,6 +91,18 @@ def _parse_streamed_json(raw: str, schema: type[T]) -> T:
     except (json.JSONDecodeError, ValidationError) as exc:
         logger.error("Streamed JSON parse failed: %s\nRaw (first 500): %s", exc, raw[:500])
         raise ValueError(f"Streamed AI response did not match expected schema: {exc}") from exc
+
+
+def _model_generation_tier(ai_model: str) -> str:
+    model = ai_model.lower()
+    for needle, tier in _MODEL_TIER_HINTS:
+        if needle in model:
+            return tier
+    return "balanced"
+
+
+def _model_generation_profile(ai_model: str) -> dict[str, str]:
+    return _MODEL_GENERATION_PROFILES[_model_generation_tier(ai_model)]
 
 
 def _require_provider_package(provider_name: str, package_name: str) -> None:
@@ -281,6 +327,7 @@ async def _run_scenario_generation(workflow_id: str, ai_provider: str, ai_model:
                 "locators will be selected after test steps exist."
             )
             page_name = wf.page_name or _extract_page_name(wf.webpage_url, wf.project_name)
+            generation_profile = _model_generation_profile(ai_model)
 
             # Build the scenario prompt (same as ScenarioGenerationAgent does internally)
             scenario_prompt = build_scenario_prompt(
@@ -289,6 +336,8 @@ async def _run_scenario_generation(workflow_id: str, ai_provider: str, ai_model:
                 page_name=page_name,
                 elements_summary=elements_summary,
                 brd_analysis_summary=brd_analysis.summary,
+                scenario_count=generation_profile["scenario_count"],
+                analysis_depth=generation_profile["analysis_depth"],
             )
 
             # Stream scenario generation — update current_message every ~50 chars
@@ -379,8 +428,27 @@ def _best_locator_payload(element: DiscoveryElement) -> tuple[str, str, str, str
     return strategy or "xpath", locator or "", xpath or "", css_selector or ""
 
 
+def _best_xpath(element: DiscoveryElement) -> str:
+    verified_xpaths = [
+        locator for locator in element.alternative_locators
+        if locator.strategy == "xpath" and locator.locator and locator.verified and locator.element_count == 1
+    ]
+    if verified_xpaths:
+        verified_xpaths.sort(key=lambda locator: locator.score, reverse=True)
+        return verified_xpaths[0].locator
+    scored_xpaths = [
+        locator for locator in element.alternative_locators
+        if locator.strategy == "xpath" and locator.locator and locator.element_count != 0
+    ]
+    if scored_xpaths:
+        scored_xpaths.sort(key=lambda locator: locator.score, reverse=True)
+        return scored_xpaths[0].locator
+    return element.xpath or ""
+
+
 def _candidate_from_discovered(element: DiscoveryElement, index: int) -> dict[str, Any]:
     strategy, locator, xpath, css_selector = _best_locator_payload(element)
+    xpath = _best_xpath(element) or xpath
     return {
         "candidate_id": f"scraped-{index + 1}",
         "name": element.name,
@@ -392,12 +460,40 @@ def _candidate_from_discovered(element: DiscoveryElement, index: int) -> dict[st
         "css_selector": css_selector,
         "id_attr": element.id_attr or "",
         "name_attr": element.name_attr or "",
+        "input_type": element.input_type or "",
+        "placeholder": element.placeholder or "",
+        "label": element.label or "",
+        "test_data_hints": element.test_data_hints or {},
+        "locator_quality": _locator_quality(element),
         "confidence_score": element.confidence_score or 0.0,
         "tags": element.tags or [],
         "selected": False,
         "match_reason": None,
         "matched_steps": [],
     }
+
+
+def _locator_quality(element: DiscoveryElement | dict[str, Any]) -> float:
+    if isinstance(element, dict):
+        confidence = float(element.get("confidence_score") or 0.0)
+        strategy = str(element.get("locator_strategy") or "").lower()
+        locator = str(element.get("best_locator") or element.get("xpath") or element.get("css_selector") or "")
+    else:
+        confidence = float(element.confidence_score or 0.0)
+        strategy = str(element.locator_strategy or "").lower()
+        locator = str(element.best_locator or element.xpath or element.css_selector or "")
+    strategy_bonus = {
+        "testid": 0.14,
+        "data-testid": 0.14,
+        "role": 0.12,
+        "aria-label": 0.10,
+        "id": 0.10,
+        "name": 0.07,
+        "css": 0.04,
+        "xpath": 0.02,
+    }.get(strategy, 0.0)
+    short_locator_bonus = 0.04 if locator and len(locator) <= 100 else 0.0
+    return min(1.0, confidence * 0.75 + strategy_bonus + short_locator_bonus)
 
 
 def _candidate_text(candidate: dict[str, Any]) -> str:
@@ -410,9 +506,48 @@ def _candidate_text(candidate: dict[str, Any]) -> str:
             " ".join(candidate.get("tags") or []),
             candidate.get("id_attr", ""),
             candidate.get("name_attr", ""),
+            candidate.get("placeholder", ""),
+            candidate.get("label", ""),
+            " ".join(str(v) for v in (candidate.get("test_data_hints") or {}).values()),
         )
         if part
     )
+
+
+def _step_data_intent(step: GeneratedTestStep) -> str:
+    text = " ".join(
+        part for part in (
+            step.description,
+            step.action_type,
+            step.input_value or "",
+            step.expected_result or "",
+        ) if part
+    ).lower()
+    if any(token in text for token in ("date", "dob", "birth", "calendar")):
+        return "date"
+    if "email" in text:
+        return "email"
+    if "password" in text:
+        return "password"
+    if any(token in text for token in ("phone", "mobile", "telephone")):
+        return "phone"
+    if any(token in text for token in ("amount", "quantity", "count", "age", "number")):
+        return "number"
+    return ""
+
+
+def _data_type_bonus(step: GeneratedTestStep, candidate: dict[str, Any]) -> float:
+    intent = _step_data_intent(step)
+    if not intent:
+        return 0.0
+    hints = candidate.get("test_data_hints") or {}
+    data_type = str(hints.get("data_type") or candidate.get("input_type") or "").lower()
+    candidate_text = _candidate_text(candidate).lower()
+    if intent == data_type or intent in candidate_text:
+        return 0.20
+    if intent == "date" and str(candidate.get("input_type") or "").lower() == "date":
+        return 0.24
+    return -0.12
 
 
 def _action_element_bonus(action_type: str, element_type: str) -> float:
@@ -487,6 +622,8 @@ def _score_candidate(step: GeneratedTestStep, candidate: dict[str, Any]) -> floa
         _token_overlap(step_text, candidate_text),
     )
     score += _action_element_bonus(inferred_action, str(candidate.get("element_type") or ""))
+    score += _data_type_bonus(step, candidate)
+    score += min(float(candidate.get("locator_quality") or 0.0), 1.0) * 0.14
     if str(candidate.get("name") or "").lower() in step_text.lower():
         score += 0.12
     return min(score, 1.0)
@@ -589,6 +726,11 @@ async def _save_selected_candidates(
                 "workflow_id": workflow_id,
                 "source": "post_teststep_scrape",
                 "matched_steps": candidate.get("matched_steps", []),
+                "input_type": candidate.get("input_type") or "",
+                "placeholder": candidate.get("placeholder") or "",
+                "label": candidate.get("label") or "",
+                "test_data_hints": candidate.get("test_data_hints") or {},
+                "locator_quality": candidate.get("locator_quality") or candidate.get("confidence_score"),
             }
             element.updated_at = now
         else:
@@ -611,6 +753,11 @@ async def _save_selected_candidates(
                     "workflow_id": workflow_id,
                     "source": "post_teststep_scrape",
                     "matched_steps": candidate.get("matched_steps", []),
+                    "input_type": candidate.get("input_type") or "",
+                    "placeholder": candidate.get("placeholder") or "",
+                    "label": candidate.get("label") or "",
+                    "test_data_hints": candidate.get("test_data_hints") or {},
+                    "locator_quality": candidate.get("locator_quality") or candidate.get("confidence_score"),
                 },
             )
             db.add(element)
@@ -711,6 +858,16 @@ def _workflow_action_to_test_config(action_type: str, element: dict[str, Any] | 
     return "CLICK"
 
 
+def _step_configured_input_value(step: GeneratedTestStep, element: dict[str, Any] | None) -> str:
+    if step.input_value:
+        return step.input_value
+    hints = (element or {}).get("test_data_hints") or {}
+    action = _infer_workflow_action(step, str((element or {}).get("element_type") or ""))
+    if action in {"fill", "select"}:
+        return str(hints.get("sample_value") or "")
+    return ""
+
+
 def _build_step_bindings(
     *,
     page_id: str | None,
@@ -729,14 +886,19 @@ def _build_step_bindings(
     }
     if element:
         locator = _resolved_locator(element)
+        hints = element.get("test_data_hints") or {}
         web_binding.update({
             "page_element_id": element.get("element_id"),
             "element_name": element.get("name"),
             "element_type": element.get("element_type"),
+            "input_type": element.get("input_type") or hints.get("input_type") or "",
+            "data_type": hints.get("data_type") or "",
+            "date_format": hints.get("date_format") or "",
             "locator_strategy": element.get("locator_strategy") or "xpath",
             "selector": locator,
             "xpath": element.get("xpath") or locator,
             "css_selector": element.get("css_selector") or "",
+            "locator_quality": element.get("locator_quality") or element.get("confidence_score"),
             "match_reason": element.get("match_reason"),
         })
     return {"web": web_binding}
@@ -1119,19 +1281,26 @@ async def _persist_test_case(
         web_binding = bindings.get("web", {})
         locator = str(web_binding.get("selector") or web_binding.get("xpath") or "")
         element_name = str(element.get("name") or "") if element else ""
+        test_data_hints = (element or {}).get("test_data_hints") or {}
+        configured_input_value = _step_configured_input_value(step, element)
         target = element_name or (page_name if step.action_type == "navigate" else "")
         test_data = {
             **(step.test_data or {}),
-            "value": step.input_value or "",
+            "value": configured_input_value,
             "action_type": configured_action,
             "workflow_action_type": step.action_type,
             "page": page_name,
             "page_id": step.page_id,
             "page_element_id": step.page_element_id,
             "element_name": element_name,
+            "input_type": web_binding.get("input_type") or test_data_hints.get("input_type") or "",
+            "data_type": test_data_hints.get("data_type") or "",
+            "date_format": test_data_hints.get("date_format") or "",
+            "sample_value": test_data_hints.get("sample_value") or "",
             "locator": locator,
             "xpath": str(web_binding.get("xpath") or locator),
             "css_selector": str(web_binding.get("css_selector") or ""),
+            "locator_quality": web_binding.get("locator_quality") or "",
             "binding_confidence": step.confidence,
         }
         if step.assertion_type:
@@ -1145,7 +1314,7 @@ async def _persist_test_case(
             action_type=configured_action,
             page_id=step.page_id,
             page_element_id=step.page_element_id,
-            input_value=step.input_value or "",
+            input_value=configured_input_value,
             assertion_type=step.assertion_type or "",
             expected_result=step.expected_result or "",
             intent=configured_action,

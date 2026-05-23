@@ -137,6 +137,19 @@ function isPollingState(state: AIWorkflowState): boolean {
     'SCENARIOS_GENERATING', 'TESTCASES_GENERATING'].includes(state);
 }
 
+function hasDiscoveryPanelActivity(wf: AIWorkflowStateResponse | undefined): boolean {
+  if (!wf) return false;
+  return [
+    'PAGE_CREATED',
+    'DISCOVERY_RUNNING',
+    'DISCOVERY_DONE',
+    'LOCATORS_RANKED',
+    'PAGE_SAVED',
+    'REVIEW_READY',
+    'COMPLETED',
+  ].includes(wf.state) || (wf.scraped_candidates?.length ?? 0) > 0 || (wf.selected_elements?.length ?? 0) > 0;
+}
+
 function activePipelineStage(wf: AIWorkflowStateResponse | undefined): PipelineStageId {
   if (!wf) return 'project';
   const message = (wf.current_message || '').toLowerCase();
@@ -487,70 +500,134 @@ function ElementDiscoveryFeed({ count, lowConf, isRunning }: {
   );
 }
 
-function ScrapedCandidatesMiniPanel({ candidates, selected }: {
+function ScrapedCandidatesMiniPanel({ candidates, selected, isRunning = false }: {
   candidates: AIScrapedCandidatePreview[];
   selected: AIScrapedCandidatePreview[];
+  isRunning?: boolean;
 }) {
   const selectedIds = new Set(selected.map((item) => item.candidate_id));
-  const visible = candidates.slice(0, 80);
+  const ranked = [...candidates].sort((a, b) => {
+    const aSelected = selectedIds.has(a.candidate_id) || a.selected ? 1 : 0;
+    const bSelected = selectedIds.has(b.candidate_id) || b.selected ? 1 : 0;
+    if (aSelected !== bSelected) return bSelected - aSelected;
+    return (b.confidence_score ?? 0) - (a.confidence_score ?? 0);
+  });
+  const visible = ranked.slice(0, 80);
   const picked = selected.length;
   const raw = candidates.length;
+  const highQuality = candidates.filter((item) => (item.confidence_score ?? 0) >= 0.8).length;
+  const lowQuality = candidates.filter((item) => (item.confidence_score ?? 0) < 0.5).length;
+  const liveState = isRunning ? 'Listening' : raw > 0 ? 'Ready' : 'Idle';
 
   return (
-    <div className="rounded-xl bg-(--color-surface-1) border border-(--color-line-subtle) overflow-hidden">
-      <div className="px-3 py-2 border-b border-(--color-line-subtle) flex items-center gap-2">
-        <Search size={12} className="text-violet-400" />
-        <div className="min-w-0">
-          <div className="text-xs font-semibold text-(--color-fg-muted)">Scraped Candidate Panel</div>
-          <div className="text-[10px] text-(--color-fg-subtle)">{raw} scraped · {picked} selected</div>
+    <div className="rounded-lg bg-[#050914] border border-cyan-400/15 overflow-hidden">
+      <div className="px-3 py-2.5 border-b border-white/[0.08] flex flex-wrap items-center gap-2">
+        <div className="flex items-center justify-center w-7 h-7 rounded-md border border-cyan-400/25 bg-cyan-400/10 text-cyan-200 shrink-0">
+          {isRunning ? <Loader2 size={13} className="animate-spin" /> : <Search size={13} />}
         </div>
-        <div className="ml-auto flex items-center gap-1 text-[10px] text-emerald-400">
-          <Target size={11} /> AI picklist
+        <div className="min-w-44 flex-1">
+          <div className="flex items-center gap-2">
+            <div className="text-xs font-semibold text-(--color-fg-default)">MCP Scrape Console</div>
+            <span className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[9px] font-medium ${
+              isRunning
+                ? 'border-cyan-400/30 bg-cyan-400/10 text-cyan-200'
+                : raw > 0
+                  ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300'
+                  : 'border-white/[0.08] bg-white/[0.03] text-(--color-fg-subtle)'
+            }`}>
+              <span className={`h-1.5 w-1.5 rounded-full ${isRunning ? 'bg-cyan-300 animate-pulse' : raw > 0 ? 'bg-emerald-300' : 'bg-white/30'}`} />
+              {liveState}
+            </span>
+          </div>
+          <div className="mt-0.5 text-[10px] text-(--color-fg-subtle)">
+            Scraped elements ranked by XPath confidence and test-step fit.
+          </div>
+        </div>
+        <div className="ml-auto grid grid-cols-3 gap-1.5 text-[10px]">
+          <div className="min-w-14 rounded-md border border-white/[0.07] bg-white/[0.035] px-2 py-1 text-center">
+            <div className="font-semibold tabular-nums text-(--color-fg-default)">{raw}</div>
+            <div className="text-[8px] uppercase tracking-wide text-(--color-fg-subtle)">Scraped</div>
+          </div>
+          <div className="min-w-14 rounded-md border border-emerald-400/20 bg-emerald-400/[0.06] px-2 py-1 text-center">
+            <div className="font-semibold tabular-nums text-emerald-300">{picked}</div>
+            <div className="text-[8px] uppercase tracking-wide text-emerald-300/70">Picked</div>
+          </div>
+          <div className="min-w-14 rounded-md border border-cyan-400/20 bg-cyan-400/[0.06] px-2 py-1 text-center">
+            <div className="font-semibold tabular-nums text-cyan-200">{highQuality}</div>
+            <div className="text-[8px] uppercase tracking-wide text-cyan-200/70">Strong</div>
+          </div>
         </div>
       </div>
 
       {raw === 0 ? (
-        <div className="px-3 py-5 text-[11px] text-(--color-fg-subtle) flex items-center gap-2">
-          <Loader2 size={12} className="animate-spin text-violet-400" />
-          Waiting for post-test-step scrape
+        <div className="px-3 py-6 text-[11px] text-(--color-fg-subtle) flex items-center gap-2">
+          <Loader2 size={13} className={`${isRunning ? 'animate-spin' : ''} text-cyan-300`} />
+          {isRunning ? 'MCP is opening browser context and collecting page elements.' : 'Waiting for MCP scrape candidates.'}
         </div>
       ) : (
-        <div className="max-h-72 overflow-y-auto p-2 grid grid-cols-1 md:grid-cols-2 gap-2">
+        <div className="max-h-80 overflow-y-auto">
+          <div className="sticky top-0 z-10 grid grid-cols-[minmax(0,1.3fr)_minmax(0,1.7fr)_92px] gap-2 border-b border-white/[0.06] bg-[#050914]/95 px-3 py-1.5 text-[9px] uppercase tracking-wide text-(--color-fg-subtle) backdrop-blur">
+            <div>Element</div>
+            <div>Path / Location</div>
+            <div className="text-right">Quality</div>
+          </div>
           {visible.map((candidate, index) => {
             const isSelected = selectedIds.has(candidate.candidate_id) || candidate.selected;
+            const confidence = candidate.confidence_score ?? 0;
+            const locator = candidate.xpath || candidate.best_locator || candidate.css_selector || 'locator pending';
+            const hint = candidate.label || candidate.placeholder || candidate.input_type || candidate.element_type;
             return (
               <motion.div
                 key={candidate.candidate_id}
                 initial={{ opacity: 0, y: 4 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: Math.min(index * 0.01, 0.2) }}
-                className={`rounded-lg border p-2.5 min-h-20 ${isSelected
-                  ? 'border-emerald-500/30 bg-emerald-500/10'
-                  : 'border-(--color-line-default) bg-(--color-surface-2)'}`}
+                className={`grid grid-cols-[minmax(0,1.3fr)_minmax(0,1.7fr)_92px] gap-2 px-3 py-2 border-b border-white/[0.055] transition-colors ${
+                  isSelected ? 'bg-emerald-400/[0.06]' : 'bg-transparent hover:bg-white/[0.025]'
+                }`}
               >
-                <div className="flex items-start gap-2">
-                  <div className={`w-6 h-6 rounded-lg border flex items-center justify-center shrink-0 ${isSelected
+                <div className="min-w-0 flex items-start gap-2">
+                  <div className={`mt-0.5 w-5 h-5 rounded-md border flex items-center justify-center shrink-0 ${isSelected
                     ? 'border-emerald-500/35 bg-emerald-500/10 text-emerald-400'
-                    : 'border-(--color-line-default) bg-(--color-surface-1) text-(--color-fg-subtle)'}`}>
+                    : 'border-white/[0.08] bg-white/[0.025] text-(--color-fg-subtle)'}`}>
                     {isSelected ? <CheckCircle2 size={12} /> : <Circle size={12} />}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <span className="text-[11px] font-medium text-(--color-fg-default) truncate">{candidate.name}</span>
-                      <Badge label={candidate.element_type} className="text-(--color-fg-subtle) border-(--color-line-default) shrink-0" />
+                    <div className="flex items-center gap-1.5 min-w-0 h-5">
+                      <span className="text-[11px] font-medium text-(--color-fg-default) truncate">{candidate.name || hint}</span>
+                      <Badge label={candidate.element_type} className="text-(--color-fg-subtle) border-white/[0.08] shrink-0" />
                     </div>
-                    <div className="mt-1 font-mono text-[9px] text-(--color-fg-subtle) truncate">
-                      {candidate.best_locator || candidate.xpath || candidate.css_selector || 'locator pending'}
-                    </div>
+                    <div className="text-[10px] text-(--color-fg-subtle) truncate">{hint}</div>
                     {isSelected && candidate.match_reason && (
-                      <div className="mt-1 text-[10px] text-emerald-300/80 line-clamp-2">{candidate.match_reason}</div>
+                      <div className="mt-0.5 text-[10px] text-emerald-300/80 line-clamp-1">{candidate.match_reason}</div>
                     )}
                   </div>
-                  <ConfidenceRing value={candidate.confidence_score ?? 0} size={20} />
+                </div>
+                <div className="min-w-0 flex items-center gap-1.5">
+                  <div className="min-w-0 flex-1 rounded border border-white/[0.06] bg-black/20 px-2 py-1 font-mono text-[9px] text-cyan-100/75 truncate">
+                    {locator}
+                  </div>
+                  {locator !== 'locator pending' && <CopyButton text={locator} />}
+                </div>
+                <div className="flex items-center justify-end gap-2">
+                  <div className="min-w-0 text-right">
+                    <div className={`text-[10px] font-semibold tabular-nums ${confColor(confidence)}`}>
+                      {Math.round(confidence * 100)}%
+                    </div>
+                    <div className="text-[9px] text-(--color-fg-subtle) truncate">
+                      {candidate.locator_quality || candidate.locator_strategy || (lowQuality > 0 ? 'reviewed' : 'ranked')}
+                    </div>
+                  </div>
+                  <ConfidenceRing value={confidence} size={20} />
                 </div>
               </motion.div>
             );
           })}
+          {candidates.length > visible.length && (
+            <div className="px-3 py-2 text-[10px] text-(--color-fg-subtle)">
+              Showing top {visible.length} of {candidates.length} candidates.
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -1199,7 +1276,7 @@ function DiscoveryStep({ wf }: { wf: AIWorkflowStateResponse | undefined }) {
   return (
     <div className="space-y-5">
       <ElementDiscoveryFeed count={wf?.scraped_candidates?.length ?? 0} lowConf={wf?.low_confidence_locators ?? 0} isRunning={isRunning} />
-      <ScrapedCandidatesMiniPanel candidates={wf?.scraped_candidates ?? []} selected={wf?.selected_elements ?? []} />
+      <ScrapedCandidatesMiniPanel candidates={wf?.scraped_candidates ?? []} selected={wf?.selected_elements ?? []} isRunning={isRunning} />
       <WorkflowActivityFeed wf={wf} limit={12} />
       {isDone && (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
@@ -1344,7 +1421,7 @@ function TestGenerationStep({ wf }: { wf: AIWorkflowStateResponse | undefined })
 
 // ── Step 6: Review ────────────────────────────────────────────────────────────
 
-function ReviewStep({ workflowId }: { workflowId: string }) {
+function ReviewStep({ workflowId, wf }: { workflowId: string; wf: AIWorkflowStateResponse | undefined }) {
   const { data: review, isLoading } = useAIWorkflowReview(workflowId);
   if (isLoading) return (
     <div className="flex items-center gap-2 text-sm text-(--color-fg-subtle)">
@@ -1364,6 +1441,15 @@ function ReviewStep({ workflowId }: { workflowId: string }) {
 
   return (
     <div className="space-y-5">
+      {hasDiscoveryPanelActivity(wf) && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 text-xs font-semibold text-(--color-fg-muted)">
+            <Sparkles size={12} className="text-violet-400" />
+            MCP Scrape Panel
+          </div>
+          <ScrapedCandidatesMiniPanel candidates={wf?.scraped_candidates ?? []} selected={wf?.selected_elements ?? []} />
+        </div>
+      )}
       <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
         {summaryCards.map((c) => (
           <motion.div key={c.label} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
@@ -1511,7 +1597,7 @@ export default function AIWorkflowPage() {
     scenarios: <ScenariosStep scenarios={wf?.scenarios ?? []} onConfirm={handleConfirmScenarios}
       isPending={confirmScenarios.isPending || generateTestCases.isPending} />,
     generation: <TestGenerationStep wf={wf} />,
-    review: workflowId ? <ReviewStep workflowId={workflowId} /> : null,
+    review: workflowId ? <ReviewStep workflowId={workflowId} wf={wf} /> : null,
   };
   const activeStepMeta = WORKFLOW_STEPS.find((step) => step.id === activeStep) ?? WORKFLOW_STEPS[0];
   const activeStage = PIPELINE_STAGES.find((stage) => stage.id === activePipelineStage(wf)) ?? PIPELINE_STAGES[0];

@@ -49,6 +49,7 @@ class TestConfigurationRepository:
                 selectinload(TestProjectModel.modules)
                 .selectinload(TestModuleModel.test_cases)
                 .selectinload(TestCaseModel.test_steps)
+                .selectinload(TestStepModel.page_element)
             )
             .order_by(TestProjectModel.created_at.desc())
         )
@@ -64,6 +65,7 @@ class TestConfigurationRepository:
                 selectinload(TestProjectModel.modules)
                 .selectinload(TestModuleModel.test_cases)
                 .selectinload(TestCaseModel.test_steps)
+                .selectinload(TestStepModel.page_element)
             )
             .where(TestProjectModel.id == project_id)
         )
@@ -428,7 +430,10 @@ class TestConfigurationRepository:
     async def get_case(self, case_id: str) -> TestCaseModel | None:
         result = await self.db.execute(
             select(TestCaseModel)
-            .options(selectinload(TestCaseModel.test_steps))
+            .options(
+                selectinload(TestCaseModel.test_steps)
+                .selectinload(TestStepModel.page_element)
+            )
             .where(TestCaseModel.id == case_id)
         )
         return result.scalar_one_or_none()

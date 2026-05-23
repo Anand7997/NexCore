@@ -89,20 +89,21 @@ function asStr(v: unknown) { return typeof v === 'string' ? v : ''; }
 function webBind(s: TestStep) { return s.bindings?.web ?? {}; }
 function stepPage(s: TestStep) { return asStr(webBind(s).page); }
 function stepElement(s: TestStep) { return asStr(webBind(s).element_name) || s.target; }
-function stepLocator(s: TestStep) { return asStr(webBind(s).selector) || asStr(webBind(s).xpath); }
+function stepLocator(s: TestStep) {
+  return (
+    asStr(s.path_location) ||
+    asStr(s.xpath) ||
+    asStr(webBind(s).xpath) ||
+    asStr(s.test_data?.xpath) ||
+    asStr(s.test_data?.locator) ||
+    asStr(webBind(s).selector)
+  );
+}
 function stepValue(s: TestStep) { return asStr(s.test_data?.value); }
 function stepAssertionType(s: TestStep) { return asStr(s.test_data?.assertion_type); }
 function stepSecondaryAction(s: TestStep) { return asStr(s.test_data?.secondary_action); }
-function resolveLocatorFromRepo(el: { locator_strategy: string; css_selector: string; id_attr: string; name_attr: string; xpath: string; name: string }): string {
-  switch (el.locator_strategy) {
-    case 'css':    return el.css_selector;
-    case 'id':     return el.css_selector || (el.id_attr ? `#${el.id_attr}` : '');
-    case 'name':   return el.css_selector || (el.name_attr ? `[name="${el.name_attr}"]` : '');
-    case 'text':   return el.css_selector || el.name;
-    case 'role':   return el.css_selector || (el.name_attr ? `[role="${el.name_attr}"]` : '');
-    case 'testid': return el.css_selector || (el.id_attr ? `[data-testid="${el.id_attr}"]` : '');
-    default:       return el.xpath;
-  }
+function resolvePathFromRepo(el: { xpath: string; css_selector: string; name: string }): string {
+  return el.xpath || el.css_selector || el.name;
 }
 function tagsToCSV(t: string[]) { return t.join(', '); }
 function csvToTags(c: string) { return c.split(',').map((t) => t.trim()).filter(Boolean); }
@@ -135,6 +136,8 @@ function buildPayload(step: TestStep, u: StepUpdates) {
       ...step.test_data,
       value: val,
       action_type: action,
+      xpath: loc,
+      path_location: loc,
       ...(assertionType   ? { assertion_type:   assertionType   } : {}),
       ...(secondaryAction ? { secondary_action: secondaryAction } : {}),
     },
@@ -202,7 +205,7 @@ function StepRow({
   function handleElementBlur() {
     const repoEl = repoElems.find((e) => e.name.toLowerCase() === element.toLowerCase());
     if (repoEl) {
-      const repoLoc = resolveLocatorFromRepo(repoEl);
+      const repoLoc = resolvePathFromRepo(repoEl);
       if (repoLoc && !locator) setLocator(repoLoc);
       onUpdate({ description: desc, action, page, element, locator: repoLoc || locator, value, assertionType, secondaryAction, isEnabled: enabled });
       return;
@@ -250,24 +253,24 @@ function StepRow({
           {[...new Set([...repoPageNames, ...pageOptions])].map((p) => <option key={p} value={p} />)}
         </datalist>
       </td>
-      {/* Element + auto-locator sub-display */}
+      {/* Element */}
       <td className={`${bd} min-w-[140px]`}>
         <input value={element} onChange={(e) => setElement(e.target.value)} onBlur={handleElementBlur}
           className={ic} placeholder="Element" list={`el-${step.id}`} />
         <datalist id={`el-${step.id}`}>
           {[...new Set([...repoElemNames, ...elementOptions])].map((e) => <option key={e} value={e} />)}
         </datalist>
-        {locator && (
-          <div className="mt-0.5 flex items-center gap-1 min-w-0">
-            <input
-              value={locator}
-              onChange={(e) => setLocator(e.target.value)}
-              onBlur={() => save()}
-              className="w-full bg-transparent text-[9px] font-mono text-[var(--color-fg-subtle)] outline-none placeholder:text-[var(--color-fg-subtle)]/30 truncate"
-              title={locator}
-            />
-          </div>
-        )}
+      </td>
+      {/* Paths / Location */}
+      <td className={`${bd} min-w-[190px]`}>
+        <input
+          value={locator}
+          onChange={(e) => setLocator(e.target.value)}
+          onBlur={() => save()}
+          className={`${ic} text-[10px] text-[var(--color-fg-muted)]`}
+          placeholder="XPath / selector"
+          title={locator}
+        />
       </td>
       {/* Value — or assertion type dropdown when action is ASSERTION */}
       <td className={`${bd} min-w-[120px]`}>
@@ -793,10 +796,10 @@ export default function TestConfigurationPage() {
                     </div>
                   )
                   : (
-                    <table className="w-full border-collapse" style={{ minWidth: 1020 }}>
+                    <table className="w-full border-collapse" style={{ minWidth: 1180 }}>
                       <thead className="sticky top-0 z-10" style={{ background: 'var(--color-surface-1)' }}>
                         <tr className="border-b border-[var(--color-line-default)]">
-                          {['#','Description','Action','Page','Element / Locator','Value / Assertion','2nd','',''].map((h, i) => (
+                          {['#','Description','Action','Page','Element','Paths / Location','Value / Assertion','2nd','',''].map((h, i) => (
                             <th key={i} className="px-2 py-2 text-left font-mono text-[9px] uppercase tracking-[0.14em] text-[var(--color-fg-subtle)] border-r border-[var(--color-line-subtle)] last:border-r-0">
                               {h}
                             </th>
@@ -818,7 +821,7 @@ export default function TestConfigurationPage() {
                           />
                         ))}
                         <tr>
-                          <td colSpan={9} className="py-2 px-3">
+                          <td colSpan={10} className="py-2 px-3">
                             <button onClick={() => addStep(sortedSteps[sortedSteps.length - 1])}
                               className="flex items-center gap-1.5 text-[10px] font-mono text-[var(--color-fg-subtle)] hover:text-[var(--color-fg-default)] transition-colors">
                               <Plus size={9} /> Add step

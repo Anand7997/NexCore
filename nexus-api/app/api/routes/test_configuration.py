@@ -31,7 +31,29 @@ from app.domain.test_configuration.schemas import (
 router = APIRouter(prefix="/test-configuration", tags=["test-configuration"])
 
 
+def _step_path_location(step) -> tuple[str, str]:
+    bindings = step.bindings or {}
+    web = bindings.get("web") or {}
+    test_data = step.test_data or {}
+    page_element = step.__dict__.get("page_element")
+    element_xpath = getattr(page_element, "xpath", "") if page_element is not None else ""
+    xpath = (
+        element_xpath
+        or web.get("xpath")
+        or test_data.get("xpath")
+        or ""
+    )
+    location = (
+        xpath
+        or web.get("selector")
+        or test_data.get("locator")
+        or ""
+    )
+    return str(xpath or ""), str(location or "")
+
+
 def _to_step_response(step) -> TestStepResponse:
+    xpath, path_location = _step_path_location(step)
     return TestStepResponse(
         id=step.id,
         step_order=step.step_order,
@@ -41,6 +63,8 @@ def _to_step_response(step) -> TestStepResponse:
         action_type=step.action_type or step.intent or "",
         page_id=step.page_id,
         page_element_id=step.page_element_id,
+        xpath=xpath,
+        path_location=path_location,
         api_endpoint_id=step.api_endpoint_id,
         input_value=step.input_value or "",
         assertion_type=step.assertion_type or "",
@@ -303,7 +327,7 @@ async def create_test_step(
         step = await repo.create_test_step(case_id, schema)
     except TestConfigurationError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return TestStepResponse.model_validate(step)
+    return _to_step_response(step)
 
 
 @router.put("/steps/{step_id}", response_model=TestStepResponse)
@@ -316,7 +340,7 @@ async def update_test_step(
     step = await repo.update_test_step(step_id, schema)
     if step is None:
         raise HTTPException(status_code=404, detail="Test step not found")
-    return TestStepResponse.model_validate(step)
+    return _to_step_response(step)
 
 
 @router.delete("/steps/{step_id}", status_code=status.HTTP_204_NO_CONTENT)

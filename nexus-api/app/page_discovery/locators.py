@@ -197,6 +197,61 @@ def _score_locator(
     return final, "; ".join(parts)
 
 
+def _infer_date_format_from_text(text: str) -> tuple[str, str] | None:
+    normalized = text.lower()
+    patterns = [
+        ("dd/mm/yyyy", "10/02/2000", ("dd/mm/yyyy", "d/m/yyyy", "dd-mm-yyyy")),
+        ("mm/dd/yyyy", "02/10/2000", ("mm/dd/yyyy", "m/d/yyyy", "mm-dd-yyyy")),
+        ("yyyy-mm-dd", "2000-02-10", ("yyyy-mm-dd", "yyyy/mm/dd")),
+        ("dd mmm yyyy", "10 Feb 2000", ("dd mmm yyyy", "d mmm yyyy", "dd mon yyyy")),
+        ("dd ddd yyyy", "10 Thu 2000", ("dd ddd yyyy", "d ddd yyyy", "dd day yyyy")),
+    ]
+    compact = normalized.replace(" ", "")
+    for fmt, example, markers in patterns:
+        if any(marker in normalized or marker.replace(" ", "") in compact for marker in markers):
+            return fmt, example
+    return None
+
+
+def _infer_test_data_hints(tag: str, attrs: dict[str, Any], element_type: str) -> dict[str, Any]:
+    input_type = str(attrs.get("type") or "").lower()
+    placeholder = str(attrs.get("placeholder") or "")
+    label = str(attrs.get("label_text") or attrs.get("aria-label") or attrs.get("title") or "")
+    name = str(attrs.get("name") or attrs.get("id") or "")
+    text = " ".join(part for part in (placeholder, label, name, element_type, input_type) if part)
+    lowered = text.lower()
+
+    hints: dict[str, Any] = {
+        "input_type": input_type,
+        "placeholder": placeholder,
+        "label": label,
+    }
+
+    if input_type == "date":
+        hints.update({"data_type": "date", "date_format": "yyyy-mm-dd", "sample_value": "2000-02-10"})
+    elif "date" in lowered or "dob" in lowered or "birth" in lowered:
+        inferred = _infer_date_format_from_text(text)
+        if inferred:
+            date_format, sample_value = inferred
+        else:
+            date_format, sample_value = "dd/mm/yyyy", "10/02/2000"
+        hints.update({"data_type": "date", "date_format": date_format, "sample_value": sample_value})
+    elif input_type in {"email"} or "email" in lowered:
+        hints.update({"data_type": "email", "sample_value": "qa.user@example.com"})
+    elif input_type in {"password"} or "password" in lowered:
+        hints.update({"data_type": "password", "sample_value": "Nexus@12345"})
+    elif input_type in {"number"} or any(token in lowered for token in ("amount", "count", "quantity", "age")):
+        hints.update({"data_type": "number", "sample_value": "10"})
+    elif input_type in {"tel"} or any(token in lowered for token in ("phone", "mobile", "telephone")):
+        hints.update({"data_type": "phone", "sample_value": "9876543210"})
+    elif tag in {"select", "option"} or element_type in {"select", "combobox", "dropdown"}:
+        hints.update({"data_type": "option", "sample_value": ""})
+    elif tag in {"input", "textarea"}:
+        hints.update({"data_type": "text", "sample_value": "test data"})
+
+    return {key: value for key, value in hints.items() if value not in (None, "")}
+
+
 class ElementDiscoveryAgent:
     """Generate, verify, and score testable UI locators."""
 
@@ -337,6 +392,14 @@ class ElementDiscoveryAgent:
             css_selector=css_selector,
             id_attr=str(attrs.get("id") or ""),
             name_attr=str(attrs.get("name") or ""),
+            input_type=str(attrs.get("type") or ""),
+            placeholder=str(attrs.get("placeholder") or ""),
+            label=str(attrs.get("label_text") or attrs.get("aria-label") or attrs.get("title") or ""),
+            test_data_hints=_infer_test_data_hints(
+                tag,
+                attrs,
+                self._determine_type(tag, attrs, roles),
+            ),
             confidence_score=round(confidence, 4),
             alternative_locators=scored,
             tags=tags,

@@ -19,6 +19,48 @@ _MCP_MIN_ELEMENTS = 5  # fall back to Playwright if MCP returns fewer than this
 _LOW_CONFIDENCE_THRESHOLD = 0.6  # elements below this score are flagged for review
 
 
+def _infer_mcp_test_data_hints(element) -> dict[str, str]:
+    text = " ".join(
+        part for part in (
+            element.input_type,
+            element.placeholder,
+            element.label,
+            element.name,
+            element.element_type,
+        ) if part
+    ).lower()
+    hints: dict[str, str] = {}
+    if element.input_type:
+        hints["input_type"] = element.input_type
+    if element.placeholder:
+        hints["placeholder"] = element.placeholder
+    if element.label:
+        hints["label"] = element.label
+
+    if element.input_type == "date":
+        hints.update({"data_type": "date", "date_format": "yyyy-mm-dd", "sample_value": "2000-02-10"})
+    elif "date" in text or "dob" in text or "birth" in text:
+        if any(marker in text for marker in ("yyyy-mm-dd", "yyyy/mm/dd")):
+            hints.update({"data_type": "date", "date_format": "yyyy-mm-dd", "sample_value": "2000-02-10"})
+        elif "mmm" in text or "mon" in text:
+            hints.update({"data_type": "date", "date_format": "dd mmm yyyy", "sample_value": "10 Feb 2000"})
+        elif "day" in text or "ddd" in text:
+            hints.update({"data_type": "date", "date_format": "dd ddd yyyy", "sample_value": "10 Thu 2000"})
+        else:
+            hints.update({"data_type": "date", "date_format": "dd/mm/yyyy", "sample_value": "10/02/2000"})
+    elif element.input_type == "email" or "email" in text:
+        hints.update({"data_type": "email", "sample_value": "qa.user@example.com"})
+    elif element.input_type == "password" or "password" in text:
+        hints.update({"data_type": "password", "sample_value": "Nexus@12345"})
+    elif element.input_type == "number" or any(token in text for token in ("amount", "quantity", "age")):
+        hints.update({"data_type": "number", "sample_value": "10"})
+    elif element.input_type == "tel" or any(token in text for token in ("phone", "mobile", "telephone")):
+        hints.update({"data_type": "phone", "sample_value": "9876543210"})
+    elif element.element_type in {"input", "textarea", "textbox"}:
+        hints.update({"data_type": "text", "sample_value": "test data"})
+    return hints
+
+
 class BrowserDiscoveryAdapter:
     def __init__(self, mcp_url: str | None = None, playwright_fallback: bool = True) -> None:
         self._mcp_url = mcp_url
@@ -119,7 +161,11 @@ class BrowserDiscoveryAdapter:
                 css_selector=mcp_el.css_selector,
                 id_attr=mcp_el.id_attr,
                 name_attr=mcp_el.name_attr,
+                input_type=mcp_el.input_type,
+                placeholder=mcp_el.placeholder,
+                label=mcp_el.label,
                 locator_strategy=mcp_el.locator_strategy,
+                test_data_hints=_infer_mcp_test_data_hints(mcp_el),
                 tags=mcp_el.tags,
                 confidence_score=mcp_el.confidence,
                 alternative_locators=[lc.model_dump() for lc in alt_locators],
@@ -140,6 +186,10 @@ class BrowserDiscoveryAdapter:
                 css_selector=mcp_el.css_selector,
                 id_attr=mcp_el.id_attr,
                 name_attr=mcp_el.name_attr,
+                input_type=mcp_el.input_type,
+                placeholder=mcp_el.placeholder,
+                label=mcp_el.label,
+                test_data_hints=_infer_mcp_test_data_hints(mcp_el),
                 confidence_score=mcp_el.confidence,
                 alternative_locators=alt_locators,
                 tags=mcp_el.tags,

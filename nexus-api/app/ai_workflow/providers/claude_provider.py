@@ -32,6 +32,8 @@ class ClaudeProvider(AbstractAIProvider):
 
     def _get_client(self):
         if self._client is None:
+            if not self._api_key.strip():
+                raise ValueError("ANTHROPIC_API_KEY is required for ClaudeProvider")
             try:
                 import anthropic  # type: ignore[import]
             except ImportError as exc:

@@ -158,6 +158,8 @@ class TestStepResponse(BaseModel):
     action_type: str
     page_id: str | None
     page_element_id: str | None
+    xpath: str = ""
+    path_location: str = ""
     api_endpoint_id: str | None
     input_value: str
     assertion_type: str

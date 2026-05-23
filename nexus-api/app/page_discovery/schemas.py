@@ -55,6 +55,10 @@ class DiscoveredElement(BaseModel):
     css_selector: str = ""
     id_attr: str = ""
     name_attr: str = ""
+    input_type: str = ""
+    placeholder: str = ""
+    label: str = ""
+    test_data_hints: dict[str, Any] = Field(default_factory=dict)
     confidence_score: float = 0.0
     alternative_locators: list[LocatorCandidate] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)

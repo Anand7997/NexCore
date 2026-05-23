@@ -33,6 +33,9 @@ class MCPElement:
     name_attr: str
     xpath: str
     css_selector: str
+    input_type: str
+    placeholder: str
+    label: str
     confidence: float
     tags: list[str] = field(default_factory=list)
 
@@ -118,6 +121,8 @@ class MCPPlaywrightAdapter:
             aria_label = item.get("aria_label") or item.get("ariaLabel") or item.get("label") or ""
             id_attr = item.get("id") or item.get("id_attr") or ""
             name_attr = item.get("name") or item.get("name_attr") or ""
+            input_type = item.get("input_type") or item.get("type_attr") or item.get("inputType") or ""
+            placeholder = item.get("placeholder") or ""
             text = item.get("text") or item.get("innerText") or item.get("textContent") or ""
             text = str(text).strip()[:120]
             xpath = item.get("xpath") or item.get("full_xpath") or ""
@@ -149,6 +154,9 @@ class MCPPlaywrightAdapter:
                 name_attr=name_attr,
                 xpath=xpath,
                 css_selector=css_sel,
+                input_type=str(input_type),
+                placeholder=str(placeholder),
+                label=str(aria_label),
                 confidence=confidence,
                 tags=tags,
             ))
