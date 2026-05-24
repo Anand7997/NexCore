@@ -7,6 +7,7 @@ import { useExecutionStreamStore } from '@/lib/stores/executionStreamStore';
 import type { RealtimeEvent, RealtimeEventType, LogEntry } from '@/types';
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL ?? 'ws://localhost:8000/ws';
+const SOCKET_CLOSE_GRACE_MS = 1_500;
 
 let clientId: string | null = null;
 
@@ -54,15 +55,27 @@ function severityFromType(type: string): RealtimeEvent['severity'] {
 // Singleton WebSocket — survives React re-renders, shared across the app
 let sharedSocket: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let closeTimer: ReturnType<typeof setTimeout> | null = null;
 let refCount = 0;
+const messageListeners = new Set<(data: unknown) => void>();
 
 function getSocket(onMessage: (data: unknown) => void): WebSocket {
+  messageListeners.add(onMessage);
+  if (closeTimer) {
+    clearTimeout(closeTimer);
+    closeTimer = null;
+  }
   if (sharedSocket && sharedSocket.readyState <= WebSocket.OPEN) {
     return sharedSocket;
   }
   sharedSocket = new WebSocket(WS_URL);
   sharedSocket.onmessage = (evt) => {
-    try { onMessage(JSON.parse(evt.data)); } catch { /* ignore malformed */ }
+    try {
+      const data = JSON.parse(evt.data);
+      for (const listener of messageListeners) {
+        listener(data);
+      }
+    } catch { /* ignore malformed */ }
   };
   sharedSocket.onclose = () => {
     sharedSocket = null;
@@ -217,7 +230,8 @@ export function useWebSocket(subscribeToExecution?: string | null) {
 
   useEffect(() => {
     refCount++;
-    const sock = getSocket((data) => onMessageRef.current(data));
+    const listener = (data: unknown) => onMessageRef.current(data);
+    const sock = getSocket(listener);
 
     const sendWhenReady = (msg: object) => {
       if (sock.readyState === WebSocket.OPEN) {
@@ -233,13 +247,19 @@ export function useWebSocket(subscribeToExecution?: string | null) {
 
     return () => {
       refCount--;
+      messageListeners.delete(listener);
       if (subscribeToExecution) {
         try { sock.send(JSON.stringify({ action: 'unsubscribe', execution_id: subscribeToExecution })); } catch { /* ignore */ }
       }
       if (refCount === 0) {
         if (reconnectTimer) clearTimeout(reconnectTimer);
-        sock.close();
-        sharedSocket = null;
+        closeTimer = setTimeout(() => {
+          if (refCount === 0) {
+            try { sock.close(); } catch { /* ignore */ }
+            sharedSocket = null;
+          }
+          closeTimer = null;
+        }, SOCKET_CLOSE_GRACE_MS);
       }
     };
   }, [subscribeToExecution]);

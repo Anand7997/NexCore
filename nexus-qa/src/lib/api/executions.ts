@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from './client';
 import type {
   ExecutionListItem, ExecutionDetail, ExecutionNode, TimelineEntry,
-  TriggerExecutionInput, TriggerExecutionResponse,
+  TriggerExecutionInput, TriggerExecutionResponse, TriggerTestCaseExecutionInput,
 } from './types';
 
 export const executionKeys = {
@@ -75,6 +75,17 @@ export function useTriggerExecution() {
   });
 }
 
+export function useTriggerTestCaseExecution() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: TriggerTestCaseExecutionInput) =>
+      api.post<TriggerExecutionResponse>('/executions/test-cases', input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: executionKeys.all });
+    },
+  });
+}
+
 export function useCancelExecution() {
   const qc = useQueryClient();
   return useMutation({
@@ -82,6 +93,18 @@ export function useCancelExecution() {
       api.post<{ execution_id: string; status: string }>(`/executions/${id}/cancel`),
     onSuccess: (_data, id) => {
       qc.invalidateQueries({ queryKey: executionKeys.detail(id) });
+      qc.invalidateQueries({ queryKey: executionKeys.all });
+    },
+  });
+}
+
+export function useDeleteExecution() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api.delete<{ execution_id: string; deleted: boolean }>(`/executions/${id}`),
+    onSuccess: (_data, id) => {
+      qc.removeQueries({ queryKey: executionKeys.detail(id) });
       qc.invalidateQueries({ queryKey: executionKeys.all });
     },
   });

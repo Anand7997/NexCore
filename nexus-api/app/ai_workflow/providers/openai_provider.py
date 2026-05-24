@@ -159,9 +159,44 @@ def _initial_max_output_tokens(schema: type[BaseModel], model: str = "") -> int:
 
 
 def _reasoning_options(model: str) -> dict[str, str] | None:
-    if model.startswith("gpt-5"):
-        return {"effort": "minimal"}
-    return None
+    model_lower = model.lower()
+    if not model_lower.startswith("gpt-5"):
+        return None
+
+    tier = _model_generation_tier(model_lower)
+    if tier == "fast":
+        return {"effort": "none"}
+    if tier == "best":
+        return {"effort": "medium"}
+    return {"effort": "low"}
+
+
+def _is_unsupported_reasoning_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return (
+        "reasoning.effort" in message
+        and ("unsupported" in message or "invalid" in message)
+    )
+
+
+async def _create_response_with_reasoning_fallback(
+    client: Any,
+    request: dict[str, Any],
+) -> object:
+    try:
+        return await client.responses.create(**request)
+    except Exception as exc:
+        if "reasoning" not in request or not _is_unsupported_reasoning_error(exc):
+            raise
+
+        fallback = dict(request)
+        rejected_reasoning = fallback.pop("reasoning", None)
+        logger.warning(
+            "OpenAI model %s rejected reasoning options %s; retrying without reasoning",
+            request.get("model"),
+            rejected_reasoning,
+        )
+        return await client.responses.create(**fallback)
 
 
 class OpenAIProvider(AbstractAIProvider):
@@ -183,7 +218,7 @@ class OpenAIProvider(AbstractAIProvider):
             self._client = openai.AsyncOpenAI(
                 api_key=self._api_key,
                 http_client=self._http_client,
-                timeout=120,
+                timeout=None,
                 max_retries=1,
             )
         return self._client
@@ -217,13 +252,12 @@ class OpenAIProvider(AbstractAIProvider):
                         "strict": True,
                     }
                 },
-                "timeout": 120,
             }
             reasoning = _reasoning_options(self._model)
             if reasoning is not None:
                 request["reasoning"] = reasoning
 
-            response = await client.responses.create(**request)
+            response = await _create_response_with_reasoning_fallback(client, request)
             try:
                 raw = _extract_response_text(response)
                 break

@@ -11,7 +11,7 @@ $venvPython  = Join-Path $backendDir ".venv\Scripts\python.exe"
 
 if (-not $env:NEXUS_API_HOST) { $env:NEXUS_API_HOST = "127.0.0.1" }
 if (-not $env:NEXUS_API_PORT) { $env:NEXUS_API_PORT = "8000" }
-if (-not $env:NEXUS_QA_PORT)  { $env:NEXUS_QA_PORT  = "3001" }
+if (-not $env:NEXUS_QA_PORT)  { $env:NEXUS_QA_PORT  = "3000" }
 
 $apiUrl = "http://$($env:NEXUS_API_HOST):$($env:NEXUS_API_PORT)"
 $webUrl = "http://localhost:$($env:NEXUS_QA_PORT)"

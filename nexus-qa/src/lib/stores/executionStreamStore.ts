@@ -73,6 +73,8 @@ const emptyBucket = (): Bucket => ({
   context: {},
 });
 
+const EMPTY_BUCKET: Bucket = emptyBucket();
+
 interface ExecutionStreamStore {
   buckets: Record<string, Bucket>;
 
@@ -152,4 +154,4 @@ export const useExecutionStreamStore = create<ExecutionStreamStore>((set) => ({
 
 export const selectBucket = (executionId: string | null | undefined) =>
   (state: ExecutionStreamStore): Bucket =>
-    (executionId ? state.buckets[executionId] : undefined) ?? emptyBucket();
+    (executionId ? state.buckets[executionId] : undefined) ?? EMPTY_BUCKET;

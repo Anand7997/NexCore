@@ -1,9 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { InjectPinoLogger, PinoLogger } from 'nestjs-pino';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import * as zlib from 'zlib';
 import { DrizzleService } from '../../infrastructure/postgres/drizzle.service';
 import { auditLogs } from '../../infrastructure/postgres/schema';
 import { and, eq, lt, gte, lte } from 'drizzle-orm';
+import { S3StorageService } from '../../infrastructure/storage/s3-storage.service';
+import { AppConfigService } from '../../config/config.service';
 
 export interface AuditRetentionPolicy {
   tenantId: string;
@@ -44,6 +47,8 @@ export class AuditRetentionService {
 
   constructor(
     private readonly drizzle: DrizzleService,
+    private readonly s3: S3StorageService,
+    private readonly config: AppConfigService,
     @InjectPinoLogger(AuditRetentionService.name)
     private readonly logger: PinoLogger,
   ) {
@@ -52,7 +57,7 @@ export class AuditRetentionService {
       tenantId: '*',
       retentionDays: this.defaultRetentionDays,
       archiveEnabled: true,
-      archiveDestination: process.env.AUDIT_ARCHIVE_BUCKET ?? 's3://nexus-audit-archive',
+      archiveDestination: `s3://${this.config.auditArchiveBucket}`,
     });
   }
 
@@ -104,31 +109,51 @@ export class AuditRetentionService {
 
     const db = this.drizzle.db;
 
-    // Query old audit logs
-    const oldLogs = await db
-      .select()
-      .from(auditLogs)
-      .where(and(eq(auditLogs.tenantId, tenantId), lt(auditLogs.createdAt, cutoffDate)));
+    // Use transaction to ensure safe database delete after upload
+    await db.transaction(async (tx) => {
+      // Query old audit logs
+      const oldLogs = await tx
+        .select()
+        .from(auditLogs)
+        .where(and(eq(auditLogs.tenantId, tenantId), lt(auditLogs.createdAt, cutoffDate)));
 
-    if (oldLogs.length === 0) {
-      this.logger.debug({ tenantId }, 'No audit logs to archive');
-      return;
-    }
+      if (oldLogs.length === 0) {
+        this.logger.debug({ tenantId }, 'No audit logs to archive');
+        return;
+      }
 
-    // TODO: Upload to S3/MinIO (implementation depends on storage backend)
-    // For now, just log the archive intent
-    this.logger.info(
-      { tenantId, count: oldLogs.length, destination: policy.archiveDestination },
-      'Would archive audit logs (S3/MinIO upload not implemented)',
-    );
+      // Convert to CSV
+      const csvContent = this.exportToCsv(oldLogs);
+      
+      // Compress with gzip
+      const compressedPayload = zlib.gzipSync(Buffer.from(csvContent));
 
-    // After successful upload, delete archived logs from DB
-    // await db.delete(auditLogs).where(
-    //   and(
-    //     eq(auditLogs.tenantId, tenantId),
-    //     lt(auditLogs.createdAt, cutoffDate)
-    //   )
-    // );
+      // Resolve bucket name
+      let bucket = this.config.auditArchiveBucket;
+      if (policy.archiveDestination && policy.archiveDestination.startsWith('s3://')) {
+        bucket = policy.archiveDestination.substring(5);
+      }
+
+      // Generate file key
+      const key = `audit-logs/${tenantId}/${tenantId}_archive_${Date.now()}.csv.gz`;
+
+      this.logger.info(
+        { tenantId, count: oldLogs.length, bucket, key },
+        'Uploading compressed audit logs to S3/MinIO...',
+      );
+
+      // Upload payload
+      await this.s3.putObject(bucket, key, compressedPayload, 'application/gzip');
+
+      // Purge old logs from the database
+      this.logger.info(
+        { tenantId, count: oldLogs.length },
+        'Purging archived audit logs from database...',
+      );
+      await tx
+        .delete(auditLogs)
+        .where(and(eq(auditLogs.tenantId, tenantId), lt(auditLogs.createdAt, cutoffDate)));
+    });
   }
 
   /**

@@ -38,6 +38,29 @@ export interface ExecutionAnalysis {
   };
 }
 
+export interface FixSuggestion {
+  id: string;
+  execution_id: string;
+  node_key: string;
+  node_label: string;
+  title: string;
+  rationale: string;
+  target_type: 'page_element' | 'test_step';
+  target_id: string;
+  field: string;
+  old_value: string;
+  new_value: string;
+  confidence: number;
+  can_implement: boolean;
+  blocked_reason?: string | null;
+}
+
+export interface ImplementFixResponse {
+  applied: boolean;
+  suggestion: FixSuggestion;
+  changed: Record<string, unknown>;
+}
+
 export type AIJobType =
   | 'root_cause_analysis'
   | 'flaky_detection'
@@ -60,6 +83,7 @@ export interface AIJobStatus {
 
 export const intelligenceKeys = {
   execution: (id: string | null) => ['intelligence', 'execution', id] as const,
+  fixes: (id: string | null) => ['intelligence', 'fixes', id] as const,
   jobs: (executionId: string | null) => ['intelligence', 'jobs', executionId] as const,
   job: (jobId: string | null) => ['intelligence', 'job', jobId] as const,
 };
@@ -71,6 +95,31 @@ export function useExecutionAnalysis(executionId: string | null) {
     enabled: !!executionId,
     staleTime: 15_000,
     retry: false,
+  });
+}
+
+export function useFixSuggestions(executionId: string | null) {
+  return useQuery({
+    queryKey: intelligenceKeys.fixes(executionId),
+    queryFn: () => api.get<FixSuggestion[]>(`/intelligence/executions/${executionId}/fix-suggestions`),
+    enabled: !!executionId,
+    staleTime: 5_000,
+    retry: false,
+  });
+}
+
+export function useImplementFixSuggestion() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ executionId, nodeKey }: { executionId: string; nodeKey: string }) =>
+      api.post<ImplementFixResponse>(
+        `/intelligence/executions/${executionId}/fix-suggestions/${encodeURIComponent(nodeKey)}/implement`,
+        {},
+      ),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: intelligenceKeys.fixes(variables.executionId) });
+      qc.invalidateQueries({ queryKey: intelligenceKeys.execution(variables.executionId) });
+    },
   });
 }
 
@@ -133,4 +182,3 @@ export function useCancelAIJob() {
     },
   });
 }
-

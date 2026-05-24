@@ -17,6 +17,17 @@ class ExecutionTriggerSchema(BaseModel):
     variables: dict[str, Any] = Field(default_factory=dict)
 
 
+class TestCaseExecutionTriggerSchema(BaseModel):
+    test_case_ids: list[str] = Field(default_factory=list)
+    project_id: str | None = None
+    module_id: str | None = None
+    trigger: str = "manual"
+    triggered_by: str = ""
+    environment: str = "dev"
+    platform: str = "web"
+    variables: dict[str, Any] = Field(default_factory=dict)
+
+
 class ExecutionNodeResponse(BaseModel):
     id: str
     node_key: str
@@ -57,6 +68,11 @@ class ExecutionEventResponse(BaseModel):
 class ExecutionResponse(BaseModel):
     id: str
     workflow_id: str
+    workflow_name: str = ""
+    project_name: str = ""
+    module_name: str = ""
+    test_case_name: str = ""
+    display_name: str = ""
     status: str
     trigger: str
     environment: str
@@ -75,6 +91,11 @@ class ExecutionResponse(BaseModel):
 class ExecutionListItem(BaseModel):
     id: str
     workflow_id: str
+    workflow_name: str = ""
+    project_name: str = ""
+    module_name: str = ""
+    test_case_name: str = ""
+    display_name: str = ""
     status: str
     trigger: str
     environment: str

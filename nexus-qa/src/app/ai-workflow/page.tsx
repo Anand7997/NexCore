@@ -1,8 +1,9 @@
 ﻿'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import {
+  Activity,
   AlertTriangle,
   BookOpen,
   Bot,
@@ -11,19 +12,27 @@ import {
   ClipboardList,
   Code2,
   Copy,
+  Cpu,
+  Database,
   ExternalLink,
   FileText,
   Globe,
+  ListChecks,
   Loader2,
+  MousePointerClick,
   Play,
+  Radio,
   RefreshCw,
+  Route,
   Search,
   Settings2,
+  SlidersHorizontal,
   Smartphone,
   Sparkles,
   Target,
   Upload,
   Wand2,
+  Zap,
   XCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
@@ -103,6 +112,25 @@ const ORCHESTRATOR_STATUSES = [
   { label: 'Discover', tone: 'cyan' },
   { label: 'Plan', tone: 'violet' },
   { label: 'Bind', tone: 'emerald' },
+] as const;
+
+const MCP_PHASES = [
+  { id: 'trigger', no: '01', label: 'Panel Live', desc: 'Open MCP telemetry', icon: Radio },
+  { id: 'scrape', no: '02', label: 'Scraping', desc: 'Collect raw elements', icon: Activity },
+  { id: 'xpaths', no: '03', label: 'XPath Sweep', desc: 'Extract locator paths', icon: Route },
+  { id: 'rank', no: '04', label: 'Best Pick', desc: 'Match steps to elements', icon: SlidersHorizontal },
+  { id: 'save', no: '05', label: 'Page Config', desc: 'Save useful elements', icon: Database },
+  { id: 'configure', no: '06', label: 'Step Bind', desc: 'Wire actions and XPath', icon: ListChecks },
+] as const;
+
+type McpPhaseId = (typeof MCP_PHASES)[number]['id'];
+
+const MCP_WAITING_SIGNALS = [
+  'Opening MCP browser context and warming the page session',
+  'Reading DOM landmarks, ARIA roles, labels, and visible controls',
+  'Extracting XPath, CSS, IDs, placeholders, and text anchors',
+  'Scoring locator stability before anything reaches Page Repository',
+  'Holding raw scrape candidates in preview while test steps decide what matters',
 ] as const;
 
 const MODEL_CAPABILITIES: Record<string, { speed: number; quality: number; cost: number }> = {
@@ -227,6 +255,68 @@ function pipelineStageDetail(
         : 'Selecting page, element, action, and XPath';
     }
   }
+}
+
+function shouldShowMcpMissionPanel(wf: AIWorkflowStateResponse | undefined): boolean {
+  if (!wf) return false;
+  return hasDiscoveryPanelActivity(wf);
+}
+
+function activeMcpPhase(wf: AIWorkflowStateResponse | undefined): McpPhaseId {
+  if (!wf) return 'trigger';
+  const message = (wf.current_message || '').toLowerCase();
+  if (wf.state === 'PAGE_CREATED') return 'trigger';
+  if (wf.state === 'DISCOVERY_RUNNING') return 'scrape';
+  if (wf.state === 'DISCOVERY_DONE') return 'xpaths';
+  if (wf.state === 'LOCATORS_RANKED') return 'rank';
+  if (wf.state === 'PAGE_SAVED') return message.includes('configur') || message.includes('bound') ? 'configure' : 'save';
+  if (['REVIEW_READY', 'COMPLETED'].includes(wf.state)) return 'configure';
+  return 'trigger';
+}
+
+function mcpPhaseStatus(phaseId: McpPhaseId, wf: AIWorkflowStateResponse | undefined): PipelineStatus {
+  if (!shouldShowMcpMissionPanel(wf)) return 'queued';
+  const active = activeMcpPhase(wf);
+  const activeIdx = MCP_PHASES.findIndex((phase) => phase.id === active);
+  const phaseIdx = MCP_PHASES.findIndex((phase) => phase.id === phaseId);
+  if (wf?.state === 'FAILED') return phaseId === active ? 'failed' : phaseIdx < activeIdx ? 'complete' : 'queued';
+  if (['REVIEW_READY', 'COMPLETED'].includes(wf?.state ?? '') || (wf?.state === 'PAGE_SAVED' && active === 'configure')) {
+    return phaseIdx <= activeIdx ? 'complete' : 'queued';
+  }
+  if (phaseId === active) return 'active';
+  return phaseIdx < activeIdx ? 'complete' : 'queued';
+}
+
+function workflowStateReachedMcpPhase(wf: AIWorkflowStateResponse | undefined, phaseId: McpPhaseId): boolean {
+  if (!wf) return false;
+  const phaseIdx = MCP_PHASES.findIndex((phase) => phase.id === phaseId);
+  const activeIdx = MCP_PHASES.findIndex((phase) => phase.id === activeMcpPhase(wf));
+  return activeIdx >= phaseIdx;
+}
+
+function locatorQualityNumber(candidate: AIScrapedCandidatePreview): number {
+  const raw = candidate.locator_quality;
+  if (typeof raw === 'number') return Math.max(0, Math.min(1, raw));
+  if (typeof raw === 'string') {
+    const parsed = Number.parseFloat(raw);
+    if (Number.isFinite(parsed)) return Math.max(0, Math.min(1, parsed));
+  }
+  return Math.max(0, Math.min(1, candidate.confidence_score ?? 0));
+}
+
+function locatorText(candidate: AIScrapedCandidatePreview): string {
+  return candidate.xpath || candidate.best_locator || candidate.css_selector || 'locator pending';
+}
+
+function compactLocator(locator: string, max = 116): string {
+  if (locator.length <= max) return locator;
+  return `${locator.slice(0, Math.max(max - 16, 12))}...${locator.slice(-12)}`;
+}
+
+function mcpPanelProgress(wf: AIWorkflowStateResponse | undefined): number {
+  if (!shouldShowMcpMissionPanel(wf)) return 0;
+  const activeIdx = MCP_PHASES.findIndex((phase) => phase.id === activeMcpPhase(wf));
+  return Math.round(((activeIdx + 1) / MCP_PHASES.length) * 100);
 }
 
 function confColor(conf: number): string {
@@ -419,218 +509,410 @@ function TokenStream({ message, agentName }: { message: string; agentName?: stri
   );
 }
 
-// ── ElementDiscoveryFeed ───────────────────────────────────────────────────────
-
-const ELEMENT_TYPE_ICONS: Record<string, string> = {
-  button: '⬡', input: '▭', link: '→', select: '▿', textarea: '≡',
-  checkbox: '☐', radio: '◎', form: '⬜', image: '▣', element: '◇',
+type McpNarrationRow = {
+  id: string;
+  label: string;
+  detail: string;
+  status: PipelineStatus;
+  icon: React.ElementType;
 };
 
-const DISCOVERY_FEED_TYPES = ['button', 'input', 'link', 'select', 'form', 'element'];
+function buildMcpNarrationRows(
+  wf: AIWorkflowStateResponse | undefined,
+  pulseIndex: number,
+): McpNarrationRow[] {
+  const candidates = wf?.scraped_candidates ?? [];
+  const selected = wf?.selected_elements ?? [];
+  const raw = candidates.length;
+  const picked = selected.length;
+  const xpathCandidates = candidates.filter((candidate) => candidate.xpath || candidate.best_locator).length;
+  const topLocator = candidates
+    .map(locatorText)
+    .find((locator) => locator !== 'locator pending');
+  const waitingSignal = MCP_WAITING_SIGNALS[pulseIndex % MCP_WAITING_SIGNALS.length];
+  const pageName = wf?.page_name || 'target page';
 
-function ElementDiscoveryFeed({ count, lowConf, isRunning }: {
-  count: number; lowConf: number; isRunning: boolean;
-}) {
-  const cards = useMemo(() => Array.from({ length: Math.max(count, 0) }, (_, i) => ({
-    id: i,
-    type: DISCOVERY_FEED_TYPES[i % DISCOVERY_FEED_TYPES.length],
-    conf: i < lowConf ? 0.45 : 0.85 + (i % 3) * 0.04,
-  })), [count, lowConf]);
-
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-3">
-        <div className="relative flex items-center justify-center w-12 h-12 rounded-full bg-violet-500/10 border border-violet-500/20">
-          <motion.span
-            key={count}
-            initial={{ scale: 0.5, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="text-lg font-bold tabular-nums text-violet-300"
-          >{count}</motion.span>
-          {isRunning && (
-            <motion.div
-              className="absolute inset-0 rounded-full border-2 border-violet-500/40"
-              animate={{ scale: [1, 1.15, 1], opacity: [0.6, 0, 0.6] }}
-              transition={{ repeat: Infinity, duration: 2 }}
-            />
-          )}
-        </div>
-        <div>
-          <div className="text-sm font-medium text-(--color-fg-default)">
-            {isRunning ? 'Discovering elements…' : `${count} elements found`}
-          </div>
-          {lowConf > 0 && <div className="text-[11px] text-amber-400">{lowConf} low-confidence</div>}
-        </div>
-      </div>
-      <div className="grid grid-cols-3 gap-1.5 max-h-48 overflow-hidden">
-        {cards.slice(-12).map((c, i) => (
-          <motion.div
-            key={c.id}
-            initial={{ opacity: 0, scale: 0.85 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: i * 0.04 }}
-            className="rounded-lg bg-(--color-surface-2) border border-(--color-line-default) p-2"
-          >
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] text-(--color-fg-subtle)">
-                {ELEMENT_TYPE_ICONS[c.type] ?? '◇'} {c.type}
-              </span>
-              <ConfidenceRing value={c.conf} size={18} />
-            </div>
-            <div className="h-1.5 rounded bg-surface-3 overflow-hidden">
-              <motion.div
-                className={`h-full rounded ${c.conf >= 0.7 ? 'bg-emerald-500' : 'bg-amber-500'}`}
-                animate={{ width: `${c.conf * 100}%` }}
-                transition={{ duration: 0.5 }}
-              />
-            </div>
-          </motion.div>
-        ))}
-        {isRunning && (
-          <motion.div
-            animate={{ opacity: [0.3, 0.7, 0.3] }}
-            transition={{ repeat: Infinity, duration: 1.5 }}
-            className="rounded-lg bg-violet-500/5 border border-violet-500/15 p-2 flex items-center justify-center"
-          >
-            <Loader2 size={12} className="text-violet-400 animate-spin" />
-          </motion.div>
-        )}
-      </div>
-    </div>
-  );
+  return [
+    {
+      id: 'panel-open',
+      label: 'MCP panel opened',
+      detail: workflowStateReachedMcpPhase(wf, 'trigger')
+        ? `Binding telemetry is live for ${pageName}.`
+        : 'Waiting for page creation before MCP starts.',
+      status: workflowStateReachedMcpPhase(wf, 'trigger') ? 'complete' : 'queued',
+      icon: Radio,
+    },
+    {
+      id: 'scrape-started',
+      label: raw > 0 ? `Scraped ${raw} element candidates` : 'Scraping started',
+      detail: wf?.state === 'DISCOVERY_RUNNING'
+        ? waitingSignal
+        : raw > 0
+          ? 'Raw candidates are parked in preview mode until step matching is done.'
+          : wf?.current_message || 'MCP trigger is queued.',
+      status: raw > 0 ? 'complete' : mcpPhaseStatus('scrape', wf),
+      icon: Search,
+    },
+    {
+      id: 'xpath-sweep',
+      label: xpathCandidates > 0 ? `${xpathCandidates} locator paths captured` : 'Extracting XPath paths',
+      detail: topLocator
+        ? `Strongest visible path: ${compactLocator(topLocator, 96)}`
+        : 'XPath and CSS candidates will appear as soon as scraping returns.',
+      status: xpathCandidates > 0 ? 'complete' : mcpPhaseStatus('xpaths', wf),
+      icon: Route,
+    },
+    {
+      id: 'best-pick',
+      label: picked > 0 ? `Picked ${picked} best-fit elements` : 'Picking the best elements',
+      detail: picked > 0
+        ? 'Generated test steps were compared against labels, roles, text, IDs, and locators.'
+        : 'The selector ranker will choose only elements required by generated test steps.',
+      status: picked > 0 ? 'complete' : mcpPhaseStatus('rank', wf),
+      icon: MousePointerClick,
+    },
+    {
+      id: 'page-config',
+      label: (wf?.elements_saved ?? 0) > 0 ? `${wf?.elements_saved} elements saved` : 'Configuring page now',
+      detail: (wf?.elements_saved ?? 0) > 0
+        ? `${Math.max(raw - (wf?.elements_saved ?? 0), 0)} noisy scrape candidates skipped.`
+        : 'Useful elements are being prepared for Page Repository.',
+      status: (wf?.elements_saved ?? 0) > 0 ? 'complete' : mcpPhaseStatus('save', wf),
+      icon: Database,
+    },
+    {
+      id: 'step-config',
+      label: 'Configuring test steps',
+      detail: wf?.teststeps_created
+        ? `${Math.max(wf.teststeps_created - wf.unmapped_steps, 0)}/${wf.teststeps_created} steps mapped to page, element, action, and XPath.`
+        : 'Step bindings will lock in after the selected elements are saved.',
+      status: mcpPhaseStatus('configure', wf),
+      icon: ListChecks,
+    },
+  ];
 }
 
-function ScrapedCandidatesMiniPanel({ candidates, selected, isRunning = false }: {
-  candidates: AIScrapedCandidatePreview[];
-  selected: AIScrapedCandidatePreview[];
-  isRunning?: boolean;
+function McpMissionControlPanel({
+  wf,
+  compact = false,
+}: {
+  wf: AIWorkflowStateResponse | undefined;
+  compact?: boolean;
 }) {
+  const reducedMotion = useReducedMotion();
+  const [pulseIndex, setPulseIndex] = useState(0);
+  const candidates = wf?.scraped_candidates ?? [];
+  const selected = wf?.selected_elements ?? [];
   const selectedIds = new Set(selected.map((item) => item.candidate_id));
-  const ranked = [...candidates].sort((a, b) => {
+  const isLive = !!wf && isPollingState(wf.state) && wf.state !== 'FAILED';
+  const activePhaseId = activeMcpPhase(wf);
+  const activePhase = MCP_PHASES.find((phase) => phase.id === activePhaseId) ?? MCP_PHASES[0];
+  const panelProgress = mcpPanelProgress(wf);
+  const xpathCount = candidates.filter((candidate) => candidate.xpath || candidate.best_locator).length;
+  const highQuality = candidates.filter((candidate) => locatorQualityNumber(candidate) >= 0.78).length;
+  const latestRows = buildMcpNarrationRows(wf, pulseIndex);
+  const rankedCandidates = [...candidates].sort((a, b) => {
     const aSelected = selectedIds.has(a.candidate_id) || a.selected ? 1 : 0;
     const bSelected = selectedIds.has(b.candidate_id) || b.selected ? 1 : 0;
     if (aSelected !== bSelected) return bSelected - aSelected;
-    return (b.confidence_score ?? 0) - (a.confidence_score ?? 0);
+    return locatorQualityNumber(b) - locatorQualityNumber(a);
   });
-  const visible = ranked.slice(0, 80);
-  const picked = selected.length;
-  const raw = candidates.length;
-  const highQuality = candidates.filter((item) => (item.confidence_score ?? 0) >= 0.8).length;
-  const lowQuality = candidates.filter((item) => (item.confidence_score ?? 0) < 0.5).length;
-  const liveState = isRunning ? 'Listening' : raw > 0 ? 'Ready' : 'Idle';
+  const visibleCandidates = rankedCandidates.slice(0, compact ? 5 : 10);
+  const ActiveIcon = activePhase.icon;
+
+  useEffect(() => {
+    if (reducedMotion || !isLive) return;
+    const id = window.setInterval(() => {
+      setPulseIndex((value) => value + 1);
+    }, 2400);
+    return () => window.clearInterval(id);
+  }, [isLive, reducedMotion]);
+
+  if (!wf) return null;
 
   return (
-    <div className="rounded-lg bg-[#050914] border border-cyan-400/15 overflow-hidden">
-      <div className="px-3 py-2.5 border-b border-white/[0.08] flex flex-wrap items-center gap-2">
-        <div className="flex items-center justify-center w-7 h-7 rounded-md border border-cyan-400/25 bg-cyan-400/10 text-cyan-200 shrink-0">
-          {isRunning ? <Loader2 size={13} className="animate-spin" /> : <Search size={13} />}
+    <motion.section
+      layout
+      initial={{ opacity: 0, y: 14, scale: 0.99 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ duration: reducedMotion ? 0 : 0.28, ease: 'easeOut' }}
+      className="relative overflow-hidden rounded-2xl border border-cyan-300/20 bg-[#030712] shadow-[0_24px_90px_rgba(0,0,0,0.38),0_0_60px_rgba(6,182,212,0.08)]"
+    >
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 opacity-80"
+        style={{
+          background:
+            'radial-gradient(circle at 18% 0%, rgba(34,211,238,0.18), transparent 34%), radial-gradient(circle at 86% 12%, rgba(16,185,129,0.12), transparent 30%), linear-gradient(135deg, rgba(15,23,42,0.92), rgba(2,6,23,0.96))',
+        }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 opacity-[0.16]"
+        style={{
+          backgroundImage:
+            'linear-gradient(rgba(34,211,238,0.14) 1px, transparent 1px), linear-gradient(90deg, rgba(16,185,129,0.10) 1px, transparent 1px)',
+          backgroundSize: '24px 24px',
+          maskImage: 'radial-gradient(circle at 55% 38%, black, transparent 76%)',
+        }}
+      />
+      {isLive && !reducedMotion && (
+        <>
+          <motion.div
+            aria-hidden
+            className="pointer-events-none absolute inset-y-0 w-32 bg-linear-to-r from-transparent via-cyan-200/12 to-transparent"
+            animate={{ x: ['-120%', '620%'] }}
+            transition={{ repeat: Infinity, duration: 2.8, ease: 'linear' }}
+          />
+          <motion.div
+            aria-hidden
+            className="pointer-events-none absolute right-8 top-8 h-36 w-36 rounded-full border border-cyan-300/15"
+            animate={{ rotate: 360 }}
+            transition={{ repeat: Infinity, duration: 18, ease: 'linear' }}
+          />
+          <motion.div
+            aria-hidden
+            className="pointer-events-none absolute right-12 top-12 h-28 w-28 rounded-full border border-emerald-300/12"
+            animate={{ rotate: -360 }}
+            transition={{ repeat: Infinity, duration: 14, ease: 'linear' }}
+          />
+        </>
+      )}
+
+      <div className="relative z-10 p-4 md:p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-cyan-300/25 bg-cyan-300/10 px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.16em] text-cyan-100">
+                <Zap size={11} />
+                MCP Mission Control
+              </span>
+              <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-[10px] ${
+                isLive
+                  ? 'border-emerald-300/25 bg-emerald-300/10 text-emerald-100'
+                  : 'border-white/[0.08] bg-white/[0.035] text-(--color-fg-subtle)'
+              }`}>
+                <span className={`h-1.5 w-1.5 rounded-full ${isLive ? 'bg-emerald-300 animate-pulse' : 'bg-white/30'}`} />
+                {isLive ? 'Live scrape telemetry' : wf.state === 'FAILED' ? 'Stopped' : 'Telemetry captured'}
+              </span>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="grid h-11 w-11 place-items-center rounded-xl border border-cyan-300/25 bg-cyan-300/10 text-cyan-100 shadow-[0_0_24px_rgba(34,211,238,0.12)]">
+                {isLive ? <Loader2 size={17} className="animate-spin" /> : <ActiveIcon size={17} />}
+              </div>
+              <div className="min-w-0">
+                <h2 className="text-lg font-semibold leading-tight text-white md:text-xl">MCP is doing the boring scrape work in public</h2>
+                <p className="mt-1 text-[12px] leading-relaxed text-(--color-fg-subtle)">
+                  {wf.current_message || `Standing by for ${activePhase.label.toLowerCase()}.`}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-4 gap-1.5 lg:w-[360px]">
+            {[
+              { label: 'Scraped', value: candidates.length, icon: Search, tone: 'text-cyan-200' },
+              { label: 'XPath', value: xpathCount, icon: Route, tone: 'text-blue-200' },
+              { label: 'Picked', value: selected.length, icon: MousePointerClick, tone: 'text-emerald-200' },
+              { label: 'Saved', value: wf.elements_saved ?? 0, icon: Database, tone: 'text-violet-200' },
+            ].map((metric) => {
+              const Icon = metric.icon;
+              return (
+                <div key={metric.label} className="min-w-0 rounded-lg border border-white/[0.07] bg-black/25 p-2 text-center">
+                  <Icon size={12} className={`mx-auto mb-1 ${metric.tone}`} />
+                  <div className={`font-mono text-lg font-bold tabular-nums ${metric.tone}`}>{metric.value}</div>
+                  <div className="truncate text-[8px] uppercase tracking-wide text-(--color-fg-subtle)">{metric.label}</div>
+                </div>
+              );
+            })}
+          </div>
         </div>
-        <div className="min-w-44 flex-1">
-          <div className="flex items-center gap-2">
-            <div className="text-xs font-semibold text-(--color-fg-default)">MCP Scrape Console</div>
-            <span className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[9px] font-medium ${
-              isRunning
-                ? 'border-cyan-400/30 bg-cyan-400/10 text-cyan-200'
-                : raw > 0
-                  ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300'
-                  : 'border-white/[0.08] bg-white/[0.03] text-(--color-fg-subtle)'
-            }`}>
-              <span className={`h-1.5 w-1.5 rounded-full ${isRunning ? 'bg-cyan-300 animate-pulse' : raw > 0 ? 'bg-emerald-300' : 'bg-white/30'}`} />
-              {liveState}
-            </span>
+
+        <div className="mt-4 grid grid-cols-[1fr_auto] items-center gap-3">
+          <div className="h-1.5 overflow-hidden rounded-full bg-black/45">
+            <motion.div
+              className="h-full rounded-full bg-linear-to-r from-cyan-300 via-blue-300 to-emerald-300"
+              animate={{ width: `${panelProgress}%` }}
+              transition={{ duration: reducedMotion ? 0 : 0.45, ease: 'easeOut' }}
+            />
           </div>
-          <div className="mt-0.5 text-[10px] text-(--color-fg-subtle)">
-            Scraped elements ranked by XPath confidence and test-step fit.
-          </div>
+          <span className="font-mono text-[10px] tabular-nums text-cyan-100">{panelProgress}%</span>
         </div>
-        <div className="ml-auto grid grid-cols-3 gap-1.5 text-[10px]">
-          <div className="min-w-14 rounded-md border border-white/[0.07] bg-white/[0.035] px-2 py-1 text-center">
-            <div className="font-semibold tabular-nums text-(--color-fg-default)">{raw}</div>
-            <div className="text-[8px] uppercase tracking-wide text-(--color-fg-subtle)">Scraped</div>
+
+        <div className="mt-4 grid grid-cols-2 gap-1.5 md:grid-cols-3 xl:grid-cols-6">
+          {MCP_PHASES.map((phase) => {
+            const status = mcpPhaseStatus(phase.id, wf);
+            const Icon = phase.icon;
+            const statusClass =
+              status === 'complete' ? 'border-emerald-300/25 bg-emerald-300/[0.07] text-emerald-100' :
+                status === 'active' ? 'border-cyan-300/35 bg-cyan-300/[0.10] text-cyan-100 shadow-[0_0_24px_rgba(34,211,238,0.10)]' :
+                  status === 'failed' ? 'border-red-300/35 bg-red-400/[0.10] text-red-200' :
+                    'border-white/[0.06] bg-white/[0.025] text-(--color-fg-subtle)';
+            return (
+              <div key={phase.id} className={`relative overflow-hidden rounded-lg border px-2.5 py-2 ${statusClass}`}>
+                {status === 'active' && isLive && !reducedMotion && (
+                  <motion.div
+                    aria-hidden
+                    className="absolute inset-y-0 w-10 bg-linear-to-r from-transparent via-white/12 to-transparent"
+                    animate={{ x: ['-160%', '420%'] }}
+                    transition={{ repeat: Infinity, duration: 1.9, ease: 'linear' }}
+                  />
+                )}
+                <div className="relative flex items-center gap-2">
+                  <div className="grid h-6 w-6 shrink-0 place-items-center rounded-md border border-current/20 bg-black/20">
+                    {status === 'complete'
+                      ? <CheckCircle2 size={12} />
+                      : status === 'active'
+                        ? <Loader2 size={12} className="animate-spin" />
+                        : <Icon size={12} />}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-mono text-[8px] opacity-70">{phase.no}</div>
+                    <div className="truncate text-[10px] font-semibold leading-tight">{phase.label}</div>
+                    <div className="truncate text-[8px] opacity-70">{phase.desc}</div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className={`mt-4 grid gap-3 ${compact ? 'xl:grid-cols-[1fr_1.1fr]' : 'xl:grid-cols-[0.9fr_1.25fr]'}`}>
+          <div className="min-w-0 rounded-xl border border-white/[0.07] bg-black/25 overflow-hidden">
+            <div className="flex items-center justify-between border-b border-white/[0.06] px-3 py-2">
+              <div className="flex items-center gap-2 text-xs font-semibold text-(--color-fg-default)">
+                <Cpu size={13} className="text-cyan-200" />
+                What MCP is doing
+              </div>
+              <span className="font-mono text-[9px] text-(--color-fg-subtle)">{activePhase.no} / 06</span>
+            </div>
+            <div className="divide-y divide-white/[0.055]">
+              {latestRows.map((row, index) => {
+                const Icon = row.icon;
+                const isActive = row.status === 'active';
+                const iconClass =
+                  row.status === 'complete' ? 'border-emerald-300/25 bg-emerald-300/10 text-emerald-200' :
+                    isActive ? 'border-cyan-300/35 bg-cyan-300/10 text-cyan-100' :
+                      row.status === 'failed' ? 'border-red-300/35 bg-red-400/10 text-red-200' :
+                        'border-white/[0.07] bg-white/[0.025] text-(--color-fg-subtle)';
+                return (
+                  <motion.div
+                    key={row.id}
+                    initial={{ opacity: 0, x: -8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: reducedMotion ? 0 : index * 0.035 }}
+                    className="flex gap-2.5 px-3 py-2.5"
+                  >
+                    <div className={`mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg border ${iconClass}`}>
+                      {isActive && isLive ? <Loader2 size={13} className="animate-spin" /> : <Icon size={13} />}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className={`text-[11px] font-semibold leading-tight ${isActive ? 'text-cyan-100' : 'text-(--color-fg-default)'}`}>
+                        {row.label}
+                      </div>
+                      <div className="mt-0.5 break-words font-mono text-[9px] leading-relaxed text-(--color-fg-subtle)">
+                        {row.detail}
+                      </div>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
           </div>
-          <div className="min-w-14 rounded-md border border-emerald-400/20 bg-emerald-400/[0.06] px-2 py-1 text-center">
-            <div className="font-semibold tabular-nums text-emerald-300">{picked}</div>
-            <div className="text-[8px] uppercase tracking-wide text-emerald-300/70">Picked</div>
-          </div>
-          <div className="min-w-14 rounded-md border border-cyan-400/20 bg-cyan-400/[0.06] px-2 py-1 text-center">
-            <div className="font-semibold tabular-nums text-cyan-200">{highQuality}</div>
-            <div className="text-[8px] uppercase tracking-wide text-cyan-200/70">Strong</div>
+
+          <div className="min-w-0 rounded-xl border border-white/[0.07] bg-black/25 overflow-hidden">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.06] px-3 py-2">
+              <div className="flex items-center gap-2 text-xs font-semibold text-(--color-fg-default)">
+                <Target size={13} className="text-emerald-200" />
+                XPath + candidate stream
+              </div>
+              <div className="flex items-center gap-1.5 font-mono text-[9px] text-(--color-fg-subtle)">
+                <span className="rounded border border-cyan-300/20 bg-cyan-300/10 px-1.5 py-0.5 text-cyan-100">{highQuality} strong</span>
+                <span className="rounded border border-emerald-300/20 bg-emerald-300/10 px-1.5 py-0.5 text-emerald-100">{selected.length} picked</span>
+              </div>
+            </div>
+            {visibleCandidates.length === 0 ? (
+              <div className="flex min-h-44 items-center justify-center px-4 py-8 text-center">
+                <div>
+                  <div className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-xl border border-cyan-300/20 bg-cyan-300/10 text-cyan-100">
+                    <Search size={18} className={isLive ? 'animate-pulse' : ''} />
+                  </div>
+                  <div className="text-xs font-semibold text-(--color-fg-default)">
+                    {isLive ? 'MCP scrape is running' : 'Waiting for scrape candidates'}
+                  </div>
+                  <div className="mx-auto mt-1 max-w-sm text-[10px] leading-relaxed text-(--color-fg-subtle)">
+                    {isLive ? MCP_WAITING_SIGNALS[pulseIndex % MCP_WAITING_SIGNALS.length] : 'Candidate rows, XPath, confidence, and picked status will land here.'}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="max-h-[420px] overflow-y-auto">
+                <div className="sticky top-0 z-10 grid grid-cols-[minmax(0,1.1fr)_minmax(0,1.6fr)_78px] gap-2 border-b border-white/[0.055] bg-[#030712]/95 px-3 py-1.5 font-mono text-[8px] uppercase tracking-wide text-(--color-fg-subtle) backdrop-blur">
+                  <div>Element</div>
+                  <div>XPath / selector</div>
+                  <div className="text-right">Signal</div>
+                </div>
+                {visibleCandidates.map((candidate, index) => {
+                  const isSelected = selectedIds.has(candidate.candidate_id) || candidate.selected;
+                  const quality = locatorQualityNumber(candidate);
+                  const locator = locatorText(candidate);
+                  const hint = candidate.label || candidate.placeholder || candidate.input_type || candidate.element_type;
+                  return (
+                    <motion.div
+                      key={candidate.candidate_id}
+                      initial={{ opacity: 0, y: 5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: reducedMotion ? 0 : Math.min(index * 0.025, 0.18) }}
+                      className={`grid grid-cols-[minmax(0,1.1fr)_minmax(0,1.6fr)_78px] gap-2 border-b border-white/[0.045] px-3 py-2 transition-colors ${
+                        isSelected ? 'bg-emerald-300/[0.055]' : 'hover:bg-white/[0.025]'
+                      }`}
+                    >
+                      <div className="min-w-0 flex items-start gap-2">
+                        <div className={`mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-md border ${
+                          isSelected
+                            ? 'border-emerald-300/30 bg-emerald-300/10 text-emerald-200'
+                            : 'border-white/[0.07] bg-white/[0.025] text-(--color-fg-subtle)'
+                        }`}>
+                          {isSelected ? <CheckCircle2 size={12} /> : <Circle size={12} />}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="truncate text-[11px] font-semibold text-(--color-fg-default)">
+                            {candidate.name || hint}
+                          </div>
+                          <div className="truncate text-[9px] text-(--color-fg-subtle)">{hint}</div>
+                        </div>
+                      </div>
+                      <div className="min-w-0 flex items-center gap-1.5">
+                        <div className="min-w-0 flex-1 rounded-md border border-cyan-300/10 bg-cyan-300/[0.035] px-2 py-1 font-mono text-[9px] text-cyan-100/80">
+                          <span className="block truncate" title={locator}>{compactLocator(locator)}</span>
+                        </div>
+                        {locator !== 'locator pending' && <CopyButton text={locator} />}
+                      </div>
+                      <div className="flex items-center justify-end gap-1.5">
+                        <div className="text-right">
+                          <div className={`font-mono text-[10px] font-semibold tabular-nums ${confColor(quality)}`}>
+                            {Math.round(quality * 100)}%
+                          </div>
+                          <div className="truncate text-[8px] text-(--color-fg-subtle)">
+                            {candidate.locator_strategy || 'ranked'}
+                          </div>
+                        </div>
+                        <ConfidenceRing value={quality} size={18} />
+                      </div>
+                    </motion.div>
+                  );
+                })}
+                {rankedCandidates.length > visibleCandidates.length && (
+                  <div className="px-3 py-2 font-mono text-[9px] text-(--color-fg-subtle)">
+                    Showing {visibleCandidates.length} of {rankedCandidates.length} candidates in the live stream.
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
-
-      {raw === 0 ? (
-        <div className="px-3 py-6 text-[11px] text-(--color-fg-subtle) flex items-center gap-2">
-          <Loader2 size={13} className={`${isRunning ? 'animate-spin' : ''} text-cyan-300`} />
-          {isRunning ? 'MCP is opening browser context and collecting page elements.' : 'Waiting for MCP scrape candidates.'}
-        </div>
-      ) : (
-        <div className="max-h-80 overflow-y-auto">
-          <div className="sticky top-0 z-10 grid grid-cols-[minmax(0,1.3fr)_minmax(0,1.7fr)_92px] gap-2 border-b border-white/[0.06] bg-[#050914]/95 px-3 py-1.5 text-[9px] uppercase tracking-wide text-(--color-fg-subtle) backdrop-blur">
-            <div>Element</div>
-            <div>Path / Location</div>
-            <div className="text-right">Quality</div>
-          </div>
-          {visible.map((candidate, index) => {
-            const isSelected = selectedIds.has(candidate.candidate_id) || candidate.selected;
-            const confidence = candidate.confidence_score ?? 0;
-            const locator = candidate.xpath || candidate.best_locator || candidate.css_selector || 'locator pending';
-            const hint = candidate.label || candidate.placeholder || candidate.input_type || candidate.element_type;
-            return (
-              <motion.div
-                key={candidate.candidate_id}
-                initial={{ opacity: 0, y: 4 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: Math.min(index * 0.01, 0.2) }}
-                className={`grid grid-cols-[minmax(0,1.3fr)_minmax(0,1.7fr)_92px] gap-2 px-3 py-2 border-b border-white/[0.055] transition-colors ${
-                  isSelected ? 'bg-emerald-400/[0.06]' : 'bg-transparent hover:bg-white/[0.025]'
-                }`}
-              >
-                <div className="min-w-0 flex items-start gap-2">
-                  <div className={`mt-0.5 w-5 h-5 rounded-md border flex items-center justify-center shrink-0 ${isSelected
-                    ? 'border-emerald-500/35 bg-emerald-500/10 text-emerald-400'
-                    : 'border-white/[0.08] bg-white/[0.025] text-(--color-fg-subtle)'}`}>
-                    {isSelected ? <CheckCircle2 size={12} /> : <Circle size={12} />}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5 min-w-0 h-5">
-                      <span className="text-[11px] font-medium text-(--color-fg-default) truncate">{candidate.name || hint}</span>
-                      <Badge label={candidate.element_type} className="text-(--color-fg-subtle) border-white/[0.08] shrink-0" />
-                    </div>
-                    <div className="text-[10px] text-(--color-fg-subtle) truncate">{hint}</div>
-                    {isSelected && candidate.match_reason && (
-                      <div className="mt-0.5 text-[10px] text-emerald-300/80 line-clamp-1">{candidate.match_reason}</div>
-                    )}
-                  </div>
-                </div>
-                <div className="min-w-0 flex items-center gap-1.5">
-                  <div className="min-w-0 flex-1 rounded border border-white/[0.06] bg-black/20 px-2 py-1 font-mono text-[9px] text-cyan-100/75 truncate">
-                    {locator}
-                  </div>
-                  {locator !== 'locator pending' && <CopyButton text={locator} />}
-                </div>
-                <div className="flex items-center justify-end gap-2">
-                  <div className="min-w-0 text-right">
-                    <div className={`text-[10px] font-semibold tabular-nums ${confColor(confidence)}`}>
-                      {Math.round(confidence * 100)}%
-                    </div>
-                    <div className="text-[9px] text-(--color-fg-subtle) truncate">
-                      {candidate.locator_quality || candidate.locator_strategy || (lowQuality > 0 ? 'reviewed' : 'ranked')}
-                    </div>
-                  </div>
-                  <ConfidenceRing value={confidence} size={20} />
-                </div>
-              </motion.div>
-            );
-          })}
-          {candidates.length > visible.length && (
-            <div className="px-3 py-2 text-[10px] text-(--color-fg-subtle)">
-              Showing top {visible.length} of {candidates.length} candidates.
-            </div>
-          )}
-        </div>
-      )}
-    </div>
+    </motion.section>
   );
 }
 
@@ -1271,12 +1553,10 @@ function ModelSelectionStep({ onSelectModel, isPending }: {
 // ── Step 3: Discovery ─────────────────────────────────────────────────────────
 
 function DiscoveryStep({ wf }: { wf: AIWorkflowStateResponse | undefined }) {
-  const isRunning = wf ? isPollingState(wf.state) : false;
   const isDone = wf?.state === 'PAGE_SAVED';
   return (
     <div className="space-y-5">
-      <ElementDiscoveryFeed count={wf?.scraped_candidates?.length ?? 0} lowConf={wf?.low_confidence_locators ?? 0} isRunning={isRunning} />
-      <ScrapedCandidatesMiniPanel candidates={wf?.scraped_candidates ?? []} selected={wf?.selected_elements ?? []} isRunning={isRunning} />
+      <McpMissionControlPanel wf={wf} />
       <WorkflowActivityFeed wf={wf} limit={12} />
       {isDone && (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
@@ -1288,10 +1568,10 @@ function DiscoveryStep({ wf }: { wf: AIWorkflowStateResponse | undefined }) {
       <div className="rounded-xl bg-(--color-surface-1) border border-(--color-line-subtle) p-4">
         <div className="text-[10px] font-semibold text-(--color-fg-subtle) uppercase tracking-wider mb-3">Status</div>
         <div className="font-mono text-[11px] leading-relaxed">
-          <div className={isRunning ? 'text-violet-400' : 'text-emerald-400'}>
+          <div className={wf && isPollingState(wf.state) ? 'text-violet-400' : 'text-emerald-400'}>
             {wf?.current_message || 'Waiting for discovery to start…'}
           </div>
-          {isRunning && (
+          {wf && isPollingState(wf.state) && (
             <div className="flex items-center gap-1.5 mt-2 text-(--color-fg-subtle)">
               <Loader2 size={10} className="animate-spin" /><span>Running selective binding…</span>
             </div>
@@ -1447,7 +1727,7 @@ function ReviewStep({ workflowId, wf }: { workflowId: string; wf: AIWorkflowStat
             <Sparkles size={12} className="text-violet-400" />
             MCP Scrape Panel
           </div>
-          <ScrapedCandidatesMiniPanel candidates={wf?.scraped_candidates ?? []} selected={wf?.selected_elements ?? []} />
+          <McpMissionControlPanel wf={wf} compact />
         </div>
       )}
       <div className="grid grid-cols-3 md:grid-cols-6 gap-2">

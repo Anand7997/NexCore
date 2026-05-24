@@ -48,10 +48,8 @@ class Settings(BaseSettings):
 
     # ── AI Workflow ───────────────────────────────────────────────────────────
     anthropic_api_key: str = ""
-    default_ai_provider: str = "claude"
-    default_ai_model: str = "claude-sonnet-4-20250514"
-    ai_workflow_timeout_seconds: int = 600
-    ai_workflow_llm_call_timeout_seconds: int = 180
+    default_ai_provider: str = "openai"
+    default_ai_model: str = "gpt-5.5"
     ai_workflow_testcase_concurrency: int = 2
     mcp_playwright_url: str = ""
     playwright_fallback: bool = True

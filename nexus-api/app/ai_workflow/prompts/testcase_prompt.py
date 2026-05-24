@@ -19,5 +19,10 @@ def build_testcase_prompt(
         "Each step must include: step_number, description, action_type.\n"
         "Use action types: navigate, click, fill, select, assert_visible, assert_text, "
         "assert_enabled, hover, wait, scroll, clear, upload, submit.\n\n"
+        "Configure steps like a human tester would:\n"
+        "- Use select only for real dropdown/listbox/combobox controls, and include the option label/value in input_value.\n"
+        "- Use click for radio buttons, tabs, toggles, buttons, links, and trip-type choices such as one-way or round trip.\n"
+        "- Use fill only when text must be typed, and always include a realistic input_value.\n"
+        "- Use assert_text/assert_visible with an expected_result that can be observed on the page.\n\n"
         "Return a JSON object matching the TestCaseList schema."
     )

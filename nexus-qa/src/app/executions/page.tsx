@@ -1,20 +1,23 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, Brain, Terminal, Download, ChevronRight, RefreshCw, Play,
   Square, Activity, CheckCircle2, XCircle, Clock, Filter, Zap,
-  ArrowUpRight,
+  ArrowUpRight, Wrench, Trash2,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { NodeHealthIndicator } from '@/components/ui/NodeHealthIndicator';
 import { ExecutionTimeline } from '@/components/ui/ExecutionTimeline';
 import { Button } from '@/components/ui/Button';
 import { EvidencePanel } from '@/components/execution/EvidencePanel';
+import { useWebSocket } from '@/hooks/useWebSocket';
 import { useUIStore } from '@/lib/stores/uiStore';
 import { useRealtimeStore } from '@/lib/stores/realtimeStore';
-import { useExecutions, useExecution, useCancelExecution, useTriggerExecution } from '@/lib/api/executions';
+import { useExecutions, useExecution, useCancelExecution, useDeleteExecution, useTriggerExecution, useTriggerTestCaseExecution } from '@/lib/api/executions';
+import { useFixSuggestions, useImplementFixSuggestion } from '@/lib/api/intelligence';
+import { useTestConfigurationTree } from '@/lib/api/testConfiguration';
 import { useWorkflows } from '@/lib/api/workflows';
 import { formatDuration, timeAgo } from '@/lib/utils';
 import type { ExecutionStatus, WorkflowNode } from '@/types';
@@ -141,12 +144,16 @@ function ExecutionRow({
 
 // ── Execution Detail Panel ─────────────────────────────────────────────────────
 
-function DetailPanel({ execId, workflowName }: { execId: string; workflowName: string }) {
+function DetailPanel({ execId, workflowName, onDeleted }: { execId: string; workflowName: string; onDeleted: () => void }) {
+  useWebSocket(execId);
   const { data: exec, isLoading } = useExecution(execId);
+  const { data: fixSuggestions = [] } = useFixSuggestions(execId);
+  const implementFix = useImplementFixSuggestion();
   const { openInspectorFor } = useUIStore();
   const activeNodeMap = useRealtimeStore((s) => s.activeNodeMap);
   const activeNode    = activeNodeMap[execId];
   const { mutate: cancel, isPending: cancelling } = useCancelExecution();
+  const { mutate: deleteExecution, isPending: deleting } = useDeleteExecution();
 
   if (isLoading || !exec) {
     return (
@@ -159,6 +166,8 @@ function DetailPanel({ execId, workflowName }: { execId: string; workflowName: s
   const status   = mapStatus(exec.status);
   const progress = exec.node_count > 0 ? exec.completed_nodes / exec.node_count : 0;
   const failedNode = exec.nodes.find((n) => n.status === 'failed');
+  const failedFix = failedNode ? fixSuggestions.find((fix) => fix.node_key === failedNode.node_key) : undefined;
+  const liveNode = activeNode ? exec.nodes.find((n) => n.node_key === activeNode) : undefined;
 
   const tlExec = {
     id: exec.id, workflowId: exec.workflow_id,
@@ -227,6 +236,64 @@ function DetailPanel({ execId, workflowName }: { execId: string; workflowName: s
         </div>
       )}
 
+      {['created', 'queued', 'running'].includes(exec.status) && (
+        <div className="mx-4 mt-3 shrink-0 rounded-lg border border-blue-500/20 bg-blue-500/8 p-3">
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <span className="flex items-center gap-2 text-xs font-semibold text-blue-300">
+              <span className="h-1.5 w-1.5 rounded-full bg-blue-300 animate-pulse" />
+              Live execution
+            </span>
+            <span className="font-mono text-[10px] text-blue-300/70">{exec.completed_nodes}/{exec.node_count}</span>
+          </div>
+          <p className="truncate text-[11px] text-blue-100/80">
+            {liveNode?.node_label ?? activeNode ?? 'Waiting for next runtime event...'}
+          </p>
+        </div>
+      )}
+
+      {failedFix && (
+        <div className="mx-4 mt-3 shrink-0 rounded-lg border border-emerald-500/25 bg-emerald-500/8 p-3">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <Wrench size={12} className="shrink-0 text-emerald-400" />
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-emerald-300">{failedFix.title}</p>
+                <p className="truncate text-[10px] text-[var(--color-fg-subtle)]">
+                  {failedFix.target_type === 'page_element' ? 'Page Repository' : 'Test Configuration'} · {failedFix.field} · {Math.round(failedFix.confidence * 100)}%
+                </p>
+              </div>
+            </div>
+            <Button
+              variant="neon"
+              size="xs"
+              disabled={!failedFix.can_implement || implementFix.isPending}
+              onClick={() => implementFix.mutate({ executionId: exec.id, nodeKey: failedFix.node_key })}
+              title={failedFix.blocked_reason ?? 'Apply this fix to configuration'}
+            >
+              <CheckCircle2 size={10} />
+              {implementFix.isPending ? 'Implementing...' : 'Implement'}
+            </Button>
+          </div>
+          <p className="mb-2 text-[10px] leading-relaxed text-[var(--color-fg-muted)]">{failedFix.rationale}</p>
+          <div className="grid gap-1.5 font-mono text-[10px]">
+            <div className="min-w-0 rounded border border-red-500/15 bg-red-500/8 px-2 py-1">
+              <span className="text-red-300/70">Old: </span>
+              <span className="break-all text-red-200">{failedFix.old_value || 'not set'}</span>
+            </div>
+            <div className="min-w-0 rounded border border-emerald-500/15 bg-emerald-500/8 px-2 py-1">
+              <span className="text-emerald-300/70">New: </span>
+              <span className="break-all text-emerald-200">{failedFix.new_value || failedFix.blocked_reason || 'pending discovery'}</span>
+            </div>
+          </div>
+          {implementFix.isSuccess && (
+            <p className="mt-2 text-[10px] text-emerald-300">Fix implemented. Re-run the execution to verify.</p>
+          )}
+          {implementFix.isError && (
+            <p className="mt-2 text-[10px] text-red-300">Could not implement this suggestion. Refresh and review the latest analysis.</p>
+          )}
+        </div>
+      )}
+
       {/* Timeline */}
       <div className="shrink-0 overflow-y-auto border-b border-[var(--color-line-subtle)] p-4" style={{ maxHeight: '40%' }}>
         <p className="mb-3 text-[10px] font-mono uppercase tracking-widest text-[var(--color-fg-subtle)]">Execution Path</p>
@@ -251,6 +318,19 @@ function DetailPanel({ execId, workflowName }: { execId: string; workflowName: s
             <Square size={11} />{cancelling ? 'Cancelling…' : 'Cancel'}
           </Button>
         )}
+        <Button
+          variant="danger"
+          size="sm"
+          disabled={deleting}
+          title="Delete execution"
+          onClick={() => {
+            if (window.confirm('Delete this execution and its evidence records?')) {
+              deleteExecution(exec.id, { onSuccess: onDeleted });
+            }
+          }}
+        >
+          <Trash2 size={11} />{deleting ? 'Deleting...' : 'Delete'}
+        </Button>
         <Button variant="ghost" size="sm" title="Download report">
           <Download size={11} />
         </Button>
@@ -322,6 +402,169 @@ function TriggerPanel({ onClose }: { onClose: () => void }) {
 
 // ── Main Page ──────────────────────────────────────────────────────────────────
 
+function ExecutionLaunchPanel({ onClose, onLaunched }: { onClose: () => void; onLaunched: (executionId: string) => void }) {
+  const { data: workflows = [] } = useWorkflows();
+  const { data: testTree, isLoading: loadingCatalog } = useTestConfigurationTree();
+  const { mutate: trigger, isPending } = useTriggerExecution();
+  const { mutate: triggerTestCase, isPending: isLaunchingTestCase } = useTriggerTestCaseExecution();
+  const projects = testTree?.projects ?? [];
+  const [mode, setMode] = useState<'testcase' | 'workflow'>('testcase');
+  const [wfId, setWfId] = useState(workflows[0]?.id ?? '');
+  const [projectId, setProjectId] = useState('');
+  const [moduleId, setModuleId] = useState('');
+  const [caseId, setCaseId] = useState('');
+  const [env, setEnv] = useState('staging');
+  const [plat, setPlat] = useState('web');
+
+  const selectedProject = projects.find((p) => p.id === projectId) ?? projects[0] ?? null;
+  const modules = selectedProject?.modules ?? [];
+  const selectedModule = modules.find((m) => m.id === moduleId) ?? modules[0] ?? null;
+  const cases = selectedModule?.test_cases ?? [];
+  const selectedCase = cases.find((c) => c.id === caseId) ?? cases[0] ?? null;
+  const totalCases = projects.reduce((sum, p) => sum + p.modules.reduce((moduleSum, m) => moduleSum + m.test_cases.length, 0), 0);
+
+  useEffect(() => {
+    if (!wfId && workflows[0]?.id) setWfId(workflows[0].id);
+  }, [wfId, workflows]);
+
+  useEffect(() => {
+    if (!selectedProject) return;
+    if (projectId !== selectedProject.id) setProjectId(selectedProject.id);
+    const nextModule = selectedProject.modules.find((m) => m.id === moduleId) ?? selectedProject.modules[0];
+    if (nextModule && moduleId !== nextModule.id) setModuleId(nextModule.id);
+    const nextCase = nextModule?.test_cases.find((c) => c.id === caseId) ?? nextModule?.test_cases[0];
+    if (nextCase && caseId !== nextCase.id) setCaseId(nextCase.id);
+  }, [caseId, moduleId, projectId, selectedProject]);
+
+  function fire() {
+    if (mode === 'workflow') {
+      if (!wfId) return;
+      trigger({ workflow_id: wfId, trigger: 'manual', environment: env, platform: plat }, {
+        onSuccess: (res) => {
+          onLaunched(res.execution_id);
+          onClose();
+        },
+      });
+      return;
+    }
+    if (!selectedCase || !selectedProject || !selectedModule) return;
+    triggerTestCase({
+      test_case_ids: [selectedCase.id],
+      project_id: selectedProject.id,
+      module_id: selectedModule.id,
+      trigger: 'manual',
+      environment: env,
+      platform: plat,
+      variables: selectedCase.default_variables ?? {},
+    }, {
+      onSuccess: (res) => {
+        onLaunched(res.execution_id);
+        onClose();
+      },
+    });
+  }
+
+  const INP = 'w-full rounded-lg border border-[var(--color-line-default)] bg-[var(--color-surface-2)] px-3 py-2 text-sm text-[var(--color-fg-default)] outline-none transition-colors focus:border-[var(--color-accent-default)] disabled:opacity-50';
+  const launchDisabled = mode === 'workflow' ? !wfId || isPending : !selectedCase || isLaunchingTestCase;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: 8, scale: 0.98 }}
+      className="absolute right-4 top-16 z-30 w-80 rounded-2xl border border-[var(--color-line-default)] bg-[rgba(13,13,24,0.95)] p-4 shadow-2xl backdrop-blur-xl"
+    >
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h3 className="text-sm font-semibold text-[var(--color-fg-default)]">Trigger Execution</h3>
+        <span className="text-[10px] font-mono text-[var(--color-fg-subtle)]">{totalCases} cases</span>
+      </div>
+      <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-1 rounded-lg border border-[var(--color-line-default)] bg-black/20 p-1">
+          <button type="button" onClick={() => setMode('testcase')}
+            className={`rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors ${mode === 'testcase' ? 'bg-[rgba(91,140,255,0.16)] text-[#9db8ff]' : 'text-[var(--color-fg-subtle)] hover:text-[var(--color-fg-default)]'}`}>
+            Test Case
+          </button>
+          <button type="button" onClick={() => setMode('workflow')}
+            className={`rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors ${mode === 'workflow' ? 'bg-[rgba(91,140,255,0.16)] text-[#9db8ff]' : 'text-[var(--color-fg-subtle)] hover:text-[var(--color-fg-default)]'}`}>
+            Workflow
+          </button>
+        </div>
+
+        {mode === 'testcase' ? (
+          <>
+            <div>
+              <label className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]">Project</label>
+              <select value={selectedProject?.id ?? ''} onChange={(e) => setProjectId(e.target.value)} className={INP}>
+                {loadingCatalog
+                  ? <option value="">Loading projects...</option>
+                  : projects.length === 0
+                    ? <option value="">No projects with test cases</option>
+                    : projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)
+                }
+              </select>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]">Module</label>
+              <select value={selectedModule?.id ?? ''} onChange={(e) => setModuleId(e.target.value)} className={INP} disabled={!selectedProject}>
+                {modules.length === 0
+                  ? <option value="">No modules available</option>
+                  : modules.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)
+                }
+              </select>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]">Test Case</label>
+              <select value={selectedCase?.id ?? ''} onChange={(e) => setCaseId(e.target.value)} className={INP} disabled={!selectedModule}>
+                {cases.length === 0
+                  ? <option value="">No test cases available</option>
+                  : cases.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)
+                }
+              </select>
+              {selectedCase && (
+                <div className="mt-1.5 flex items-center justify-between text-[10px] text-[var(--color-fg-subtle)]">
+                  <span>{selectedCase.test_steps.length} steps</span>
+                  <span>{selectedCase.priority} / {selectedCase.test_type}</span>
+                </div>
+              )}
+            </div>
+          </>
+        ) : (
+          <div>
+            <label className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]">Workflow</label>
+            <select value={wfId} onChange={(e) => setWfId(e.target.value)} className={INP}>
+              {workflows.length === 0
+                ? <option value="">No workflows available</option>
+                : workflows.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)
+              }
+            </select>
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]">Environment</label>
+            <select value={env} onChange={(e) => setEnv(e.target.value)} className={INP}>
+              {['staging', 'production', 'dev', 'qa'].map((e) => <option key={e} value={e}>{e}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]">Platform</label>
+            <select value={plat} onChange={(e) => setPlat(e.target.value)} className={INP}>
+              {['web', 'android', 'ios', 'desktop', 'api'].map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
+          </div>
+        </div>
+        <div className="flex gap-2 pt-1">
+          <Button variant="ghost" size="sm" className="flex-1 justify-center" onClick={onClose}>Cancel</Button>
+          <Button variant="neon" size="sm" className="flex-1 justify-center" onClick={fire} disabled={launchDisabled}>
+            <Play size={11} />{isPending || isLaunchingTestCase ? 'Launching...' : 'Run'}
+          </Button>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
 const FILTERS = ['all', 'running', 'success', 'failed', 'queued'] as const;
 type Filter = typeof FILTERS[number];
 
@@ -381,7 +624,12 @@ export default function ExecutionsPage() {
                 <Play size={11} /> New Execution
               </Button>
               <AnimatePresence>
-                {triggerOpen && <TriggerPanel onClose={() => setTriggerOpen(false)} />}
+                {triggerOpen && (
+                  <ExecutionLaunchPanel
+                    onClose={() => setTriggerOpen(false)}
+                    onLaunched={(executionId) => setSelected(executionId)}
+                  />
+                )}
               </AnimatePresence>
             </div>
           </div>
@@ -478,7 +726,11 @@ export default function ExecutionsPage() {
             transition={{ duration: 0.24, ease: [0.22, 0.61, 0.36, 1] }}
             className="shrink-0 overflow-hidden border-l border-[var(--color-line-default)] bg-[var(--color-surface-1)]"
           >
-            <DetailPanel execId={selected} workflowName={wfNameMap[executions.find((e) => e.id === selected)?.workflow_id ?? ''] ?? ''} />
+            <DetailPanel
+              execId={selected}
+              workflowName={wfNameMap[executions.find((e) => e.id === selected)?.workflow_id ?? ''] ?? ''}
+              onDeleted={() => setSelected(null)}
+            />
           </motion.div>
         )}
       </AnimatePresence>

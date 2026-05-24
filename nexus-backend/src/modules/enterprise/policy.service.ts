@@ -1,5 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { InjectPinoLogger, PinoLogger } from 'nestjs-pino';
+import { and, eq, inArray, sql } from 'drizzle-orm';
+import { DrizzleService } from '../../infrastructure/postgres/drizzle.service';
+import { executionRuns, runtimeLeases } from '../../infrastructure/postgres/schema';
 import type { Principal } from '../../common/auth/principal.decorator';
 
 export interface ExecutionPolicy {
@@ -46,7 +49,7 @@ export interface PolicyViolation {
  * Policy enforcement service for pre-execution checks, artifact access,
  * AI investigation controls, and runtime resource quotas.
  *
- * Supports integration with OpenPolicyAgent (OPA) for Rego policy evaluation.
+ * Supports integration with OPA for Rego policy evaluation.
  */
 @Injectable()
 export class PolicyService {
@@ -56,6 +59,7 @@ export class PolicyService {
   private runtimePolicies: Map<string, RuntimeControlPolicy> = new Map();
 
   constructor(
+    private readonly drizzle: DrizzleService,
     @InjectPinoLogger(PolicyService.name)
     private readonly logger: PinoLogger,
   ) {
@@ -130,7 +134,30 @@ export class PolicyService {
       };
     }
 
-    // TODO: Check budget limits, concurrent execution limits from DB
+    // Check concurrent execution limits from DB
+    const concurrentLimit = policy.concurrentExecutionLimit ?? 100;
+    try {
+      const activeRuns = await this.drizzle.db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(executionRuns)
+        .where(
+          and(
+            eq(executionRuns.tenantId, tenantId),
+            inArray(executionRuns.status, ['queued', 'running'])
+          )
+        );
+
+      const activeCount = activeRuns[0]?.count ?? 0;
+      if (activeCount >= concurrentLimit) {
+        return {
+          policyType: 'execution',
+          reason: `Concurrent execution limit of ${concurrentLimit} exceeded (current active: ${activeCount})`,
+          metadata: { limit: concurrentLimit, current: activeCount },
+        };
+      }
+    } catch (err) {
+      this.logger.error({ err, tenantId }, 'Failed to check concurrent execution limit from database');
+    }
 
     return null;
   }
@@ -204,7 +231,45 @@ export class PolicyService {
       };
     }
 
-    // TODO: Check CPU, memory, storage quotas
+    try {
+      // Query active runtime leases for real-time CPU/Memory telemetry aggregation
+      const activeLeasesResult = await this.drizzle.db
+        .select()
+        .from(runtimeLeases)
+        .where(
+          and(
+            eq(runtimeLeases.tenantId, tenantId),
+            eq(runtimeLeases.status, 'active')
+          )
+        );
+
+      let totalCpu = 0;
+      let totalMemory = 0;
+
+      for (const lease of activeLeasesResult) {
+        const leaseMetadata = (lease.metadata ?? {}) as Record<string, unknown>;
+        totalCpu += Number(leaseMetadata.cpu ?? 1); // fallback to 1 core per lease
+        totalMemory += Number(leaseMetadata.memory ?? 2048); // fallback to 2GB per lease
+      }
+
+      if (policy.cpuQuota && totalCpu >= policy.cpuQuota) {
+        return {
+          policyType: 'runtime_control',
+          reason: `CPU quota of ${policy.cpuQuota} exceeded (current total CPU allocation: ${totalCpu} cores)`,
+          metadata: { limit: policy.cpuQuota, current: totalCpu },
+        };
+      }
+
+      if (policy.memoryQuota && totalMemory >= policy.memoryQuota) {
+        return {
+          policyType: 'runtime_control',
+          reason: `Memory quota of ${policy.memoryQuota}MB exceeded (current total Memory allocation: ${totalMemory}MB)`,
+          metadata: { limit: policy.memoryQuota, current: totalMemory },
+        };
+      }
+    } catch (err) {
+      this.logger.error({ err, tenantId }, 'Failed to check runtime telemetry quota from database');
+    }
 
     return null;
   }

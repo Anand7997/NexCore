@@ -243,7 +243,7 @@ async def delete_page(page_id: str, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(PageRepositoryModel).where(PageRepositoryModel.id == page_id))
     page = result.scalar_one_or_none()
     if not page:
-        raise HTTPException(status_code=404, detail="Page not found")
+        return None
     await _detach_page_references(page_id, db)
     await db.execute(
         delete(PageElementModel)

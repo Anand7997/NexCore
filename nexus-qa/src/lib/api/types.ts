@@ -119,6 +119,11 @@ export interface TimelineEntry {
 export interface ExecutionListItem {
   id: string;
   workflow_id: string;
+  workflow_name?: string;
+  project_name?: string;
+  module_name?: string;
+  test_case_name?: string;
+  display_name?: string;
   status: ExecutionStatus;
   trigger: string;
   environment: string;
@@ -139,7 +144,21 @@ export interface ExecutionDetail extends ExecutionListItem {
 
 export interface TriggerExecutionInput {
   workflow_id: string;
+  project_id?: string | null;
+  module_id?: string | null;
+  testing_type_id?: string | null;
   trigger?: string;
+  environment?: string;
+  platform?: string;
+  variables?: Record<string, unknown>;
+}
+
+export interface TriggerTestCaseExecutionInput {
+  test_case_ids: string[];
+  project_id?: string | null;
+  module_id?: string | null;
+  trigger?: string;
+  triggered_by?: string;
   environment?: string;
   platform?: string;
   variables?: Record<string, unknown>;
@@ -148,6 +167,7 @@ export interface TriggerExecutionInput {
 export interface TriggerExecutionResponse {
   execution_id: string;
   status: string;
+  workflow_id?: string;
 }
 
 export interface TestTagCatalogDimension {
@@ -296,6 +316,14 @@ export interface TestStepCreateInput {
   name: string;
   description?: string;
   step_order?: number | null;
+  action_type?: string;
+  page_id?: string | null;
+  page_element_id?: string | null;
+  api_endpoint_id?: string | null;
+  input_value?: string;
+  assertion_type?: string;
+  secondary_action?: string;
+  secondary_value?: string;
   intent?: string;
   target?: string;
   expected_result?: string;
@@ -309,6 +337,14 @@ export interface TestStepUpdateInput {
   name?: string;
   description?: string;
   step_order?: number | null;
+  action_type?: string;
+  page_id?: string | null;
+  page_element_id?: string | null;
+  api_endpoint_id?: string | null;
+  input_value?: string;
+  assertion_type?: string;
+  secondary_action?: string;
+  secondary_value?: string;
   intent?: string;
   target?: string;
   expected_result?: string;

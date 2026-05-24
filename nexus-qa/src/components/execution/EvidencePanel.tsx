@@ -18,6 +18,17 @@ interface Props {
   executionId: string | null;
 }
 
+interface ScreenshotView {
+  id: string;
+  contentId: string;
+  node_key?: string | null;
+  name: string;
+  size_bytes: number;
+  created_at: string;
+  isFailure: boolean;
+  isLive: boolean;
+}
+
 /**
  * Live execution-evidence panel.
  *
@@ -34,10 +45,41 @@ export function EvidencePanel({ executionId }: Props) {
   const bucket = useExecutionStreamStore(selectBucket(executionId));
   const { data: persistedArtifacts = [] } = useExecutionArtifacts(executionId);
 
-  const screenshotArtifacts = useMemo(() => {
-    const out: Artifact[] = persistedArtifacts.filter((a) => a.kind === 'screenshot');
-    return out.sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at));
-  }, [persistedArtifacts]);
+  const screenshotArtifacts = useMemo<ScreenshotView[]>(() => {
+    const persisted: ScreenshotView[] = persistedArtifacts
+      .filter((a) => a.kind === 'screenshot')
+      .map((a) => ({
+        id: a.id,
+        contentId: a.id,
+        node_key: a.node_key,
+        name: a.name,
+        size_bytes: a.size_bytes,
+        created_at: a.created_at,
+        isFailure: a.name.toLowerCase().includes('failure') || Boolean(a.metadata?.error),
+        isLive: false,
+      }));
+
+    const seen = new Set(persisted.map((a) => a.contentId));
+    const live: ScreenshotView[] = bucket.artifacts
+      .filter((a) => a.kind === 'screenshot' && a.artifactId && !seen.has(a.artifactId))
+      .map((a) => ({
+        id: a.id,
+        contentId: a.artifactId,
+        node_key: a.nodeId,
+        name: a.name,
+        size_bytes: a.sizeBytes,
+        created_at: a.timestamp,
+        isFailure: a.name.toLowerCase().includes('failure') || Boolean(a.metadata?.error),
+        isLive: true,
+      }));
+
+    return [...live, ...persisted].sort((a, b) => {
+      if (a.isFailure !== b.isFailure) return a.isFailure ? -1 : 1;
+      return +new Date(b.created_at) - +new Date(a.created_at);
+    });
+  }, [bucket.artifacts, persistedArtifacts]);
+
+  const failedScreenshots = screenshotArtifacts.filter((a) => a.isFailure);
 
   if (!executionId) {
     return (
@@ -49,6 +91,38 @@ export function EvidencePanel({ executionId }: Props) {
 
   return (
     <div className="flex h-full flex-col">
+      {failedScreenshots.length > 0 && (
+        <div className="shrink-0 border-b border-red-500/15 bg-red-500/8 px-3 py-2">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-red-300">
+              Failed Screenshots
+            </span>
+            <span className="font-mono text-[10px] text-red-300/70">{failedScreenshots.length}</span>
+          </div>
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {failedScreenshots.slice(0, 4).map((a) => (
+              <a
+                key={a.id}
+                href={artifactContentUrl(a.contentId)}
+                target="_blank"
+                rel="noreferrer"
+                className="group relative block h-20 w-32 shrink-0 overflow-hidden rounded-md border border-red-500/30 bg-surface-1"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={artifactContentUrl(a.contentId)} alt={a.name} className="h-full w-full object-cover" />
+                <div className="absolute inset-x-0 bottom-0 bg-black/70 px-1.5 py-1 text-[9px] text-white">
+                  <span className="block truncate">{a.node_key ?? a.name}</span>
+                </div>
+                {a.isLive && (
+                  <span className="absolute right-1 top-1 rounded bg-red-500 px-1 text-[8px] font-bold text-white">
+                    LIVE
+                  </span>
+                )}
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
       {/* Tab strip */}
       <div className="flex shrink-0 gap-1 border-b border-border-subtle bg-surface-1/40 px-2 py-1.5">
         {TABS.map((t) => (
@@ -91,7 +165,7 @@ export function EvidencePanel({ executionId }: Props) {
 
 // ── Tabs ───────────────────────────────────────────────────────────────────
 
-function ScreenshotsTab({ artifacts }: { artifacts: Artifact[] }) {
+function ScreenshotsTab({ artifacts }: { artifacts: ScreenshotView[] }) {
   if (artifacts.length === 0) {
     return <Empty>No screenshots yet — they appear as web nodes execute.</Empty>;
   }
@@ -100,14 +174,14 @@ function ScreenshotsTab({ artifacts }: { artifacts: Artifact[] }) {
       {artifacts.map((a) => (
         <a
           key={a.id}
-          href={artifactContentUrl(a.id)}
+          href={artifactContentUrl(a.contentId)}
           target="_blank"
           rel="noreferrer"
           className="group relative overflow-hidden rounded-md border border-border-subtle bg-surface-1 transition hover:border-accent-blue"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={artifactContentUrl(a.id)}
+            src={artifactContentUrl(a.contentId)}
             alt={a.name}
             loading="lazy"
             className="block w-full object-cover"
@@ -116,6 +190,15 @@ function ScreenshotsTab({ artifacts }: { artifacts: Artifact[] }) {
             <span className="truncate">{a.name}</span>
             <span>{(a.size_bytes / 1024).toFixed(0)} KB</span>
           </div>
+          {a.isFailure ? (
+            <div className="absolute right-1.5 top-1.5 rounded bg-red-500 px-1.5 py-0.5 text-[9px] font-semibold text-white">
+              failed
+            </div>
+          ) : a.isLive ? (
+            <div className="absolute right-1.5 top-1.5 rounded bg-emerald-500 px-1.5 py-0.5 text-[9px] font-semibold text-white">
+              live
+            </div>
+          ) : null}
           {a.node_key ? (
             <div className="absolute left-1.5 top-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">
               {a.node_key}

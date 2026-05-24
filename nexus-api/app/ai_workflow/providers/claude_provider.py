@@ -42,7 +42,7 @@ class ClaudeProvider(AbstractAIProvider):
             self._client = anthropic.AsyncAnthropic(
                 api_key=self._api_key,
                 http_client=self._http_client,
-                timeout=120,
+                timeout=None,
                 max_retries=1,
             )
         return self._client

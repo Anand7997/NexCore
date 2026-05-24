@@ -1,8 +1,9 @@
 """Async repository for execution persistence."""
 from __future__ import annotations
+from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
-from app.database.models import ExecutionModel, ExecutionNodeModel, ExecutionTimelineModel
+from sqlalchemy import delete, select, func
+from app.database.models import ExecutionModel, ExecutionNodeModel, ExecutionTimelineModel, IntelligenceJobModel
 from app.domain.executions.schemas import ExecutionTriggerSchema
 import uuid
 
@@ -81,3 +82,25 @@ class ExecutionRepository:
         )
         completed = completed_result.scalar() or 0
         return total, completed
+
+    async def cancel(self, execution_id: str) -> ExecutionModel | None:
+        execution = await self.get(execution_id)
+        if execution is None:
+            return None
+        if execution.status not in {"completed", "success", "failed", "cancelled"}:
+            execution.status = "cancelled"
+            execution.completed_at = datetime.utcnow()
+            await self.db.commit()
+            await self.db.refresh(execution)
+        return execution
+
+    async def delete(self, execution_id: str) -> bool:
+        execution = await self.get(execution_id)
+        if execution is None:
+            return False
+        await self.db.execute(
+            delete(IntelligenceJobModel).where(IntelligenceJobModel.execution_id == execution_id)
+        )
+        await self.db.delete(execution)
+        await self.db.commit()
+        return True

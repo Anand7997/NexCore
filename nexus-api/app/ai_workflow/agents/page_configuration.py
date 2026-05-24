@@ -63,6 +63,9 @@ class PageConfigurationAgent:
         )
         page = result.scalar_one_or_none()
         if page:
+            if url and page.url_pattern != url:
+                page.url_pattern = url
+                await db.flush()
             logger.info("PageConfigurationAgent: reusing page '%s' (%s)", page_name, page.id)
             return page
 

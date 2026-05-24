@@ -4,7 +4,9 @@
   "private": true,
   "scripts": {
     "start": "scripts\\start.bat",
-    "dev": "scripts\\start.bat -Reload"
+    "dev": "scripts\\start.bat -Reload",
+    "stop": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File stop-nexus.ps1 -KeepInfra",
+    "stop:all": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File stop-nexus.ps1"
   },
   "dependencies": {
     "framer-motion": "^12.40.0"

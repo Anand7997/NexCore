@@ -27,6 +27,7 @@ import {
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import TerminalDock from './TerminalDock';
+import { AIInspector } from './AIInspector';
 import { TooltipProvider } from '@/components/ui/Tooltip';
 import { useUIStore } from '@/lib/stores/uiStore';
 import { notificationSlide } from '@/lib/motion/variants';
@@ -279,7 +280,7 @@ const INITIAL_MESSAGES: ChatMessage[] = [
   {
     id: 'init-1',
     role: 'assistant',
-    content: 'NEXCORE AI online. I have full context of your current workspace. How can I assist your QA mission?',
+    content: 'Execution analysis opens when you select a specific run. This chat panel is not connected to live AI yet, so I will only give deterministic workspace guidance here.',
     timestamp: new Date().toISOString(),
   },
 ];
@@ -327,6 +328,20 @@ function AICopilotPanel() {
     }, 18);
   }
 
+  function getAssistantReply(message: string): string {
+    const normalized = message.toLowerCase();
+    if (pathname.startsWith('/executions')) {
+      if (normalized.includes('error') || normalized.includes('failed') || normalized.includes('failure')) {
+        return 'Select a failed execution row, then open Analyze. The inspector will load the persisted failed node, evidence-backed insights, and any suggested selector/config fixes from the backend.';
+      }
+      return 'On Executions, the useful signal comes from a selected run. Open a specific execution to see node status, artifacts, timeline, and failure evidence.';
+    }
+    if (normalized.includes('playwright')) {
+      return 'For Playwright failures, check the failed node error first. Common causes are the target app not running on the configured URL, missing browser binaries, or a selector that no longer matches the page.';
+    }
+    return 'I cannot answer from live workspace data in this generic chat panel yet. Open a specific execution to use the evidence-backed analysis view.';
+  }
+
   function handleSend(text?: string) {
     const content = (text ?? inputValue).trim();
     if (!content || isStreaming) return;
@@ -339,9 +354,7 @@ function AICopilotPanel() {
     };
     setMessages((prev) => [...prev, userMsg]);
     setTimeout(() => {
-      simulateStream(
-        `Analyzing your request in the context of ${pathname === '/' ? 'Workspace Command Center' : pathname}. Based on current execution intelligence, I recommend reviewing recent test failures and cross-referencing with the knowledge graph for root cause patterns. Shall I generate a detailed investigation plan?`,
-      );
+      simulateStream(getAssistantReply(content));
     }, 400);
   }
 
@@ -533,7 +546,7 @@ function AICopilotPanel() {
 // ── Main AppShell ───────────────────────────────────────────────────────────
 
 export default function AppShell({ children }: AppShellProps) {
-  const { inspectorOpen, notifications, dismissNotification, theme, setTheme } = useUIStore();
+  const { inspectorOpen, inspectorExecutionId, notifications, dismissNotification, theme, setTheme } = useUIStore();
 
   useWebSocket();
 
@@ -621,7 +634,7 @@ export default function AppShell({ children }: AppShellProps) {
                   className="shrink-0 overflow-hidden"
                   style={{ minWidth: 0 }}
                 >
-                  <AICopilotPanel />
+                  {inspectorExecutionId ? <AIInspector /> : <AICopilotPanel />}
                 </motion.div>
               )}
             </AnimatePresence>

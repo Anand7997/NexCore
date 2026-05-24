@@ -49,7 +49,11 @@ class TestConfigurationRepository:
                 selectinload(TestProjectModel.modules)
                 .selectinload(TestModuleModel.test_cases)
                 .selectinload(TestCaseModel.test_steps)
-                .selectinload(TestStepModel.page_element)
+                .selectinload(TestStepModel.page_element),
+                selectinload(TestProjectModel.modules)
+                .selectinload(TestModuleModel.test_cases)
+                .selectinload(TestCaseModel.test_steps)
+                .selectinload(TestStepModel.page),
             )
             .order_by(TestProjectModel.created_at.desc())
         )
@@ -65,7 +69,11 @@ class TestConfigurationRepository:
                 selectinload(TestProjectModel.modules)
                 .selectinload(TestModuleModel.test_cases)
                 .selectinload(TestCaseModel.test_steps)
-                .selectinload(TestStepModel.page_element)
+                .selectinload(TestStepModel.page_element),
+                selectinload(TestProjectModel.modules)
+                .selectinload(TestModuleModel.test_cases)
+                .selectinload(TestCaseModel.test_steps)
+                .selectinload(TestStepModel.page),
             )
             .where(TestProjectModel.id == project_id)
         )
@@ -432,7 +440,8 @@ class TestConfigurationRepository:
             select(TestCaseModel)
             .options(
                 selectinload(TestCaseModel.test_steps)
-                .selectinload(TestStepModel.page_element)
+                .selectinload(TestStepModel.page_element),
+                selectinload(TestCaseModel.test_steps).selectinload(TestStepModel.page),
             )
             .where(TestCaseModel.id == case_id)
         )

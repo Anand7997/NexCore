@@ -22,10 +22,72 @@ locator_healing, anomaly_analysis) by branching logic inside nodes.
 """
 from __future__ import annotations
 
+import json
 import logging
+import inspect
+import importlib.util
 from typing import Any, Awaitable, Callable, Optional, TypedDict
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
+
+
+# ── Structured LLM Pydantic Schemas ───────────────────────────────────────────
+
+class FailureClassification(BaseModel):
+    failure_class: str = Field(
+        description="Class of failure. Must be one of: selector_failure, timeout_failure, auth_failure, server_error, assertion_failure, network_failure, flaky_test, anomaly, unknown_failure"
+    )
+    confidence: float = Field(description="Confidence score between 0.0 and 1.0")
+    reason: str = Field(description="Reasoning behind this classification")
+
+
+class FindingItem(BaseModel):
+    type: str = Field(description="Type of finding (e.g. primary_failure, duration_anomaly, historical_pattern, flaky_pattern, locator_failure)")
+    description: str = Field(description="Detailed description of what went wrong or patterns identified")
+    severity: str = Field(description="Severity (critical, warning, info)")
+    evidence_link: str = Field(description="Pointer to the source of evidence (e.g. execution:timeline)")
+
+
+class RecommendationItem(BaseModel):
+    type: str = Field(description="Type of recommendation (e.g. locator_strategy, timeout_tuning, service_health, assertion_review, stabilizes_test)")
+    priority: str = Field(description="Priority (critical, high, medium, low)")
+    action: str = Field(description="Actionable step to fix the failure")
+    evidence_link: str = Field(description="Link to the finding that triggered this recommendation")
+
+
+class RootCauseAnalysis(BaseModel):
+    findings: list[FindingItem] = Field(description="List of detailed findings from the evidence")
+    recommendations: list[RecommendationItem] = Field(description="List of actionable recommendations to fix/prevent the issue")
+    root_cause: str = Field(description="Comprehensive summary of the root cause")
+    confidence: float = Field(description="Confidence score of the analysis between 0.0 and 1.0")
+
+
+# ── AI Provider Helper ────────────────────────────────────────────────────────
+
+def _get_ai_provider() -> Any:
+    try:
+        from app.config import settings
+        provider_name = settings.default_ai_provider.lower()
+        has_openai = importlib.util.find_spec("openai") is not None
+        has_anthropic = importlib.util.find_spec("anthropic") is not None
+        if provider_name == "openai" and settings.openai_api_key and has_openai:
+            from app.ai_workflow.providers.openai_provider import OpenAIProvider
+            return OpenAIProvider(api_key=settings.openai_api_key, model=settings.default_ai_model or "gpt-5.5")
+        elif provider_name in ("claude", "anthropic") and settings.anthropic_api_key and has_anthropic:
+            from app.ai_workflow.providers.claude_provider import ClaudeProvider
+            return ClaudeProvider(api_key=settings.anthropic_api_key, model=settings.default_ai_model or "claude-3-5-sonnet-latest")
+        
+        # Fallback to whatever key is present
+        if settings.openai_api_key and has_openai:
+            from app.ai_workflow.providers.openai_provider import OpenAIProvider
+            return OpenAIProvider(api_key=settings.openai_api_key, model="gpt-5.5")
+        elif settings.anthropic_api_key and has_anthropic:
+            from app.ai_workflow.providers.claude_provider import ClaudeProvider
+            return ClaudeProvider(api_key=settings.anthropic_api_key, model="claude-3-5-sonnet-latest")
+    except Exception as exc:
+        logger.warning("Could not load AI provider config: %s", exc)
+    return None
 
 
 # ── State ─────────────────────────────────────────────────────────────────────
@@ -83,22 +145,48 @@ def gather_evidence(state: RCAState) -> dict[str, Any]:
     }
 
 
-def classify_failure(state: RCAState) -> dict[str, Any]:
+async def classify_failure(state: RCAState) -> dict[str, Any]:
     job_type: str = state.get("job_type") or "root_cause_analysis"
-    error_text: str = (state.get("error_text") or "").lower()
+    error_text: str = state.get("error_text") or ""
 
-    # Pattern-match against common failure signatures
-    if any(k in error_text for k in ("selector", "locator", "element not found", "xpath", "css")):
+    provider = _get_ai_provider()
+    if provider is not None:
+        try:
+            prompt = (
+                f"Analyze the following failure error text and classify it into one of the failure classes:\n"
+                f"- selector_failure (broken locator, element not found, css/xpath issue)\n"
+                f"- timeout_failure (wait exceeded, timed out)\n"
+                f"- auth_failure (unauthorized, 401, 403, login issue)\n"
+                f"- server_error (internal server error, 500, 502, 503)\n"
+                f"- assertion_failure (test assertion failed, expected/actual mismatch)\n"
+                f"- network_failure (connection refused, DNS, network issue)\n"
+                f"- flaky_test (non-deterministic failure)\n"
+                f"- anomaly (performance duration anomaly)\n"
+                f"- unknown_failure (none of the above)\n\n"
+                f"Job Type: {job_type}\n"
+                f"Error Text: {error_text}\n"
+            )
+            result = await provider.generate(prompt, FailureClassification)
+            return {
+                "failure_class": result.failure_class,
+                "analysis_steps": _steps(state, f"classify_failure (LLM): classified as {result.failure_class} ({result.reason})"),
+            }
+        except Exception as exc:
+            logger.warning("LLM classification failed, falling back to pattern matching: %s", exc)
+
+    # Heuristic Pattern-match fallback
+    error_text_lower = error_text.lower()
+    if any(k in error_text_lower for k in ("selector", "locator", "element not found", "xpath", "css")):
         cls = "selector_failure"
-    elif any(k in error_text for k in ("timeout", "timed out", "wait exceeded")):
+    elif any(k in error_text_lower for k in ("timeout", "timed out", "wait exceeded")):
         cls = "timeout_failure"
-    elif any(k in error_text for k in ("401", "403", "authentication", "unauthori", "forbidden")):
+    elif any(k in error_text_lower for k in ("401", "403", "authentication", "unauthori", "forbidden")):
         cls = "auth_failure"
-    elif any(k in error_text for k in ("500", "502", "503", "server error", "internal error")):
+    elif any(k in error_text_lower for k in ("500", "502", "503", "server error", "internal error")):
         cls = "server_error"
-    elif any(k in error_text for k in ("assertion", "expected", "mismatch", "not equal", "assert")):
+    elif any(k in error_text_lower for k in ("assertion", "expected", "mismatch", "not equal", "assert")):
         cls = "assertion_failure"
-    elif any(k in error_text for k in ("network", "connection refused", "econnrefused", "dns")):
+    elif any(k in error_text_lower for k in ("network", "connection refused", "econnrefused", "dns")):
         cls = "network_failure"
     elif job_type == "flaky_detection":
         cls = "flaky_test"
@@ -111,7 +199,7 @@ def classify_failure(state: RCAState) -> dict[str, Any]:
 
     return {
         "failure_class": cls,
-        "analysis_steps": _steps(state, f"classify_failure: classified as {cls}"),
+        "analysis_steps": _steps(state, f"classify_failure (Heuristic): classified as {cls}"),
     }
 
 
@@ -119,6 +207,12 @@ async def retrieve_memory(state: RCAState) -> dict[str, Any]:
     error_text: str = state.get("error_text") or ""
     tenant_id: str | None = state.get("tenant_id")
     similar: list[dict[str, Any]] = []
+
+    if importlib.util.find_spec("qdrant_client") is None:
+        return {
+            "similar_failures": similar,
+            "analysis_steps": _steps(state, "retrieve_memory: skipped (Qdrant client unavailable)"),
+        }
 
     try:
         from app.intelligence.memory import get_memory_store
@@ -147,7 +241,7 @@ async def retrieve_memory(state: RCAState) -> dict[str, Any]:
     }
 
 
-def analyze_root_cause(state: RCAState) -> dict[str, Any]:
+async def analyze_root_cause(state: RCAState) -> dict[str, Any]:
     failure_class: str = state.get("failure_class") or "unknown_failure"
     failed_nodes: list[dict[str, Any]] = state.get("failed_nodes") or []
     error_text: str = state.get("error_text") or ""
@@ -155,6 +249,30 @@ def analyze_root_cause(state: RCAState) -> dict[str, Any]:
     job_type: str = state.get("job_type") or "root_cause_analysis"
     evidence: dict[str, Any] = state.get("evidence") or {}
 
+    provider = _get_ai_provider()
+    if provider is not None:
+        try:
+            prompt = (
+                f"You are an expert systems reliability and QA automation engineer. Perform a root cause analysis for the following test execution failure:\n\n"
+                f"Job Type: {job_type}\n"
+                f"Failure Class: {failure_class}\n"
+                f"Error Message: {error_text}\n"
+                f"Failed Timeline Nodes: {json.dumps(failed_nodes, indent=2)}\n"
+                f"Similar Past Failures: {json.dumps(similar, indent=2)}\n"
+                f"Full Evidence Context: {json.dumps(evidence, indent=2)[:4000]}\n"
+            )
+            result = await provider.generate(prompt, RootCauseAnalysis)
+            return {
+                "findings": [f.model_dump() for f in result.findings],
+                "recommendations": [r.model_dump() for r in result.recommendations],
+                "root_cause": result.root_cause,
+                "confidence": round(result.confidence, 3),
+                "analysis_steps": _steps(state, f"analyze_root_cause (LLM): {len(result.findings)} finding(s), {len(result.recommendations)} recommendation(s)"),
+            }
+        except Exception as exc:
+            logger.warning("LLM root cause analysis failed, falling back to heuristics: %s", exc)
+
+    # Heuristic fallback code
     findings: list[dict[str, Any]] = []
     confidence = 0.4
 
@@ -228,7 +346,7 @@ def analyze_root_cause(state: RCAState) -> dict[str, Any]:
         "findings": findings,
         "root_cause": _summarize_root_cause(failure_class, failed_nodes, job_type),
         "confidence": round(confidence, 3),
-        "analysis_steps": _steps(state, f"analyze_root_cause: {len(findings)} finding(s)"),
+        "analysis_steps": _steps(state, f"analyze_root_cause (Heuristic): {len(findings)} finding(s)"),
     }
 
 
@@ -236,8 +354,10 @@ def generate_recommendations(state: RCAState) -> dict[str, Any]:
     failure_class: str = state.get("failure_class") or "unknown_failure"
     similar: list[dict[str, Any]] = state.get("similar_failures") or []
     job_type: str = state.get("job_type") or "root_cause_analysis"
+    llm_recs: list[dict[str, Any]] = state.get("recommendations") or []
 
-    recs: list[dict[str, Any]] = list(_class_recommendations(failure_class))
+    # Combine LLM recommendations first and fallback/class recommendations second
+    recs: list[dict[str, Any]] = list(llm_recs) + list(_class_recommendations(failure_class))
 
     # Incorporate historical recommendations with evidence links
     for s in similar[:2]:
@@ -365,6 +485,23 @@ def get_rca_graph() -> Any:
     return _rca_graph
 
 
+async def _run_rca_linear(initial: RCAState) -> dict[str, Any]:
+    """Run the RCA nodes sequentially when LangGraph is not installed."""
+    state: dict[str, Any] = dict(initial)
+    nodes = (
+        gather_evidence,
+        classify_failure,
+        retrieve_memory,
+        analyze_root_cause,
+        generate_recommendations,
+        validate_results,
+    )
+    for node in nodes:
+        delta = await node(state) if inspect.iscoroutinefunction(node) else node(state)
+        state.update(delta)
+    return state
+
+
 def _make_initial_state(
     job_id: str,
     job_type: str,
@@ -399,9 +536,13 @@ async def run_rca(
 ) -> dict[str, Any]:
     """Execute the RCA LangGraph workflow and return the completed state."""
     initial = _make_initial_state(job_id, job_type, tenant_id, evidence)
-    graph = get_rca_graph()
-    result: dict[str, Any] = await graph.ainvoke(initial)
-    return result
+    try:
+        graph = get_rca_graph()
+        result: dict[str, Any] = await graph.ainvoke(initial)
+        return result
+    except ImportError as exc:
+        logger.warning("LangGraph unavailable, running RCA linear fallback: %s", exc)
+        return await _run_rca_linear(initial)
 
 
 async def run_rca_streaming(
@@ -423,7 +564,17 @@ async def run_rca_streaming(
             the analysis.
     """
     initial = _make_initial_state(job_id, job_type, tenant_id, evidence)
-    graph = get_rca_graph()
+    try:
+        graph = get_rca_graph()
+    except ImportError as exc:
+        logger.warning("LangGraph unavailable, running RCA linear fallback: %s", exc)
+        final_state = await _run_rca_linear(initial)
+        if on_node_complete is not None:
+            try:
+                await on_node_complete("linear_fallback", final_state)
+            except Exception:
+                logger.exception("on_node_complete callback raised for linear fallback")
+        return final_state
 
     # Accumulate state deltas across all nodes
     final_state: dict[str, Any] = dict(initial)

@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from './client';
+import { api, ApiError } from './client';
 import type {
   DiscoverRequestInput, DiscoverResponse,
   ElementCreateInput, ElementUpdateInput,
@@ -60,8 +60,32 @@ export function useUpdatePage(pageId: string) {
 export function useDeletePage() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (pageId: string) => api.delete(`/page-repository/pages/${pageId}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: KEYS.all }),
+    mutationFn: async (pageId: string) => {
+      try {
+        await api.delete(`/page-repository/pages/${pageId}`);
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 404) return;
+        throw err;
+      }
+    },
+    onMutate: async (pageId: string) => {
+      await qc.cancelQueries({ queryKey: KEYS.all });
+      const snapshots = qc.getQueriesData({ queryKey: KEYS.all });
+      for (const [queryKey, data] of snapshots) {
+        if (!Array.isArray(data)) continue;
+        qc.setQueryData(
+          queryKey,
+          data.filter((item: { id?: string }) => item.id !== pageId),
+        );
+      }
+      return { snapshots };
+    },
+    onError: (_err, _pageId, context) => {
+      for (const [queryKey, data] of context?.snapshots ?? []) {
+        qc.setQueryData(queryKey, data);
+      }
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: KEYS.all }),
   });
 }
 

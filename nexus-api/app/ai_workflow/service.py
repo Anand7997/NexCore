@@ -559,9 +559,31 @@ def _action_element_bonus(action_type: str, element_type: str) -> float:
         return 0.18
     if action.startswith("assert") and element in {"label", "text", "element", "button", "link"}:
         return 0.10
-    if action == "select" and element in {"select", "option", "input"}:
+    if action == "select" and element in {"select", "option", "combobox", "listbox"}:
         return 0.20
+    if action == "select" and element in {"button", "link", "checkbox", "radio"}:
+        return 0.12
     return 0.0
+
+
+def _is_selectable_choice_element(element_type: str) -> bool:
+    return element_type.lower() in {"button", "link", "checkbox", "radio", "tab", "toggle"}
+
+
+def _is_dropdown_element(element_type: str) -> bool:
+    return element_type.lower() in {"select", "option", "combobox", "listbox"}
+
+
+def _has_action_phrase(text: str, phrases: tuple[str, ...]) -> bool:
+    normalized = _re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
+    for phrase in phrases:
+        normalized_phrase = _re.sub(r"[^a-z0-9]+", " ", phrase.lower()).strip()
+        if " " in normalized_phrase:
+            if normalized_phrase in normalized:
+                return True
+        elif _re.search(rf"\b{_re.escape(normalized_phrase)}\b", normalized):
+            return True
+    return False
 
 
 def _infer_workflow_action(step: GeneratedTestStep, element_type: str = "") -> str:
@@ -575,31 +597,38 @@ def _infer_workflow_action(step: GeneratedTestStep, element_type: str = "") -> s
     ).lower()
     element = element_type.lower()
 
-    if any(word in text for word in ("navigate", "open url", "go to", "launch page")):
+    if _has_action_phrase(text, ("navigate", "open url", "go to", "launch page")):
         return "navigate"
-    if any(word in text for word in ("wait", "pause", "loading")):
+    if _has_action_phrase(text, ("wait", "pause", "loading")):
         return "wait"
-    if any(word in text for word in ("scroll", "swipe")):
+    if _has_action_phrase(text, ("scroll", "swipe")):
         return "scroll"
-    if any(word in text for word in ("upload", "attach file", "choose file")):
+    if _has_action_phrase(text, ("upload", "attach file", "choose file")):
         return "upload"
-    if any(word in text for word in ("clear", "remove text", "empty field")):
+    if _has_action_phrase(text, ("clear", "remove text", "empty field")):
         return "clear"
-    if any(word in text for word in ("type", "enter", "input", "fill", "provide")):
-        return "select" if element == "select" else "fill"
-    if any(word in text for word in ("select", "choose", "dropdown", "pick option")):
-        return "select"
-    if any(word in text for word in ("assert", "verify", "validate", "should see", "check that", "confirm")):
+    if _has_action_phrase(text, ("enter", "input", "fill", "provide")) or (
+        _has_action_phrase(text, ("type",))
+        and not _has_action_phrase(text, ("trip type", "travel type", "fare type"))
+    ):
+        return "select" if _is_dropdown_element(element) else "fill"
+    if _has_action_phrase(text, ("select", "choose", "dropdown", "pick option")):
+        if _is_dropdown_element(element) or _has_action_phrase(text, ("dropdown", "pick option", "choose option", "select option")):
+            return "select"
+        if _is_selectable_choice_element(element):
+            return "click"
+        return "click"
+    if _has_action_phrase(text, ("assert", "verify", "validate", "should see", "check that", "confirm")):
         return "assert_text" if (step.expected_result or " text " in f" {text} ") else "assert_visible"
-    if any(word in text for word in ("hover", "mouse over")):
+    if _has_action_phrase(text, ("hover", "mouse over")):
         return "hover"
-    if "submit" in text:
+    if _has_action_phrase(text, ("submit",)):
         return "submit"
     if element in {"input", "textarea"} and step.input_value:
         return "fill"
-    if element == "select":
+    if _is_dropdown_element(element):
         return "select"
-    if element in {"button", "link", "checkbox", "radio"}:
+    if _is_selectable_choice_element(element):
         return "click"
     return (step.action_type or "click").lower()
 
@@ -836,6 +865,12 @@ def _workflow_action_to_test_config(action_type: str, element: dict[str, Any] | 
     if action == "fill":
         return "CLEAR_AND_TYPE"
     if action == "select":
+        if element_type == "radio":
+            return "RADIO_BUTTON"
+        if element_type == "checkbox":
+            return "HANDLE_CHECKBOX"
+        if element_type in {"button", "link", "tab", "toggle"}:
+            return "CLICK"
         return "SELECT"
     if action == "submit":
         return "CLICK"
@@ -858,11 +893,18 @@ def _workflow_action_to_test_config(action_type: str, element: dict[str, Any] | 
     return "CLICK"
 
 
-def _step_configured_input_value(step: GeneratedTestStep, element: dict[str, Any] | None) -> str:
+def _step_configured_input_value(
+    step: GeneratedTestStep,
+    element: dict[str, Any] | None,
+    *,
+    page_url: str = "",
+) -> str:
+    action = _infer_workflow_action(step, str((element or {}).get("element_type") or ""))
+    if action == "navigate":
+        return page_url or step.input_value or ""
     if step.input_value:
         return step.input_value
     hints = (element or {}).get("test_data_hints") or {}
-    action = _infer_workflow_action(step, str((element or {}).get("element_type") or ""))
     if action in {"fill", "select"}:
         return str(hints.get("sample_value") or "")
     return ""
@@ -874,8 +916,10 @@ def _build_step_bindings(
     page_name: str,
     step: GeneratedTestStep,
     element: dict[str, Any] | None,
+    page_url: str = "",
 ) -> dict[str, dict[str, Any]]:
     action = _workflow_action_to_test_config(step.action_type, element)
+    input_value = _step_configured_input_value(step, element, page_url=page_url)
     web_binding: dict[str, Any] = {
         "page": page_name,
         "page_id": page_id or step.page_id,
@@ -884,6 +928,8 @@ def _build_step_bindings(
         "source": "ai_workflow",
         "confidence": step.confidence,
     }
+    if action == "NAVIGATE_TO_URL" and input_value:
+        web_binding["url"] = input_value
     if element:
         locator = _resolved_locator(element)
         hints = element.get("test_data_hints") or {}
@@ -900,6 +946,12 @@ def _build_step_bindings(
             "css_selector": element.get("css_selector") or "",
             "locator_quality": element.get("locator_quality") or element.get("confidence_score"),
             "match_reason": element.get("match_reason"),
+        })
+    if input_value:
+        web_binding.update({
+            "value": input_value,
+            "input_value": input_value,
+            "sample_value": input_value,
         })
     return {"web": web_binding}
 
@@ -944,7 +996,6 @@ async def _run_testcase_generation(workflow_id: str) -> None:
 
             tc_agent = TestCaseGenerationAgent(provider)
             all_test_cases: list[GeneratedTestCase] = []
-            timeout_seconds = settings.ai_workflow_llm_call_timeout_seconds
             concurrency = max(1, min(settings.ai_workflow_testcase_concurrency, len(selected)))
             semaphore = asyncio.Semaphore(concurrency)
 
@@ -954,15 +1005,7 @@ async def _run_testcase_generation(workflow_id: str) -> None:
             ) -> _GENERATED_CASE_BATCH:
                 async with semaphore:
                     try:
-                        tc_list = await asyncio.wait_for(
-                            tc_agent.run(scenario, page_name, elements_summary),
-                            timeout=timeout_seconds,
-                        )
-                    except TimeoutError as exc:
-                        raise TimeoutError(
-                            f"Scenario {index}/{len(selected)} '{scenario.title}' "
-                            f"exceeded {timeout_seconds}s"
-                        ) from exc
+                        tc_list = await tc_agent.run(scenario, page_name, elements_summary)
                     except Exception as exc:
                         raise ValueError(
                             f"Scenario {index}/{len(selected)} '{scenario.title}' failed: "
@@ -997,7 +1040,7 @@ async def _run_testcase_generation(workflow_id: str) -> None:
             except Exception as exc:
                 for task in tasks:
                     task.cancel()
-                raise ValueError(f"Test case generation timed out or failed: {_format_provider_error(exc)}") from exc
+                raise ValueError(f"Test case generation failed: {_format_provider_error(exc)}") from exc
 
             generated_batches.sort(key=lambda item: item[0])
             total_generated = sum(len(test_cases) for _, _, test_cases in generated_batches)
@@ -1088,7 +1131,7 @@ async def _run_testcase_generation(workflow_id: str) -> None:
             ]
             await _update_state(
                 db, workflow_id, WorkflowState.DISCOVERY_DONE,
-                f"Scraped {len(scraped_candidates)} raw candidates into the mini panel",
+                f"Scraped {len(scraped_candidates)} raw candidates into the MCP panel",
                 detail="These candidates are not Page Repository records yet.",
                 scraped_candidates=scraped_candidates,
             )
@@ -1160,6 +1203,7 @@ async def _run_testcase_generation(workflow_id: str) -> None:
                     module.id,
                     project.id,
                     page_name=page_name,
+                    page_url=wf.webpage_url,
                     element_lookup=saved_element_lookup,
                 )
                 persisted += 1
@@ -1250,6 +1294,7 @@ async def _persist_test_case(
     project_id: str,
     *,
     page_name: str = "",
+    page_url: str = "",
     element_lookup: dict[str, dict[str, Any]] | None = None,
 ) -> None:
     if not module_id:
@@ -1277,12 +1322,13 @@ async def _persist_test_case(
             page_name=page_name,
             step=step,
             element=element,
+            page_url=page_url,
         )
         web_binding = bindings.get("web", {})
         locator = str(web_binding.get("selector") or web_binding.get("xpath") or "")
         element_name = str(element.get("name") or "") if element else ""
         test_data_hints = (element or {}).get("test_data_hints") or {}
-        configured_input_value = _step_configured_input_value(step, element)
+        configured_input_value = _step_configured_input_value(step, element, page_url=page_url)
         target = element_name or (page_name if step.action_type == "navigate" else "")
         test_data = {
             **(step.test_data or {}),

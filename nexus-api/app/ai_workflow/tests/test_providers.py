@@ -14,7 +14,7 @@ def null_provider():
 
 
 def run(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
+    return asyncio.run(coro)
 
 
 def test_null_provider_brd_analysis(null_provider):
@@ -197,6 +197,95 @@ def test_openai_output_budget_depends_on_model_tier():
     best = _initial_max_output_tokens(ScenarioList, "gpt-5.5")
 
     assert fast < balanced < best
+
+
+@pytest.mark.parametrize(
+    ("model", "expected"),
+    [
+        ("gpt-5.5", {"effort": "medium"}),
+        ("gpt-5.4", {"effort": "medium"}),
+        ("gpt-5.4-mini", {"effort": "low"}),
+        ("gpt-5.4-nano", {"effort": "none"}),
+        ("gpt-5", {"effort": "medium"}),
+        ("gpt-5-mini", {"effort": "low"}),
+        ("gpt-5-nano", {"effort": "none"}),
+        ("gpt-4.1", None),
+    ],
+)
+def test_openai_reasoning_effort_is_supported_for_listed_models(model, expected):
+    from app.ai_workflow.providers.openai_provider import _reasoning_options
+
+    assert _reasoning_options(model) == expected
+
+
+def test_openai_reasoning_fallback_retries_without_reasoning():
+    from app.ai_workflow.providers.openai_provider import _create_response_with_reasoning_fallback
+
+    class FakeResponses:
+        def __init__(self):
+            self.requests = []
+
+        async def create(self, **request):
+            self.requests.append(request)
+            if len(self.requests) == 1:
+                raise RuntimeError(
+                    "Unsupported value: 'minimal' is not supported. param='reasoning.effort'"
+                )
+            return SimpleNamespace(status="completed")
+
+    fake_client = SimpleNamespace(responses=FakeResponses())
+    request = {
+        "model": "gpt-5.4-mini",
+        "input": "prompt",
+        "reasoning": {"effort": "low"},
+    }
+
+    response = run(_create_response_with_reasoning_fallback(fake_client, request))
+
+    assert response.status == "completed"
+    assert "reasoning" in fake_client.responses.requests[0]
+    assert "reasoning" not in fake_client.responses.requests[1]
+
+
+def test_openai_generate_does_not_send_timeout_parameter():
+    from app.ai_workflow.providers.openai_provider import OpenAIProvider
+
+    class FakeResponses:
+        def __init__(self):
+            self.requests = []
+
+        async def create(self, **request):
+            self.requests.append(request)
+            return SimpleNamespace(
+                status="completed",
+                error=None,
+                incomplete_details=None,
+                output_text=(
+                    '{"summary":"ok","key_features":[],"modules_suggested":[],"test_objectives":[]}'
+                ),
+            )
+
+    fake_client = SimpleNamespace(responses=FakeResponses())
+    provider = OpenAIProvider(api_key="test-key", model="gpt-5.5")
+    provider._client = fake_client
+
+    result = run(provider.generate("test", BRDAnalysis))
+
+    assert result.summary == "ok"
+    assert "timeout" not in fake_client.responses.requests[0]
+
+
+def test_http_client_disables_timeouts():
+    from app.ai_workflow.providers.http_client import build_async_http_client
+
+    client = build_async_http_client()
+    try:
+        assert client.timeout.connect is None
+        assert client.timeout.read is None
+        assert client.timeout.write is None
+        assert client.timeout.pool is None
+    finally:
+        run(client.aclose())
 
 
 def test_claude_provider_missing_key_raises():

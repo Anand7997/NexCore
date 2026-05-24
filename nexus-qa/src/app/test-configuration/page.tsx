@@ -89,6 +89,15 @@ function asStr(v: unknown) { return typeof v === 'string' ? v : ''; }
 function webBind(s: TestStep) { return s.bindings?.web ?? {}; }
 function stepPage(s: TestStep) { return asStr(webBind(s).page); }
 function stepElement(s: TestStep) { return asStr(webBind(s).element_name) || s.target; }
+function isNavigateAction(action?: string) {
+  const normalized = normalizeAction(action);
+  return normalized === 'OPEN_BROWSER' || normalized === 'NAVIGATE_TO_URL';
+}
+function pageUrlForStep(s: TestStep, pageRepo: PageDetail[] = []) {
+  const pageName = stepPage(s);
+  const repoPage = pageRepo.find((p) => p.name.toLowerCase() === pageName.toLowerCase());
+  return repoPage?.url_pattern || '';
+}
 function stepLocator(s: TestStep) {
   return (
     asStr(s.path_location) ||
@@ -99,7 +108,9 @@ function stepLocator(s: TestStep) {
     asStr(webBind(s).selector)
   );
 }
-function stepValue(s: TestStep) { return asStr(s.test_data?.value); }
+function stepValue(s: TestStep, pageRepo: PageDetail[] = []) {
+  return asStr(s.input_value) || asStr(s.test_data?.value) || (isNavigateAction(s.intent || s.action_type) ? pageUrlForStep(s, pageRepo) : '');
+}
 function stepAssertionType(s: TestStep) { return asStr(s.test_data?.assertion_type); }
 function stepSecondaryAction(s: TestStep) { return asStr(s.test_data?.secondary_action); }
 function resolvePathFromRepo(el: { xpath: string; css_selector: string; name: string }): string {
@@ -130,7 +141,9 @@ function buildPayload(step: TestStep, u: StepUpdates) {
     description: desc,
     step_order: u.stepOrder ?? step.step_order,
     intent: action,
+    action_type: action,
     target: elem,
+    input_value: val,
     expected_result: step.expected_result,
     test_data: {
       ...step.test_data,
@@ -168,25 +181,26 @@ function StepRow({
   const [page, setPage]               = useState(stepPage(step));
   const [element, setElement]         = useState(stepElement(step));
   const [locator, setLocator]         = useState(stepLocator(step));
-  const [value, setValue]             = useState(stepValue(step));
+  const [value, setValue]             = useState(stepValue(step, pageRepo));
   const [assertionType, setAssType]   = useState(stepAssertionType(step));
   const [secondaryAction, setSecAct]  = useState(stepSecondaryAction(step));
   const [enabled, setEnabled]         = useState(step.is_enabled);
   const prevId = useRef(step.id);
+  const pageRepoSignature = pageRepo.map((p) => `${p.id}:${p.url_pattern}`).join('|');
 
   useEffect(() => {
-    if (prevId.current === step.id) return;
+    if (prevId.current === step.id && value) return;
     prevId.current = step.id;
     setDesc(step.description);
     setAction(normalizeAction(step.intent));
     setPage(stepPage(step));
     setElement(stepElement(step));
     setLocator(stepLocator(step));
-    setValue(stepValue(step));
+    setValue(stepValue(step, pageRepo));
     setAssType(stepAssertionType(step));
     setSecAct(stepSecondaryAction(step));
     setEnabled(step.is_enabled);
-  }, [step.id]);
+  }, [pageRepoSignature, step.id]);
 
   const color = ACTION_COLOR[action] ?? '#8b8c97';
 
@@ -525,7 +539,7 @@ export default function TestConfigurationPage() {
     const order = after ? after.step_order + 1 : selCase.test_steps.length + 1;
     createStep.mutate({
       name: `Step ${order}`, description: '', step_order: order, intent: 'CLICK', target: '',
-      expected_result: '', test_data: { value: '', action_type: 'CLICK' },
+      input_value: '', expected_result: '', test_data: { value: '', action_type: 'CLICK' },
       tags: ['configured'], bindings: { web: { page:'', element_name:'', selector:'', xpath:'' } }, is_enabled: true,
     });
   }

@@ -27,6 +27,12 @@ export class AppConfigService {
   get temporalAddress(): string { return this.config.get('TEMPORAL_ADDRESS', { infer: true }); }
   get temporalNamespace(): string { return this.config.get('TEMPORAL_NAMESPACE', { infer: true }); }
 
+  get s3Endpoint(): string { return this.config.get('S3_ENDPOINT', { infer: true }); }
+  get s3Region(): string { return this.config.get('S3_REGION', { infer: true }); }
+  get s3AccessKey(): string { return this.config.get('S3_ACCESS_KEY', { infer: true }); }
+  get s3SecretKey(): string { return this.config.get('S3_SECRET_KEY', { infer: true }); }
+  get auditArchiveBucket(): string { return this.config.get('AUDIT_ARCHIVE_BUCKET', { infer: true }); }
+
   get keycloakJwksUri(): string {
     return `${this.keycloakUrl}/realms/${this.keycloakRealm}/protocol/openid-connect/certs`;
   }

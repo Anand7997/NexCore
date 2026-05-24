@@ -19,6 +19,12 @@ export const configSchema = z.object({
 
   TEMPORAL_ADDRESS: z.string().default('localhost:7233'),
   TEMPORAL_NAMESPACE: z.string().default('default'),
+
+  S3_ENDPOINT: z.string().url().default('http://localhost:9000'),
+  S3_REGION: z.string().min(1).default('us-east-1'),
+  S3_ACCESS_KEY: z.string().min(1).default('minioadmin'),
+  S3_SECRET_KEY: z.string().min(1).default('minioadmin'),
+  AUDIT_ARCHIVE_BUCKET: z.string().min(1).default('nexus-audit-archive'),
 });
 
 export type AppConfig = z.infer<typeof configSchema>;
