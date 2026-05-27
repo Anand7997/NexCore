@@ -107,41 +107,45 @@ const PROJECTS: ProjectItem[] = [
 ];
 
 const MODULE_LIBRARY: RouteTile[] = [
+  // ── Build ──────────────────────────────────────────────────────────────────
+  { href: '/architecture',       name: 'Architecture',       icon: Globe,           color: '#5b8cff' },
+  { href: '/intent-studio',      name: 'Intent Studio',      icon: Target,          color: '#a195ff' },
+  { href: '/page-repository',    name: 'Page Repository',    icon: Boxes,           color: '#f0b558' },
+  { href: '/test-designer',      name: 'Test Designer',      icon: Code2,           color: '#a195ff' },
+  { href: '/test-configuration', name: 'Test Config',        icon: FlaskConical,    color: '#45c08a' },
+  { href: '/testcases',          name: 'Test Cases',         icon: BookOpen,        color: '#4dd1e1' },
+  // ── Run ────────────────────────────────────────────────────────────────────
+  { href: '/workflows',          name: 'Workflows',          icon: GitBranch,       color: '#a195ff' },
   { href: '/executions',         name: 'Executions',         icon: Play,            color: '#5b8cff' },
   { href: '/execution-control',  name: 'Exec Control',       icon: Cpu,             color: '#4dd1e1' },
-  { href: '/workflows',          name: 'Workflows',          icon: GitBranch,       color: '#a195ff' },
-  { href: '/ai-workflow',        name: 'AI Workflow',        icon: Sparkles,        color: '#a195ff' },
   { href: '/agents',             name: 'Agents',             icon: Bot,             color: '#45c08a' },
+  // ── Analyze ────────────────────────────────────────────────────────────────
+  { href: '/ai-workflow',        name: 'AI Workflow',        icon: Sparkles,        color: '#a195ff' },
   { href: '/ai-analysis',        name: 'AI Inspect',         icon: Brain,           color: '#4dd1e1' },
   { href: '/ai-investigation',   name: 'AI Investigation',   icon: Microscope,      color: '#f0b558' },
   { href: '/matrix',             name: 'Matrix',             icon: Grid3X3,         color: '#f0b558' },
   { href: '/knowledge-graph',    name: 'Knowledge Graph',    icon: Network,         color: '#5b8cff' },
-  { href: '/test-designer',      name: 'Test Designer',      icon: Code2,           color: '#a195ff' },
-  { href: '/test-configuration', name: 'Test Config',        icon: FlaskConical,    color: '#45c08a' },
-  { href: '/testcases',          name: 'Test Cases',         icon: BookOpen,        color: '#4dd1e1' },
-  { href: '/page-repository',    name: 'Page Repository',    icon: Boxes,           color: '#f0b558' },
-  { href: '/intent-studio',      name: 'Intent Studio',      icon: Target,          color: '#a195ff' },
   { href: '/reports',            name: 'Reports',            icon: BarChart3,       color: '#45c08a' },
-  { href: '/architecture',       name: 'Architecture',       icon: Globe,           color: '#5b8cff' },
-  { href: '/settings',           name: 'Settings',           icon: Settings2,       color: '#8b8c97' },
+  // ── System ─────────────────────────────────────────────────────────────────
   { href: '/workspace',          name: 'Workspace',          icon: LayoutDashboard, color: '#4dd1e1' },
+  { href: '/settings',           name: 'Settings',           icon: Settings2,       color: '#8b8c97' },
   { href: '/demo',               name: 'Demo',               icon: Activity,        color: '#8b8c97' },
 ];
 
 const INSIGHTS: InsightItem[] = [
   { icon: AlertTriangle, type: 'flaky', message: 'LoginPage.submit flaky (87% pass rate over 48 runs)', severity: 'warn', time: '4m ago' },
-  { icon: Sparkles, type: 'recovery', message: 'AI healed 3 locators in CheckoutFlow — confidence 94%', severity: 'success', time: '12m ago' },
+  { icon: Sparkles, type: 'recovery', message: 'AI healed 3 locators in CheckoutFlow - confidence 94%', severity: 'success', time: '12m ago' },
   { icon: Zap, type: 'perf', message: 'PaymentAPI response 340ms above baseline (P95)', severity: 'warn', time: '31m ago' },
   { icon: Shield, type: 'coverage', message: 'Mobile adapter gap: iOS checkout step 7 missing locator', severity: 'error', time: '1h ago' },
 ];
 
 const PULSE_EVENT_TYPES = [
-  { type: 'NAVIGATE', color: '#5b8cff' },
-  { type: 'ASSERT', color: '#45c08a' },
-  { type: 'API_CALL', color: '#a195ff' },
-  { type: 'EXTRACT', color: '#4dd1e1' },
-  { type: 'SCREENSHOT', color: '#f0b558' },
-  { type: 'VALIDATE', color: '#45c08a' },
+  { type: 'NAVIGATE', label: 'Route', short: 'NAV', color: '#5b8cff', icon: Globe },
+  { type: 'ASSERT', label: 'Assert', short: 'CHK', color: '#45c08a', icon: CheckCircle2 },
+  { type: 'API_CALL', label: 'API', short: 'API', color: '#a195ff', icon: Server },
+  { type: 'EXTRACT', label: 'Extract', short: 'EXT', color: '#4dd1e1', icon: Database },
+  { type: 'SCREENSHOT', label: 'Evidence', short: 'IMG', color: '#f0b558', icon: Monitor },
+  { type: 'VALIDATE', label: 'Validate', short: 'VAL', color: '#45c08a', icon: Shield },
 ];
 
 const TOPOLOGY_NODES = [
@@ -153,20 +157,20 @@ const TOPOLOGY_NODES = [
 ];
 
 const INITIAL_ACTIVITY_SEED = [
-  { id: 'a1', message: 'Execution #E-4821 started', detail: 'Airline Booking Suite · Web', color: '#5b8cff', ageMs: 12000 },
+  { id: 'a1', message: 'Execution #E-4821 started', detail: 'Airline Booking Suite / Web', color: '#5b8cff', ageMs: 12000 },
   { id: 'a2', message: 'Assertion passed', detail: 'checkout_flow.assert_total', color: '#45c08a', ageMs: 9500 },
-  { id: 'a3', message: 'Locator healed by AI', detail: 'btn#confirm → button[data-testid]', color: '#a195ff', ageMs: 7200 },
+  { id: 'a3', message: 'Locator healed by AI', detail: 'btn#confirm -> button[data-testid]', color: '#a195ff', ageMs: 7200 },
   { id: 'a4', message: 'Screenshot captured', detail: 'step_12_payment_confirm.png', color: '#4dd1e1', ageMs: 5100 },
-  { id: 'a5', message: 'Test suite completed', detail: 'Invoice Processing · 18/18 passed', color: '#45c08a', ageMs: 2800 },
+  { id: 'a5', message: 'Test suite completed', detail: 'Invoice Processing / 18 of 18 passed', color: '#45c08a', ageMs: 2800 },
 ];
 
 const ACTIVITY_TEMPLATES = [
   { message: 'Assertion passed', detailFn: () => `step_${Math.floor(Math.random() * 30 + 1)}.assert`, color: '#45c08a' },
   { message: 'API call validated', detailFn: () => `POST /api/v2/${['checkout','auth','search'][Math.floor(Math.random()*3)]}`, color: '#a195ff' },
   { message: 'Screenshot captured', detailFn: () => `evidence_frame_${Math.floor(Math.random()*99+1)}.png`, color: '#4dd1e1' },
-  { message: 'Locator healed by AI', detailFn: () => `#btn-${Math.floor(Math.random()*10)} → [data-id]`, color: '#a195ff' },
+  { message: 'Locator healed by AI', detailFn: () => `#btn-${Math.floor(Math.random()*10)} -> [data-id]`, color: '#a195ff' },
   { message: 'Navigation complete', detailFn: () => `/page/${['dashboard','checkout','profile','orders'][Math.floor(Math.random()*4)]}`, color: '#5b8cff' },
-  { message: 'Execution resumed', detailFn: () => `After AI retry · attempt ${Math.floor(Math.random()*3+2)}`, color: '#f0b558' },
+  { message: 'Execution resumed', detailFn: () => `After AI retry / attempt ${Math.floor(Math.random()*3+2)}`, color: '#f0b558' },
   { message: 'Flaky test detected', detailFn: () => `rate: ${(Math.random()*15+75).toFixed(0)}% over ${Math.floor(Math.random()*20+20)} runs`, color: '#f0b558' },
 ];
 
@@ -205,7 +209,7 @@ function StatusBadge({ label, color, pulse }: { label: string; color: string; pu
         />
         <span className="relative inline-flex h-1.5 w-1.5 rounded-full" style={{ backgroundColor: color }} />
       </span>
-      <span className="text-[11px] font-mono" style={{ color }}>{label}</span>
+      <span className="text-[12px] font-mono" style={{ color }}>{label}</span>
     </div>
   );
 }
@@ -220,8 +224,8 @@ function LiveClock() {
   }, []);
   return (
     <div className="flex items-center gap-2 rounded-full border border-(--color-line-default) bg-(--color-surface-2) px-3 py-1">
-      <Clock size={11} style={{ color: 'var(--color-fg-subtle)' }} />
-      <span className="font-mono text-[11px]" style={{ color: 'var(--color-fg-muted)' }}>{time}</span>
+      <Clock size={12} style={{ color: 'var(--color-fg-subtle)' }} />
+      <span className="font-mono text-[12px]" style={{ color: 'var(--color-fg-muted)' }}>{time}</span>
     </div>
   );
 }
@@ -234,7 +238,7 @@ function MetricCardComponent({ card, index }: { card: MetricCard; index: number 
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.32, delay: 0.1 + index * 0.07, ease: [0.22, 0.61, 0.36, 1] }}
-      className="relative flex flex-col gap-3 overflow-hidden rounded-xl border p-4"
+      className="relative flex min-h-[118px] flex-col justify-between gap-2 overflow-hidden rounded-xl border p-3.5"
       style={{
         background: 'var(--color-surface-1)',
         borderColor: card.borderColor,
@@ -248,10 +252,10 @@ function MetricCardComponent({ card, index }: { card: MetricCard; index: number 
       />
       <div className="flex items-start justify-between">
         <div
-          className="flex h-9 w-9 items-center justify-center rounded-lg"
+          className="flex h-8 w-8 items-center justify-center rounded-lg"
           style={{ background: card.iconBg, border: `1px solid ${card.borderColor}` }}
         >
-          <Icon size={16} style={{ color: card.colorClass }} />
+          <Icon size={15} style={{ color: card.colorClass }} />
         </div>
         {card.trend === 'up' ? (
           <TrendingUp size={13} style={{ color: '#45c08a' }} />
@@ -261,12 +265,12 @@ function MetricCardComponent({ card, index }: { card: MetricCard; index: number 
       </div>
       <div>
         <div
-          className="animate-count-up font-mono text-2xl font-semibold tracking-tight"
+          className="animate-count-up font-mono text-[24px] font-semibold leading-none tracking-tight"
           style={{ color: card.colorClass }}
         >
           {displayVal}
         </div>
-        <p className="mt-1 text-[11px]" style={{ color: 'var(--color-fg-muted)' }}>{card.label}</p>
+        <p className="mt-1 text-[11px] leading-tight" style={{ color: 'var(--color-fg-muted)' }}>{card.label}</p>
       </div>
     </motion.div>
   );
@@ -280,7 +284,7 @@ function ProjectCard({ project, index }: { project: ProjectItem; index: number }
       initial={{ opacity: 0, x: 16 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: 0.3, delay: 0.18 + index * 0.08, ease: [0.22, 0.61, 0.36, 1] }}
-      className="group relative rounded-xl border p-4 transition-all"
+      className="group relative rounded-xl border px-3.5 py-3 transition-all"
       style={{
         background: 'var(--color-surface-1)',
         borderColor: 'var(--color-line-default)',
@@ -288,8 +292,8 @@ function ProjectCard({ project, index }: { project: ProjectItem; index: number }
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <h3 className="truncate text-sm font-medium" style={{ color: 'var(--color-fg-default)' }}>{project.name}</h3>
-          <p className="mt-0.5 text-[10px] font-mono" style={{ color: 'var(--color-fg-subtle)' }}>{project.type}</p>
+          <h3 className="truncate text-[14px] font-medium" style={{ color: 'var(--color-fg-default)' }}>{project.name}</h3>
+          <p className="mt-0.5 text-[11px] font-mono" style={{ color: 'var(--color-fg-subtle)' }}>{project.type}</p>
         </div>
         <div className="flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5" style={{ background: `${statusColor}15`, border: `1px solid ${statusColor}30` }}>
           <span className="relative flex h-1.5 w-1.5">
@@ -298,13 +302,13 @@ function ProjectCard({ project, index }: { project: ProjectItem; index: number }
             )}
             <span className="relative inline-flex h-1.5 w-1.5 rounded-full" style={{ backgroundColor: statusColor }} />
           </span>
-          <span className="text-[10px] font-mono" style={{ color: statusColor }}>{statusLabel}</span>
+          <span className="text-[11px] font-mono" style={{ color: statusColor }}>{statusLabel}</span>
         </div>
       </div>
-      <div className="mt-3">
+      <div className="mt-2.5">
         <div className="flex items-center justify-between">
-          <span className="text-[10px]" style={{ color: 'var(--color-fg-subtle)' }}>Success Rate</span>
-          <span className="font-mono text-[11px]" style={{ color: project.successRate >= 95 ? '#45c08a' : project.successRate >= 85 ? '#f0b558' : '#f06262' }}>
+          <span className="text-[11px]" style={{ color: 'var(--color-fg-subtle)' }}>Success Rate</span>
+          <span className="font-mono text-[12px]" style={{ color: project.successRate >= 95 ? '#45c08a' : project.successRate >= 85 ? '#f0b558' : '#f06262' }}>
             {project.successRate}%
           </span>
         </div>
@@ -322,11 +326,11 @@ function ProjectCard({ project, index }: { project: ProjectItem; index: number }
           />
         </div>
       </div>
-      <div className="mt-3 flex items-center justify-between">
-        <span className="text-[10px]" style={{ color: 'var(--color-fg-subtle)' }}>Last run: {project.lastRun}</span>
+      <div className="mt-2.5 flex items-center justify-between">
+        <span className="text-[11px]" style={{ color: 'var(--color-fg-subtle)' }}>Last run: {project.lastRun}</span>
         <Link
           href={project.href}
-          className="flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-medium transition-all hover:border-(--color-accent-default) hover:text-(--color-accent-default)"
+          className="flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium transition-all hover:border-(--color-accent-default) hover:text-(--color-accent-default)"
           style={{ borderColor: 'var(--color-line-default)', color: 'var(--color-fg-muted)' }}
         >
           Open <ArrowUpRight size={10} />
@@ -345,14 +349,14 @@ function InsightRow({ item, index }: { item: InsightItem; index: number }) {
       initial={{ opacity: 0, x: 16 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: 0.28, delay: 0.22 + index * 0.07 }}
-      className="flex items-start gap-3 rounded-lg border p-3"
+      className="flex items-start gap-2.5 rounded-lg border px-3 py-2.5"
       style={{ background: `${c}08`, borderColor: `${c}20` }}
     >
       <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md" style={{ background: `${c}18` }}>
         <Icon size={12} style={{ color: c }} />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="text-[11px] leading-4" style={{ color: 'var(--color-fg-default)' }}>{item.message}</p>
+        <p className="text-[12px] leading-5" style={{ color: 'var(--color-fg-default)' }}>{item.message}</p>
         <p className="mt-0.5 text-[10px]" style={{ color: 'var(--color-fg-subtle)' }}>{item.time}</p>
       </div>
     </motion.div>
@@ -380,34 +384,245 @@ function OrchestrationPulse() {
     return () => clearInterval(id);
   }, []);
 
+  const latest = events[events.length - 1];
+  const recent = events.slice(-4).reverse();
+  const density = Math.min(100, events.length * 10);
+
   return (
-    <div className="flex items-center gap-2 overflow-hidden">
-      <span className="shrink-0 text-[10px] font-mono uppercase tracking-widest" style={{ color: 'var(--color-fg-subtle)' }}>Live</span>
-      <div className="h-px flex-1" style={{ background: 'var(--color-line-default)' }} />
-      <div className="flex items-center gap-2">
-        <AnimatePresence mode="popLayout">
-          {events.map((ev) => (
+    <div className="relative overflow-hidden rounded-xl border border-[rgba(34,211,238,0.18)] bg-[linear-gradient(135deg,rgba(34,211,238,0.075),rgba(34,197,94,0.035)_48%,rgba(3,17,24,0.24))] p-3.5">
+      <div
+        className="pointer-events-none absolute inset-x-4 top-0 h-px"
+        style={{ background: 'linear-gradient(90deg, transparent, rgba(34,211,238,0.75), rgba(34,197,94,0.5), transparent)' }}
+      />
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-cyan-300/25 bg-cyan-300/10">
+            <span className="absolute inset-0 rounded-xl bg-cyan-300/10 animate-pulse" />
+            <Cpu size={17} className="relative text-cyan-100" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full border border-emerald-300/25 bg-emerald-300/10 px-2.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-100">
+                Live engine
+              </span>
+              <span className="font-mono text-[10px] text-[var(--color-fg-subtle)]">
+                cadence 2.2s
+              </span>
+            </div>
+            <p className="mt-1 truncate text-[12px] font-medium text-[var(--color-fg-muted)]">
+              {latest ? `${latest.label} signal routed through execution mesh` : 'Waiting for orchestration signals'}
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 text-right">
+          <div className="rounded-lg border border-white/[0.07] bg-black/20 px-3 py-1.5">
+            <div className="font-mono text-[16px] font-semibold leading-none text-cyan-100">{events.length}</div>
+            <div className="mt-0.5 text-[9px] uppercase tracking-wide text-[var(--color-fg-subtle)]">signals</div>
+          </div>
+          <div className="rounded-lg border border-white/[0.07] bg-black/20 px-3 py-1.5">
+            <div className="font-mono text-[16px] font-semibold leading-none text-emerald-100">{density}%</div>
+            <div className="mt-0.5 text-[9px] uppercase tracking-wide text-[var(--color-fg-subtle)]">load</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="relative mt-3 overflow-hidden rounded-xl border border-white/[0.07] bg-black/20 px-3 py-3">
+        <div className="absolute left-6 right-6 top-[31px] h-px bg-[var(--color-line-default)]" />
+        <motion.div
+          aria-hidden
+          className="absolute top-[30px] h-[3px] w-24 rounded-full bg-[linear-gradient(90deg,transparent,#67e8f9,#22c55e,transparent)]"
+          animate={{ x: ['-20%', '760%'] }}
+          transition={{ repeat: Infinity, duration: 3.1, ease: 'linear' }}
+        />
+
+        <div className="relative z-10 grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
+          {PULSE_EVENT_TYPES.map((step) => {
+            const Icon = step.icon;
+            const isLatest = latest?.type === step.type;
+            const count = events.filter((event) => event.type === step.type).length;
+            return (
+              <div
+                key={step.type}
+                className="rounded-xl border px-2.5 py-2 transition-all"
+                style={{
+                  background: isLatest ? `${step.color}18` : 'rgba(255,255,255,0.025)',
+                  borderColor: isLatest ? `${step.color}55` : 'rgba(255,255,255,0.075)',
+                  boxShadow: isLatest ? `0 0 18px ${step.color}22` : 'none',
+                }}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span
+                    className="grid h-7 w-7 place-items-center rounded-lg border"
+                    style={{ background: `${step.color}14`, borderColor: `${step.color}30` }}
+                  >
+                    <Icon size={13} style={{ color: step.color }} />
+                  </span>
+                  <span className="font-mono text-[10px] font-semibold" style={{ color: step.color }}>
+                    {step.short}
+                  </span>
+                </div>
+                <div className="mt-2 truncate text-[11px] font-semibold text-[var(--color-fg-default)]">{step.label}</div>
+                <div className="mt-0.5 font-mono text-[9px] text-[var(--color-fg-subtle)]">{count} events</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]">Latest</span>
+        <AnimatePresence mode="popLayout" initial={false}>
+          {recent.map((ev) => (
             <motion.div
               key={ev.id}
-              initial={{ opacity: 0, scale: 0.7, x: 20 }}
-              animate={{ opacity: 1, scale: 1, x: 0 }}
-              exit={{ opacity: 0, scale: 0.8, x: -20 }}
-              transition={{ duration: 0.25, ease: [0.22, 0.61, 0.36, 1] }}
-              className="flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1"
-              style={{
-                background: `${ev.color}12`,
-                borderColor: `${ev.color}30`,
-              }}
+              initial={{ opacity: 0, y: 6, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -4, scale: 0.96 }}
+              transition={{ duration: 0.18, ease: [0.22, 0.61, 0.36, 1] }}
+              className="flex items-center gap-1.5 rounded-full border px-2.5 py-1"
+              style={{ background: `${ev.color}10`, borderColor: `${ev.color}2f` }}
             >
               <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: ev.color }} />
               <span className="font-mono text-[10px] font-medium" style={{ color: ev.color }}>{ev.label}</span>
             </motion.div>
           ))}
         </AnimatePresence>
+        <span className="ml-auto font-mono text-[10px] text-[var(--color-fg-subtle)]">mesh stable</span>
       </div>
-      <div className="h-px flex-1" style={{ background: 'var(--color-line-default)' }} />
-      <span className="shrink-0 text-[10px] font-mono" style={{ color: 'var(--color-fg-subtle)' }}>engine</span>
     </div>
+  );
+}
+
+function ConductorBridge({ cards }: { cards: MetricCard[] }) {
+  const stages = PULSE_EVENT_TYPES.slice(0, 5);
+
+  return (
+    <motion.section
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, delay: 0.14 }}
+      className="relative overflow-hidden rounded-2xl border px-4 py-3.5"
+      style={{
+        background:
+          'radial-gradient(circle at 50% 0%, rgba(34,211,238,0.16), transparent 32%), linear-gradient(135deg, rgba(34,211,238,0.055), rgba(161,149,255,0.05) 46%, rgba(69,192,138,0.045))',
+        borderColor: 'rgba(34,211,238,0.18)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.045), 0 18px 60px rgba(0,0,0,0.16)',
+      }}
+    >
+      <div
+        className="pointer-events-none absolute inset-0 opacity-30"
+        style={{
+          backgroundImage:
+            'linear-gradient(rgba(103,232,249,0.09) 1px, transparent 1px), linear-gradient(90deg, rgba(103,232,249,0.09) 1px, transparent 1px)',
+          backgroundSize: '34px 34px',
+        }}
+      />
+      <motion.div
+        aria-hidden
+        className="pointer-events-none absolute left-8 right-8 top-1/2 hidden h-px xl:block"
+        style={{ background: 'linear-gradient(90deg, rgba(91,140,255,0.1), rgba(34,211,238,0.75), rgba(69,192,138,0.18))' }}
+        animate={{ opacity: [0.35, 0.9, 0.35] }}
+        transition={{ repeat: Infinity, duration: 2.8, ease: 'easeInOut' }}
+      />
+
+      <div className="relative flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <Network size={15} style={{ color: '#67e8f9' }} />
+            <h2 className="text-[13px] font-semibold uppercase tracking-[0.16em] text-cyan-100">
+              Execution Orchestra
+            </h2>
+          </div>
+          <p className="mt-1 text-[12px] leading-5 text-[var(--color-fg-subtle)]">
+            Signals move from workspace health into the conductor, then out to execution stages.
+          </p>
+        </div>
+        <div className="flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-cyan-100">
+          <span className="h-1.5 w-1.5 rounded-full bg-cyan-200 shadow-[0_0_14px_rgba(103,232,249,0.9)]" />
+          tempo 2.2s
+        </div>
+      </div>
+
+      <div className="relative mt-3 grid gap-3 xl:grid-cols-[minmax(0,1fr)_160px_minmax(0,1fr)] xl:items-center">
+        <div className="grid grid-cols-2 gap-2">
+          {cards.map((card) => {
+            const Icon = card.icon;
+            return (
+              <div
+                key={card.id}
+                className="relative overflow-hidden rounded-xl border px-3 py-2.5"
+                style={{ background: `${card.colorClass}0c`, borderColor: `${card.colorClass}24` }}
+              >
+                <div className="flex items-center gap-2">
+                  <span
+                    className="grid h-7 w-7 shrink-0 place-items-center rounded-lg border"
+                    style={{ background: `${card.colorClass}14`, borderColor: `${card.colorClass}30` }}
+                  >
+                    <Icon size={13} style={{ color: card.colorClass }} />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate font-mono text-[13px] font-semibold leading-none" style={{ color: card.colorClass }}>
+                      {card.format(card.value)}
+                    </span>
+                    <span className="mt-0.5 block truncate text-[10px] uppercase tracking-[0.08em] text-[var(--color-fg-subtle)]">
+                      {card.label}
+                    </span>
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="relative mx-auto flex h-[122px] w-[150px] items-center justify-center">
+          <motion.div
+            aria-hidden
+            className="absolute inset-0 rounded-full border border-cyan-300/20"
+            animate={{ scale: [0.92, 1.04, 0.92], opacity: [0.32, 0.75, 0.32] }}
+            transition={{ repeat: Infinity, duration: 2.6, ease: 'easeInOut' }}
+          />
+          <motion.div
+            aria-hidden
+            className="absolute h-[84px] w-[84px] rounded-full border border-emerald-300/20"
+            animate={{ rotate: 360 }}
+            transition={{ repeat: Infinity, duration: 11, ease: 'linear' }}
+            style={{
+              background:
+                'conic-gradient(from 90deg, rgba(34,211,238,0.0), rgba(34,211,238,0.34), rgba(69,192,138,0.24), rgba(34,211,238,0.0))',
+            }}
+          />
+          <div className="relative grid h-[74px] w-[74px] place-items-center rounded-2xl border border-cyan-300/30 bg-[#061b24] shadow-[0_0_32px_rgba(34,211,238,0.24)]">
+            <Zap size={22} className="text-cyan-100" />
+            <span className="absolute -bottom-6 whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.16em] text-cyan-100">
+              conductor
+            </span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-5 xl:grid-cols-5">
+          {stages.map((stage) => {
+            const Icon = stage.icon;
+            return (
+              <div
+                key={stage.type}
+                className="rounded-xl border px-3 py-2.5"
+                style={{ background: `${stage.color}0c`, borderColor: `${stage.color}24` }}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <Icon size={13} style={{ color: stage.color }} />
+                  <span className="font-mono text-[10px] font-semibold" style={{ color: stage.color }}>
+                    {stage.short}
+                  </span>
+                </div>
+                <p className="mt-1 truncate text-[11px] font-semibold text-[var(--color-fg-default)]">{stage.label}</p>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </motion.section>
   );
 }
 
@@ -423,11 +638,11 @@ function SystemTopology() {
 
   return (
     <div className="relative flex h-full flex-col">
-      <div className="mb-4 flex items-center gap-2">
+      <div className="mb-3 flex items-center gap-2">
         <Wifi size={13} style={{ color: 'var(--color-accent-default)' }} />
         <h3 className="text-xs font-medium" style={{ color: 'var(--color-fg-default)' }}>System Topology</h3>
       </div>
-      <div className="relative flex flex-1 flex-col items-center justify-center gap-0">
+      <div className="relative flex flex-col items-center justify-center gap-0">
         {/* SVG connecting lines */}
         <svg
           className="absolute inset-0 h-full w-full"
@@ -446,7 +661,7 @@ function SystemTopology() {
             <animate attributeName="stroke-dashoffset" from="100" to="0" dur="3s" repeatCount="indefinite" />
           </line>
         </svg>
-        <div className="relative z-10 flex w-full flex-col gap-3 px-2">
+        <div className="relative z-10 flex w-full flex-col gap-2 px-1">
           {TOPOLOGY_NODES.map((node, i) => {
             const Icon = node.icon;
             const isActive = activeNode === i;
@@ -455,7 +670,7 @@ function SystemTopology() {
                 key={node.id}
                 animate={isActive ? { y: [-1, 1, -1] } : { y: 0 }}
                 transition={{ duration: 2, repeat: isActive ? Infinity : 0, ease: 'easeInOut' }}
-                className="flex items-center gap-3 rounded-lg border px-3 py-2.5 transition-all"
+                className="flex items-center gap-3 rounded-lg border px-3 py-2 transition-all"
                 style={{
                   background: isActive ? `${node.color}12` : 'var(--color-surface-2)',
                   borderColor: isActive ? `${node.color}40` : 'var(--color-line-default)',
@@ -526,7 +741,7 @@ function ActivityStream() {
       </div>
       <div
         ref={listRef}
-        className="flex-1 space-y-1 overflow-y-auto pr-1"
+        className="max-h-[260px] space-y-1 overflow-y-auto pr-1"
         style={{ scrollBehavior: 'smooth' }}
       >
         <AnimatePresence mode="popLayout" initial={false}>
@@ -537,7 +752,7 @@ function ActivityStream() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, height: 0 }}
               transition={{ duration: 0.2 }}
-              className="flex items-start gap-2 rounded-lg px-3 py-2"
+              className="flex items-start gap-2 rounded-lg px-3 py-1.5"
               style={{ background: `${ev.color}08`, border: `1px solid ${ev.color}18` }}
             >
               <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: ev.color }} />
@@ -566,23 +781,23 @@ function ModuleLibraryTile({ tile, index }: { tile: RouteTile; index: number }) 
     >
       <Link
         href={tile.href}
-        className="group flex min-h-14 items-center gap-2.5 rounded-lg border px-3 py-2 transition-all hover:translate-x-[2px]"
+        className="group flex min-h-[50px] items-center gap-2.5 rounded-lg border px-3 py-2 transition-all hover:translate-x-[2px]"
         style={{
           background: `${tile.color}08`,
           borderColor: `${tile.color}20`,
         }}
       >
         <span
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border"
           style={{ background: `${tile.color}12`, borderColor: `${tile.color}28` }}
         >
-          <Icon size={13} style={{ color: tile.color }} />
+          <Icon size={14} style={{ color: tile.color }} />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[11px] font-medium" style={{ color: 'var(--color-fg-muted)' }}>
+          <span className="block truncate text-[12px] font-medium" style={{ color: 'var(--color-fg-muted)' }}>
             {tile.name}
           </span>
-          <span className="block truncate font-mono text-[9px]" style={{ color: 'var(--color-fg-subtle)' }}>
+          <span className="block truncate font-mono text-[10px]" style={{ color: 'var(--color-fg-subtle)' }}>
             {tile.href}
           </span>
         </span>
@@ -681,58 +896,104 @@ export default function CommandCenterPage() {
   ];
 
   return (
-    <main className="flex min-h-full flex-col overflow-y-auto">
-      <div className="flex min-h-full flex-col gap-6 px-6 py-6 lg:px-8 lg:py-7">
+    <main className="workspace-dashboard flex min-h-full flex-col overflow-y-auto">
+      <div className="flex flex-col gap-4 px-4 py-4 sm:px-5 lg:px-7 lg:py-5">
 
         {/* ── HEADER ─────────────────────────────────────────────────── */}
-        <motion.header
+        <motion.section
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.28, ease: [0.22, 0.61, 0.36, 1] }}
-          className="flex shrink-0 flex-col items-start justify-between gap-4 xl:flex-row xl:items-center"
+          className="relative isolate overflow-hidden rounded-[26px] border p-5 lg:p-6"
+          style={{
+            background:
+              'radial-gradient(circle at 10% 0%, rgba(34,211,238,0.18), transparent 30%), radial-gradient(circle at 88% 14%, rgba(99,102,241,0.22), transparent 34%), linear-gradient(135deg, rgba(5,14,24,0.96), rgba(8,18,30,0.9))',
+            borderColor: 'rgba(125, 211, 252, 0.18)',
+            boxShadow: '0 24px 80px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.06)',
+          }}
         >
-          <div className="flex items-center gap-4">
-            <div>
-              <h1
-                className="text-[30px] font-semibold leading-tight tracking-tight md:text-[34px]"
-                style={{
-                  color: 'var(--color-fg-default)',
-                }}
-              >
-                Execution Command Center
+          <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(103,232,249,0.8),rgba(129,140,248,0.55),transparent)]" />
+          <div className="relative grid gap-5 xl:grid-cols-[minmax(0,1fr)_420px] xl:items-center">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-100">
+                  Workspace Command Center
+                </span>
+                <StatusBadge label="3 Active Agents" color="#45c08a" pulse="green" />
+                <StatusBadge label="AI Online" color="#a195ff" pulse="violet" />
+                <LiveClock />
+              </div>
+
+              <h1 className="mt-4 max-w-3xl text-[30px] font-semibold leading-[1.06] tracking-[-0.035em] text-white md:text-[40px]">
+                See the risk, control the run, and launch the next QA mission.
               </h1>
-              <p className="mt-2 text-[13px] font-mono uppercase tracking-[0.16em]" style={{ color: 'var(--color-fg-subtle)' }}>
-                NEXCORE QA · AI Execution OS · v2.0
+              <p className="mt-3 max-w-2xl text-[15px] leading-6 text-slate-300">
+                A cleaner operating floor for executions, AI recoveries, flaky-test triage, topology, and every module your team needs next.
               </p>
+
+              <div className="mt-5 flex flex-wrap items-center gap-3">
+                <Link
+                  href="/workspace/new"
+                  className="flex max-w-full items-center gap-2 rounded-xl px-4 py-2.5 text-[14px] font-semibold transition-all hover:-translate-y-0.5 hover:opacity-95 active:scale-95"
+                  style={{
+                    background: 'linear-gradient(135deg, #10b981, #22d3ee)',
+                    color: '#021018',
+                    boxShadow: '0 0 0 1px rgba(45,212,191,0.45), 0 16px 34px rgba(16,185,129,0.2)',
+                  }}
+                >
+                  <Plus size={15} />
+                  <span className="truncate">Create Execution Workspace</span>
+                </Link>
+                <Link
+                  href="/executions"
+                  className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-[14px] font-semibold text-slate-100 transition-all hover:border-cyan-300/35 hover:bg-cyan-300/10"
+                >
+                  Monitor live runs <ArrowRight size={14} />
+                </Link>
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+              {[
+                { label: 'Suite health', value: `${metrics.successRate.toFixed(1)}%`, tone: '#45c08a', detail: 'Live success score' },
+                { label: 'AI recoveries', value: metrics.aiRecoveries, tone: '#a195ff', detail: 'Self-healed signals' },
+                { label: 'Flaky watch', value: metrics.flakyDetected, tone: '#f0b558', detail: 'Needs review' },
+              ].map((item) => (
+                <div
+                  key={item.label}
+                  className="rounded-2xl border px-4 py-3"
+                  style={{
+                    background: `${item.tone}0f`,
+                    borderColor: `${item.tone}2c`,
+                    boxShadow: `inset 0 1px 0 rgba(255,255,255,0.05), 0 0 28px ${item.tone}12`,
+                  }}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[12px] font-semibold uppercase tracking-[0.12em] text-slate-400">{item.label}</span>
+                    <span className="h-2 w-2 rounded-full" style={{ backgroundColor: item.tone, boxShadow: `0 0 14px ${item.tone}` }} />
+                  </div>
+                  <div className="mt-2 font-mono text-[24px] font-semibold leading-none" style={{ color: item.tone }}>
+                    {item.value}
+                  </div>
+                  <p className="mt-1 text-[12px] text-slate-400">{item.detail}</p>
+                </div>
+              ))}
             </div>
           </div>
-          <div className="flex w-full flex-wrap items-center gap-3 xl:w-auto xl:justify-end">
-            <StatusBadge label="3 Active Agents" color="#45c08a" pulse="green" />
-            <StatusBadge label="AI Online" color="#a195ff" pulse="violet" />
-            <LiveClock />
-            <Link
-              href="/workspace/new"
-              className="flex max-w-full items-center gap-2 rounded-xl px-5 py-3 text-[15px] font-semibold transition-all hover:opacity-90 active:scale-95"
-              style={{
-                background: 'linear-gradient(135deg, #8b79ff, #6b5ce7)',
-                color: '#fff',
-                boxShadow: '0 0 0 1px rgba(139,121,255,0.4), 0 0 20px rgba(139,121,255,0.25)',
-              }}
-            >
-              <Plus size={14} />
-              <span className="truncate">Create Execution Workspace</span>
-            </Link>
-          </div>
-        </motion.header>
+        </motion.section>
 
         {/* ── MAIN GRID ──────────────────────────────────────────────── */}
-        <div className="grid flex-1 grid-cols-1 gap-5 xl:grid-cols-12">
+        <div className="relative grid grid-cols-1 items-start gap-4 xl:grid-cols-12">
 
           {/* METRIC CARDS — row 1, cols 1-7 */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:col-span-7 2xl:grid-cols-4">
+          <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 xl:col-span-8 2xl:grid-cols-4">
             {metricCards.map((card, i) => (
               <MetricCardComponent key={card.id} card={card} index={i} />
             ))}
+          </div>
+
+          <div className="xl:col-span-8">
+            <ConductorBridge cards={metricCards} />
           </div>
 
           {/* RECENT PROJECTS — row 1+2, cols 8-12 */}
@@ -740,12 +1001,20 @@ export default function CommandCenterPage() {
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.3, delay: 0.1 }}
-            className="flex flex-col gap-4 overflow-hidden rounded-2xl border p-5 xl:col-span-5 xl:row-span-2"
-            style={{ background: 'var(--color-surface-1)', borderColor: 'var(--color-line-default)' }}
+            className="flex flex-col gap-4 xl:absolute xl:right-0 xl:top-0 xl:w-[32%]"
           >
+            <div
+              className="flex flex-col gap-3 overflow-y-auto rounded-2xl border p-4 xl:max-h-[300px]"
+              style={{
+                background:
+                  'linear-gradient(180deg, rgba(161,149,255,0.08), rgba(255,255,255,0.025) 34%, var(--color-surface-1))',
+                borderColor: 'rgba(161,149,255,0.18)',
+                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
+              }}
+            >
             <div className="flex shrink-0 items-center justify-between">
-              <h2 className="text-sm font-semibold uppercase tracking-wider" style={{ color: 'var(--color-fg-muted)' }}>
-                Recent Projects
+              <h2 className="text-[13px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-fg-muted)' }}>
+                Operations Rail
               </h2>
               <Link
                 href="/test-configuration"
@@ -755,6 +1024,9 @@ export default function CommandCenterPage() {
                 View all <ChevronRight size={10} />
               </Link>
             </div>
+            <p className="-mt-1 text-[12px] leading-5" style={{ color: 'var(--color-fg-subtle)' }}>
+              Active workspaces, live risk, and the next signals that deserve attention.
+            </p>
             <div className="flex flex-col gap-2 overflow-hidden">
               {PROJECTS.map((p, i) => (
                 <ProjectCard key={p.name} project={p} index={i} />
@@ -762,14 +1034,24 @@ export default function CommandCenterPage() {
             </div>
 
             {/* AI INSIGHTS FEED */}
-            <div className="mt-1 border-t pt-3" style={{ borderColor: 'var(--color-line-default)' }}>
-              <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider" style={{ color: 'var(--color-fg-muted)' }}>
+            <div className="mt-0.5 border-t pt-2.5" style={{ borderColor: 'rgba(161,149,255,0.16)' }}>
+              <h2 className="mb-2 text-[13px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-fg-muted)' }}>
                 AI Insights
               </h2>
               <div className="flex flex-col gap-1.5">
                 {INSIGHTS.map((item, i) => (
                   <InsightRow key={item.type + i} item={item} index={i} />
                 ))}
+              </div>
+            </div>
+            </div>
+
+            <div className="grid gap-4">
+              <div className="overflow-hidden rounded-2xl border p-4" style={{ background: 'var(--color-surface-1)', borderColor: 'var(--color-line-default)' }}>
+                <SystemTopology />
+              </div>
+              <div className="overflow-hidden rounded-2xl border p-4" style={{ background: 'var(--color-surface-1)', borderColor: 'var(--color-line-default)' }}>
+                <ActivityStream />
               </div>
             </div>
           </motion.section>
@@ -779,8 +1061,12 @@ export default function CommandCenterPage() {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3, delay: 0.18 }}
-            className="flex flex-col justify-center rounded-2xl border px-6 py-5 xl:col-span-7"
-            style={{ background: 'var(--color-surface-1)', borderColor: 'var(--color-line-default)' }}
+            className="flex flex-col justify-center rounded-2xl border px-5 py-4 xl:col-span-8"
+            style={{
+              background: 'linear-gradient(135deg, rgba(34,211,238,0.06), var(--color-surface-1) 42%, rgba(69,192,138,0.04))',
+              borderColor: 'rgba(34,211,238,0.17)',
+              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
+            }}
           >
             <div className="mb-2 flex items-center gap-2">
               <Zap size={16} style={{ color: 'var(--color-accent-default)' }} />
@@ -796,7 +1082,7 @@ export default function CommandCenterPage() {
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3, delay: 0.24 }}
-            className="overflow-hidden rounded-2xl border p-5 xl:col-span-4"
+            className="hidden"
             style={{ background: 'var(--color-surface-1)', borderColor: 'var(--color-line-default)' }}
           >
             <SystemTopology />
@@ -807,7 +1093,7 @@ export default function CommandCenterPage() {
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3, delay: 0.3 }}
-            className="overflow-hidden rounded-2xl border p-5 xl:col-span-3"
+            className="hidden"
             style={{ background: 'var(--color-surface-1)', borderColor: 'var(--color-line-default)' }}
           >
             <ActivityStream />
@@ -818,18 +1104,21 @@ export default function CommandCenterPage() {
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3, delay: 0.34 }}
-            className="flex min-h-[420px] flex-col overflow-hidden rounded-2xl border p-5 xl:col-span-5"
-            style={{ background: 'var(--color-surface-1)', borderColor: 'var(--color-line-default)' }}
+            className="flex min-h-[280px] flex-col overflow-hidden rounded-2xl border p-4 xl:col-span-8 xl:col-start-1"
+            style={{
+              background: 'linear-gradient(180deg, rgba(69,192,138,0.055), var(--color-surface-1) 44%)',
+              borderColor: 'rgba(69,192,138,0.16)',
+            }}
           >
-            <div className="mb-3 flex shrink-0 items-center justify-between">
+            <div className="mb-2.5 flex shrink-0 items-center justify-between">
               <h2 className="text-[13px] font-semibold uppercase tracking-widest" style={{ color: 'var(--color-fg-muted)' }}>
-                All Modules
+                Mission Launchpad
               </h2>
               <span className="font-mono text-[13px]" style={{ color: 'var(--color-fg-subtle)' }}>
                 {MODULE_LIBRARY.length} routes
               </span>
             </div>
-            <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-y-auto pr-1 md:grid-cols-2">
+            <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-y-auto pr-1 md:grid-cols-2 2xl:grid-cols-3">
               {MODULE_LIBRARY.map((tile, index) => (
                 <ModuleLibraryTile key={tile.href} tile={tile} index={index} />
               ))}

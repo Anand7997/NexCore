@@ -27,10 +27,11 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class WebSessionConfig:
-    headless: bool = True
+    headless: bool = False
     browser_name: str = "chromium"   # chromium / firefox / webkit
     record_video: bool = False
     record_trace: bool = True
+    slow_mo_ms: int = 250
     viewport_width: int = 1280
     viewport_height: int = 800
     user_agent: str = (
@@ -79,7 +80,24 @@ class WebSession:
 
             self._playwright = await async_playwright().start()
             launcher = getattr(self._playwright, self.config.browser_name)
-            self._browser = await launcher.launch(headless=self.config.headless)
+            launch_kwargs: dict[str, Any] = {
+                "headless": self.config.headless,
+            }
+            if self.config.slow_mo_ms > 0:
+                launch_kwargs["slow_mo"] = self.config.slow_mo_ms
+
+            try:
+                self._browser = await launcher.launch(**launch_kwargs)
+            except Exception:
+                if self.config.headless:
+                    raise
+                logger.exception(
+                    "Headed browser launch failed for execution %s; retrying headless",
+                    self.execution_id,
+                )
+                self.config.headless = True
+                launch_kwargs["headless"] = True
+                self._browser = await launcher.launch(**launch_kwargs)
 
             ctx_kwargs: dict[str, Any] = {
                 "viewport": {
@@ -102,6 +120,11 @@ class WebSession:
 
             self._page = await self._context.new_page()
             self._wire_page_listeners(self._page)
+            if not self.config.headless:
+                try:
+                    await self._page.bring_to_front()
+                except Exception:
+                    pass
             logger.info("Web session started for execution %s", self.execution_id)
 
     async def stop(self) -> tuple[Path | None, Path | None]:

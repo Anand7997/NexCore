@@ -27,6 +27,8 @@ interface ScreenshotView {
   created_at: string;
   isFailure: boolean;
   isLive: boolean;
+  isLiveCapture: boolean;
+  metadata: Record<string, unknown>;
 }
 
 /**
@@ -55,8 +57,10 @@ export function EvidencePanel({ executionId }: Props) {
         name: a.name,
         size_bytes: a.size_bytes,
         created_at: a.created_at,
-        isFailure: a.name.toLowerCase().includes('failure') || Boolean(a.metadata?.error),
+        isFailure: a.name.toLowerCase().includes('failure') || a.metadata?.capture_reason === 'failure' || Boolean(a.metadata?.error),
         isLive: false,
+        isLiveCapture: a.metadata?.capture_reason === 'live_action' || a.metadata?.live_preview === true,
+        metadata: a.metadata ?? {},
       }));
 
     const seen = new Set(persisted.map((a) => a.contentId));
@@ -69,8 +73,10 @@ export function EvidencePanel({ executionId }: Props) {
         name: a.name,
         size_bytes: a.sizeBytes,
         created_at: a.timestamp,
-        isFailure: a.name.toLowerCase().includes('failure') || Boolean(a.metadata?.error),
+        isFailure: a.name.toLowerCase().includes('failure') || a.metadata?.capture_reason === 'failure' || Boolean(a.metadata?.error),
         isLive: true,
+        isLiveCapture: a.metadata?.capture_reason === 'live_action' || a.metadata?.live_preview === true,
+        metadata: a.metadata ?? {},
       }));
 
     return [...live, ...persisted].sort((a, b) => {
@@ -80,6 +86,10 @@ export function EvidencePanel({ executionId }: Props) {
   }, [bucket.artifacts, persistedArtifacts]);
 
   const failedScreenshots = screenshotArtifacts.filter((a) => a.isFailure);
+  const livePreview = screenshotArtifacts
+    .filter((a) => a.isLiveCapture)
+    .sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at))[0]
+    ?? [...screenshotArtifacts].sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at))[0];
 
   if (!executionId) {
     return (
@@ -91,6 +101,31 @@ export function EvidencePanel({ executionId }: Props) {
 
   return (
     <div className="flex h-full flex-col">
+      {livePreview && (
+        <div className="shrink-0 border-b border-border-subtle bg-surface-1/40 px-3 py-2">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-fg-muted">
+              Live Browser
+            </span>
+            <span className="truncate font-mono text-[10px] text-fg-muted">
+              {String(livePreview.metadata.action ?? livePreview.node_key ?? livePreview.name)}
+            </span>
+          </div>
+          <a
+            href={artifactContentUrl(livePreview.contentId)}
+            target="_blank"
+            rel="noreferrer"
+            className="block h-40 overflow-hidden rounded-md border border-border-subtle bg-black"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={artifactContentUrl(livePreview.contentId)}
+              alt={livePreview.name}
+              className="h-full w-full object-contain"
+            />
+          </a>
+        </div>
+      )}
       {failedScreenshots.length > 0 && (
         <div className="shrink-0 border-b border-red-500/15 bg-red-500/8 px-3 py-2">
           <div className="mb-2 flex items-center justify-between">
@@ -113,7 +148,7 @@ export function EvidencePanel({ executionId }: Props) {
                 <div className="absolute inset-x-0 bottom-0 bg-black/70 px-1.5 py-1 text-[9px] text-white">
                   <span className="block truncate">{a.node_key ?? a.name}</span>
                 </div>
-                {a.isLive && (
+                {(a.isLive || a.isLiveCapture) && (
                   <span className="absolute right-1 top-1 rounded bg-red-500 px-1 text-[8px] font-bold text-white">
                     LIVE
                   </span>
@@ -194,7 +229,7 @@ function ScreenshotsTab({ artifacts }: { artifacts: ScreenshotView[] }) {
             <div className="absolute right-1.5 top-1.5 rounded bg-red-500 px-1.5 py-0.5 text-[9px] font-semibold text-white">
               failed
             </div>
-          ) : a.isLive ? (
+          ) : a.isLive || a.isLiveCapture ? (
             <div className="absolute right-1.5 top-1.5 rounded bg-emerald-500 px-1.5 py-0.5 text-[9px] font-semibold text-white">
               live
             </div>

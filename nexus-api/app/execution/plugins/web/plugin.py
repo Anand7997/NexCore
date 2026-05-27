@@ -189,6 +189,7 @@ class WebExecutionPlugin(ExecutionPlugin):
         super().__init__()
         self._sessions: dict[str, WebSession] = {}
         self._scratch_dirs: dict[str, Path] = {}
+        self._announced_sessions: set[str] = set()
         self._lock = asyncio.Lock()
 
     # ── Discovery ─────────────────────────────────────────────────────
@@ -426,6 +427,7 @@ class WebExecutionPlugin(ExecutionPlugin):
         async with self._lock:
             session = self._sessions.pop(execution_id, None)
             scratch = self._scratch_dirs.pop(execution_id, None)
+            self._announced_sessions.discard(execution_id)
         if session is None:
             return
         trace_path, video_path = await session.stop()
@@ -473,6 +475,7 @@ class WebExecutionPlugin(ExecutionPlugin):
                     browser_name=settings.web_plugin_browser,
                     record_video=settings.web_plugin_record_video,
                     record_trace=settings.web_plugin_record_trace,
+                    slow_mo_ms=settings.web_plugin_slow_mo_ms,
                 ),
                 scratch_dir=scratch,
             )
@@ -535,6 +538,22 @@ class WebExecutionPlugin(ExecutionPlugin):
         page = session.page
         nt = envelope.node_type
         start = time.perf_counter()
+        if envelope.execution_id not in self._announced_sessions:
+            self._announced_sessions.add(envelope.execution_id)
+            await self._emit_action(
+                envelope,
+                "browser_opened",
+                metadata={
+                    "browser": session.config.browser_name,
+                    "headless": session.config.headless,
+                    "live_screenshots": settings.web_plugin_live_screenshots,
+                    "slow_mo_ms": settings.web_plugin_slow_mo_ms,
+                    "viewport": {
+                        "width": session.config.viewport_width,
+                        "height": session.config.viewport_height,
+                    },
+                },
+            )
 
         # Wrap each step in a uniform try/except so failures always capture a
         # screenshot (the AI evidence pipeline depends on this).
@@ -548,9 +567,16 @@ class WebExecutionPlugin(ExecutionPlugin):
             output: dict[str, Any] = await handler(self, envelope, page, cfg)
             duration_ms = int((time.perf_counter() - start) * 1000)
             output.setdefault("duration_ms", duration_ms)
+            live_artifact = await self._capture_live_screenshot(
+                envelope, page, cfg, nt, output
+            )
+            if live_artifact is not None:
+                output["live_screenshot_artifact_id"] = live_artifact.id
             return PluginResult(success=True, duration_ms=duration_ms, output=output)
         except asyncio.CancelledError:
-            return PluginResult(success=False, duration_ms=0, error="Cancelled")
+            duration_ms = int((time.perf_counter() - start) * 1000)
+            await self._capture_failure_evidence(envelope, page, "Cancelled")
+            return PluginResult(success=False, duration_ms=duration_ms, error="Cancelled")
         except Exception as exc:
             duration_ms = int((time.perf_counter() - start) * 1000)
             await envelope.log("error", f"[{nt}] {exc}", source="web")
@@ -598,6 +624,103 @@ class WebExecutionPlugin(ExecutionPlugin):
             metadata=metadata or {},
         ))
 
+    async def _flash_locator_for_live_view(self, locator: Any, action: str) -> None:
+        if settings.web_plugin_slow_mo_ms <= 0 and not settings.web_plugin_live_screenshots:
+            return
+        try:
+            handle = await locator.element_handle(timeout=500)
+            if handle is None:
+                return
+            await handle.evaluate(
+                """
+                (element, actionName) => {
+                  const old = document.getElementById('nexus-live-action-highlight');
+                  if (old) old.remove();
+
+                  const rect = element.getBoundingClientRect();
+                  const frame = document.createElement('div');
+                  frame.id = 'nexus-live-action-highlight';
+                  Object.assign(frame.style, {
+                    position: 'fixed',
+                    left: `${Math.max(0, rect.left - 5)}px`,
+                    top: `${Math.max(0, rect.top - 5)}px`,
+                    width: `${Math.max(12, rect.width + 10)}px`,
+                    height: `${Math.max(12, rect.height + 10)}px`,
+                    border: '3px solid #38bdf8',
+                    background: 'rgba(56, 189, 248, 0.12)',
+                    boxShadow: '0 0 0 4px rgba(56, 189, 248, 0.16), 0 12px 32px rgba(15, 23, 42, 0.22)',
+                    borderRadius: '8px',
+                    zIndex: '2147483647',
+                    pointerEvents: 'none',
+                    opacity: '1',
+                    transition: 'opacity 180ms ease',
+                  });
+
+                  const label = document.createElement('div');
+                  label.textContent = String(actionName || 'action').replace(/_/g, ' ');
+                  Object.assign(label.style, {
+                    position: 'absolute',
+                    left: '0',
+                    top: '-26px',
+                    maxWidth: '260px',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    borderRadius: '999px',
+                    padding: '3px 8px',
+                    background: '#0f172a',
+                    color: '#e0f2fe',
+                    font: '600 11px/1.2 system-ui, -apple-system, Segoe UI, sans-serif',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
+                  });
+                  frame.appendChild(label);
+                  document.documentElement.appendChild(frame);
+                  window.setTimeout(() => {
+                    frame.style.opacity = '0';
+                    window.setTimeout(() => frame.remove(), 220);
+                  }, 1500);
+                }
+                """,
+                action,
+            )
+        except Exception:
+            pass
+
+    async def _capture_live_screenshot(
+        self,
+        envelope: ExecutionEnvelope,
+        page: Any,
+        cfg: dict[str, Any],
+        node_type: str,
+        output: dict[str, Any],
+    ) -> Any | None:
+        if not settings.web_plugin_live_screenshots or node_type == "web.screenshot":
+            return None
+        action = node_type.removeprefix("web.")
+        selector = output.get("selector") or cfg.get("selector")
+        try:
+            data = await page.screenshot(full_page=False, type="png")
+            return await envelope.artifacts.record_bytes(
+                ArtifactKind.SCREENSHOT,
+                f"live-{action}.png",
+                data,
+                content_type="image/png",
+                metadata={
+                    "capture_reason": "live_action",
+                    "live_preview": True,
+                    "action": action,
+                    "node_type": node_type,
+                    "node_label": envelope.node_label,
+                    "selector": selector,
+                    "url": getattr(page, "url", None),
+                    "title": await page.title(),
+                },
+            )
+        except Exception:
+            logger.exception("live screenshot capture failed")
+            return None
+
     async def _with_locator_healing(self, envelope, page, cfg, action: str, operation):
         candidates = _locator_candidates_from_config(cfg)
         if not candidates:
@@ -612,7 +735,9 @@ class WebExecutionPlugin(ExecutionPlugin):
             summary = _locator_summary(candidate)
             candidate_timeout = timeout if index == 0 else fallback_timeout
             try:
-                result = await operation(_playwright_locator(page, candidate), candidate_timeout)
+                locator = _playwright_locator(page, candidate)
+                await self._flash_locator_for_live_view(locator, action)
+                result = await operation(locator, candidate_timeout)
                 attempts.append({
                     "strategy": candidate.get("strategy"),
                     "locator": candidate.get("locator"),
@@ -761,7 +886,15 @@ class WebExecutionPlugin(ExecutionPlugin):
         t0 = time.perf_counter()
 
         async def fill(locator, timeout):
-            await locator.fill(value, timeout=timeout)
+            await locator.fill("", timeout=timeout)
+            delay = max(0, int(settings.web_plugin_type_delay_ms))
+            if delay > 0:
+                try:
+                    await locator.press_sequentially(str(value), delay=delay, timeout=timeout)
+                except AttributeError:
+                    await locator.fill(value, timeout=timeout)
+            else:
+                await locator.fill(value, timeout=timeout)
 
         sel, _, attempts = await self._with_locator_healing(envelope, page, cfg, "fill", fill)
         dur = int((time.perf_counter() - t0) * 1000)
@@ -976,7 +1109,13 @@ class WebExecutionPlugin(ExecutionPlugin):
             await envelope.artifacts.record_bytes(
                 ArtifactKind.SCREENSHOT, "failure.png", data,
                 content_type="image/png",
-                metadata={"error": error, "url": getattr(page, "url", None)},
+                metadata={
+                    "capture_reason": "failure",
+                    "error": error,
+                    "url": getattr(page, "url", None),
+                    "node_type": envelope.node_type,
+                    "node_label": envelope.node_label,
+                },
             )
         except Exception:
             pass

@@ -33,10 +33,13 @@ class Settings(BaseSettings):
     enable_api_plugin: bool = True
     enable_mobile_plugin: bool = True
     enable_desktop_plugin: bool = True
-    web_plugin_headless: bool = True
+    web_plugin_headless: bool = False
     web_plugin_browser: str = "chromium"   # chromium / firefox / webkit
     web_plugin_record_video: bool = False  # enables MP4 capture per session
     web_plugin_record_trace: bool = True   # Playwright trace.zip per session
+    web_plugin_slow_mo_ms: int = 250       # visible delay between Playwright actions
+    web_plugin_type_delay_ms: int = 35     # per-character delay for visible typing
+    web_plugin_live_screenshots: bool = True
     discovery_allow_private_network: bool = False
     api_plugin_default_timeout: float = 30.0
     control_plane_url: str = "http://localhost:3001"
