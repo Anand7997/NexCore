@@ -33,6 +33,11 @@ class WebSessionConfig:
     record_trace: bool = True
     viewport_width: int = 1280
     viewport_height: int = 800
+    user_agent: str = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36"
+    )
 
 
 class WebSession:
@@ -81,6 +86,8 @@ class WebSession:
                     "width": self.config.viewport_width,
                     "height": self.config.viewport_height,
                 },
+                "user_agent": self.config.user_agent,
+                "locale": "en-US",
             }
             if self.config.record_video:
                 ctx_kwargs["record_video_dir"] = str(self.scratch_dir)

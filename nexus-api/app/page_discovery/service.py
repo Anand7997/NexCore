@@ -73,7 +73,8 @@ def _get_extraction_script() -> str:
     return r"""
 (includeHidden) => {
     const results = [];
-    const TAGS = new Set(['button','a','input','textarea','select','option','dialog']);
+    const TAGS = new Set(['button','a','input','textarea','select','option','dialog','label','p']);
+    const TEXT_HINT_TAGS = new Set(['label','p','span','h1','h2','h3','h4','h5','h6']);
     const ROLES = new Set(['button','link','textbox','combobox','checkbox','radio','tab','menuitem','dialog','switch','slider','listbox','menu','option','gridcell']);
     function xpathLiteral(value) {
         if (!value.includes('"')) return '"' + value + '"';
@@ -172,6 +173,10 @@ def _get_extraction_script() -> str:
         if (role && ROLES.has(role)) return true;
         if (el.hasAttribute('data-testid') || el.hasAttribute('data-test') || el.hasAttribute('data-qa') || el.hasAttribute('data-cy')) return true;
         if (el.getAttribute('aria-label')) return true;
+        if (TEXT_HINT_TAGS.has(tag)) {
+            const text = getText(el);
+            return text.length >= 2 && text.length <= 120;
+        }
         return false;
     }
     const all = document.querySelectorAll('*');

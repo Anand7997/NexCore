@@ -80,6 +80,8 @@ _MODEL_TIER_HINTS: tuple[tuple[str, str], ...] = (
     ("gpt-5", "best"),
     ("gpt-4.1", "best"),
 )
+_NULL_PROVIDER_ALIASES = {"", "null", "test", "ci"}
+_NULL_MODEL_ALIASES = {"", "null", "test", "ci"}
 
 
 def _parse_streamed_json(raw: str, schema: type[T]) -> T:
@@ -103,6 +105,21 @@ def _model_generation_tier(ai_model: str) -> str:
 
 def _model_generation_profile(ai_model: str) -> dict[str, str]:
     return _MODEL_GENERATION_PROFILES[_model_generation_tier(ai_model)]
+
+
+def _default_ai_selection() -> tuple[str, str]:
+    provider = (settings.default_ai_provider or "openai").strip().lower()
+    model = (settings.default_ai_model or "gpt-5.5").strip()
+    return provider, model
+
+
+def _normalize_ai_selection(ai_provider: str | None, ai_model: str | None) -> tuple[str, str]:
+    default_provider, default_model = _default_ai_selection()
+    provider = (ai_provider or default_provider).strip().lower()
+    model = (ai_model or default_model).strip()
+    if provider in _NULL_PROVIDER_ALIASES or model.lower() in _NULL_MODEL_ALIASES:
+        return default_provider, default_model
+    return provider, model
 
 
 def _require_provider_package(provider_name: str, package_name: str) -> None:
@@ -446,6 +463,14 @@ def _best_xpath(element: DiscoveryElement) -> str:
     return element.xpath or ""
 
 
+def _locator_candidate_payload(locator: Any) -> dict[str, Any]:
+    if hasattr(locator, "model_dump"):
+        return locator.model_dump()
+    if isinstance(locator, dict):
+        return dict(locator)
+    return {}
+
+
 def _candidate_from_discovered(element: DiscoveryElement, index: int) -> dict[str, Any]:
     strategy, locator, xpath, css_selector = _best_locator_payload(element)
     xpath = _best_xpath(element) or xpath
@@ -466,6 +491,13 @@ def _candidate_from_discovered(element: DiscoveryElement, index: int) -> dict[st
         "test_data_hints": element.test_data_hints or {},
         "locator_quality": _locator_quality(element),
         "confidence_score": element.confidence_score or 0.0,
+        "alternative_locators": [
+            payload for payload in (
+                _locator_candidate_payload(locator)
+                for locator in element.alternative_locators
+            )
+            if payload.get("locator")
+        ],
         "tags": element.tags or [],
         "selected": False,
         "match_reason": None,
@@ -550,28 +582,43 @@ def _data_type_bonus(step: GeneratedTestStep, candidate: dict[str, Any]) -> floa
     return -0.12
 
 
+_TEXT_ENTRY_ELEMENTS = {"input", "textarea", "textbox", "searchbox"}
+_CHOICE_ELEMENTS = {"button", "link", "checkbox", "radio", "tab", "toggle"}
+_DROPDOWN_ELEMENTS = {"select", "option", "combobox", "listbox"}
+
+
 def _action_element_bonus(action_type: str, element_type: str) -> float:
     action = action_type.lower()
     element = element_type.lower()
-    if action in {"fill", "clear", "upload"} and element in {"input", "textarea", "select"}:
-        return 0.22
-    if action in {"click", "submit"} and element in {"button", "link", "checkbox", "radio"}:
+    if action in {"fill", "clear"}:
+        if element in _TEXT_ENTRY_ELEMENTS:
+            return 0.24
+        if element in _CHOICE_ELEMENTS:
+            return -0.45
+        if element:
+            return -0.18
+    if action == "upload":
+        if element in {"input"}:
+            return 0.22
+        if element in {"button", "link"}:
+            return 0.06
+    if action in {"click", "submit"} and element in _CHOICE_ELEMENTS:
         return 0.18
     if action.startswith("assert") and element in {"label", "text", "element", "button", "link"}:
         return 0.10
-    if action == "select" and element in {"select", "option", "combobox", "listbox"}:
+    if action == "select" and element in _DROPDOWN_ELEMENTS:
         return 0.20
-    if action == "select" and element in {"button", "link", "checkbox", "radio"}:
+    if action == "select" and element in _CHOICE_ELEMENTS:
         return 0.12
     return 0.0
 
 
 def _is_selectable_choice_element(element_type: str) -> bool:
-    return element_type.lower() in {"button", "link", "checkbox", "radio", "tab", "toggle"}
+    return element_type.lower() in _CHOICE_ELEMENTS
 
 
 def _is_dropdown_element(element_type: str) -> bool:
-    return element_type.lower() in {"select", "option", "combobox", "listbox"}
+    return element_type.lower() in _DROPDOWN_ELEMENTS
 
 
 def _has_action_phrase(text: str, phrases: tuple[str, ...]) -> bool:
@@ -717,8 +764,15 @@ async def _save_selected_candidates(
         if element is None:
             element = existing_by_name.get(str(candidate.get("name") or "").strip().lower())
 
-        alt_locators = []
-        if candidate.get("xpath"):
+        alt_locators = [
+            dict(locator)
+            for locator in (candidate.get("alternative_locators") or [])
+            if isinstance(locator, dict) and locator.get("locator")
+        ]
+        if candidate.get("xpath") and not any(
+            locator.get("strategy") == "xpath" and locator.get("locator") == candidate["xpath"]
+            for locator in alt_locators
+        ):
             alt_locators.append({
                 "strategy": "xpath",
                 "locator": candidate["xpath"],
@@ -727,7 +781,10 @@ async def _save_selected_candidates(
                 "score": candidate.get("confidence_score", 0.0),
                 "reason": "Selected from post-test-step scrape",
             })
-        if candidate.get("css_selector"):
+        if candidate.get("css_selector") and not any(
+            locator.get("strategy") == "css" and locator.get("locator") == candidate["css_selector"]
+            for locator in alt_locators
+        ):
             alt_locators.append({
                 "strategy": "css",
                 "locator": candidate["css_selector"],
@@ -946,6 +1003,11 @@ def _build_step_bindings(
             "css_selector": element.get("css_selector") or "",
             "locator_quality": element.get("locator_quality") or element.get("confidence_score"),
             "match_reason": element.get("match_reason"),
+            "alternative_locators": [
+                dict(locator)
+                for locator in (element.get("alternative_locators") or [])
+                if isinstance(locator, dict) and locator.get("locator")
+            ],
         })
     if input_value:
         web_binding.update({
@@ -1225,7 +1287,7 @@ async def _run_testcase_generation(workflow_id: str) -> None:
                     "name": element.get("name"),
                     "confidence_score": element.get("confidence_score"),
                     "xpath": element.get("xpath"),
-                    "alternative_locators": [{
+                    "alternative_locators": element.get("alternative_locators") or [{
                         "strategy": element.get("locator_strategy") or "xpath",
                         "locator": (
                             element.get("best_locator")
@@ -1346,6 +1408,7 @@ async def _persist_test_case(
             "locator": locator,
             "xpath": str(web_binding.get("xpath") or locator),
             "css_selector": str(web_binding.get("css_selector") or ""),
+            "alternative_locators": web_binding.get("alternative_locators") or [],
             "locator_quality": web_binding.get("locator_quality") or "",
             "binding_confidence": step.confidence,
         }
@@ -1382,6 +1445,7 @@ class AIWorkflowService:
         self._db = db
 
     async def create_workflow(self, req: WorkflowCreateRequest) -> WorkflowStateResponse:
+        ai_provider, ai_model = _normalize_ai_selection(req.ai_provider, req.ai_model)
         wf = AIWorkflowModel(
             state=WorkflowState.CREATED.value,
             progress_percent=STATE_PROGRESS[WorkflowState.CREATED],
@@ -1393,8 +1457,8 @@ class AIWorkflowService:
             page_name=req.page_name or _extract_page_name(req.webpage_url, req.project_name),
             platform=req.platform,
             save_mode=req.save_mode,
-            ai_provider=req.ai_provider,
-            ai_model=req.ai_model,
+            ai_provider=ai_provider,
+            ai_model=ai_model,
             scenarios=[],
             errors=[],
             scraped_candidates=[],
@@ -1426,8 +1490,7 @@ class AIWorkflowService:
         if not wf:
             raise ValueError(f"Workflow {workflow_id} not found")
 
-        provider = ai_provider or wf.ai_provider
-        model = ai_model or wf.ai_model
+        provider, model = _normalize_ai_selection(ai_provider or wf.ai_provider, ai_model or wf.ai_model)
 
         asyncio.create_task(_run_scenario_generation(workflow_id, provider, model))
         return _workflow_to_response(wf)

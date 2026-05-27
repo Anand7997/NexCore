@@ -2,47 +2,49 @@
 Node lifecycle state machine.
 Enforces valid transitions and guards against illegal state changes.
 
-  created → queued → waiting → running → completed
-                              ↓         ↓
-                              failed ← retrying
-                              ↓
-                           cancelled / skipped
+  created -> queued -> waiting -> running -> completed
+                |         |         |   ^
+                v         v         v   |
+            cancelled   skipped  retrying
+                                  |
+                                  v
+                                failed
 """
 from __future__ import annotations
 from enum import Enum
 
 
 class NodeStatus(str, Enum):
-    CREATED   = "created"
-    QUEUED    = "queued"
-    WAITING   = "waiting"
-    RUNNING   = "running"
-    RETRYING  = "retrying"
+    CREATED = "created"
+    QUEUED = "queued"
+    WAITING = "waiting"
+    RUNNING = "running"
+    RETRYING = "retrying"
     COMPLETED = "completed"
-    FAILED    = "failed"
+    FAILED = "failed"
     CANCELLED = "cancelled"
-    SKIPPED   = "skipped"
+    SKIPPED = "skipped"
 
 
 class ExecutionStatus(str, Enum):
-    QUEUED    = "queued"
-    RUNNING   = "running"
-    SUCCESS   = "success"
-    FAILED    = "failed"
+    QUEUED = "queued"
+    RUNNING = "running"
+    SUCCESS = "success"
+    FAILED = "failed"
     CANCELLED = "cancelled"
 
 
-# Valid state transitions: current → set of allowed next states
+# Valid state transitions: current -> set of allowed next states
 TRANSITIONS: dict[NodeStatus, set[NodeStatus]] = {
-    NodeStatus.CREATED:   {NodeStatus.QUEUED, NodeStatus.CANCELLED},
-    NodeStatus.QUEUED:    {NodeStatus.WAITING, NodeStatus.RUNNING, NodeStatus.CANCELLED, NodeStatus.SKIPPED},
-    NodeStatus.WAITING:   {NodeStatus.RUNNING, NodeStatus.CANCELLED, NodeStatus.SKIPPED},
-    NodeStatus.RUNNING:   {NodeStatus.COMPLETED, NodeStatus.FAILED, NodeStatus.CANCELLED},
-    NodeStatus.RETRYING:  {NodeStatus.RUNNING, NodeStatus.FAILED, NodeStatus.CANCELLED},
+    NodeStatus.CREATED: {NodeStatus.QUEUED, NodeStatus.CANCELLED},
+    NodeStatus.QUEUED: {NodeStatus.WAITING, NodeStatus.RUNNING, NodeStatus.CANCELLED, NodeStatus.SKIPPED},
+    NodeStatus.WAITING: {NodeStatus.RUNNING, NodeStatus.CANCELLED, NodeStatus.SKIPPED},
+    NodeStatus.RUNNING: {NodeStatus.COMPLETED, NodeStatus.FAILED, NodeStatus.CANCELLED, NodeStatus.RETRYING},
+    NodeStatus.RETRYING: {NodeStatus.RUNNING, NodeStatus.FAILED, NodeStatus.CANCELLED},
     NodeStatus.COMPLETED: set(),  # terminal
-    NodeStatus.FAILED:    {NodeStatus.RETRYING},  # only retry can follow failure
+    NodeStatus.FAILED: set(),  # terminal
     NodeStatus.CANCELLED: set(),  # terminal
-    NodeStatus.SKIPPED:   set(),  # terminal
+    NodeStatus.SKIPPED: set(),  # terminal
 }
 
 TERMINAL_STATUSES = {
@@ -68,7 +70,7 @@ def transition(current: NodeStatus, next_: NodeStatus) -> NodeStatus:
     allowed = TRANSITIONS.get(current, set())
     if next_ not in allowed:
         raise StateMachineError(
-            f"Invalid node transition: {current.value} → {next_.value}. "
+            f"Invalid node transition: {current.value} -> {next_.value}. "
             f"Allowed: {[s.value for s in allowed]}"
         )
     return next_

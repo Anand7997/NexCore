@@ -37,6 +37,7 @@ def _step_path_location(step) -> tuple[str, str]:
     test_data = step.test_data or {}
     page_element = step.__dict__.get("page_element")
     element_xpath = getattr(page_element, "xpath", "") if page_element is not None else ""
+    element_css = getattr(page_element, "css_selector", "") if page_element is not None else ""
     xpath = (
         element_xpath
         or web.get("xpath")
@@ -45,6 +46,7 @@ def _step_path_location(step) -> tuple[str, str]:
     )
     location = (
         xpath
+        or element_css
         or web.get("selector")
         or test_data.get("locator")
         or ""

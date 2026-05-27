@@ -6,7 +6,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, or_, select, update
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -202,6 +202,130 @@ async def _detach_page_references(page_id: str, db: AsyncSession) -> list[str]:
     return element_ids
 
 
+def _element_primary_locator(element: PageElementModel) -> str:
+    strategy = (element.locator_strategy or "").lower()
+    if strategy == "css" and element.css_selector:
+        return element.css_selector
+    if strategy == "id" and element.id_attr:
+        return f"#{element.id_attr}"
+    if strategy == "name" and element.name_attr:
+        return f"[name='{element.name_attr}']"
+    if strategy == "xpath" and element.xpath:
+        return element.xpath
+    return element.xpath or element.css_selector or (
+        f"#{element.id_attr}" if element.id_attr else ""
+    ) or (
+        f"[name='{element.name_attr}']" if element.name_attr else ""
+    ) or element.name
+
+
+def _element_locator_candidates(element: PageElementModel) -> list[dict[str, Any]]:
+    candidates: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+
+    def add(strategy: str, locator: str, reason: str) -> None:
+        value = str(locator or "").strip()
+        if not value:
+            return
+        normalized_strategy = (strategy or "").strip().lower()
+        if not normalized_strategy:
+            normalized_strategy = "xpath" if value.startswith(("/", "(", "xpath=")) else "css"
+        key = (normalized_strategy, value)
+        if key in seen:
+            return
+        seen.add(key)
+        candidates.append({
+            "strategy": normalized_strategy,
+            "locator": value,
+            "verified": False,
+            "element_count": 0,
+            "score": 1.0,
+            "reason": reason,
+        })
+
+    add(element.locator_strategy or "", _element_primary_locator(element), "Current page repository locator")
+    add("xpath", element.xpath or "", "Current page repository XPath")
+    add("css", element.css_selector or "", "Current page repository CSS selector")
+    if element.id_attr:
+        add("css", f"#{element.id_attr}", "Current page repository id selector")
+    if element.name_attr:
+        add("css", f"[name='{element.name_attr}']", "Current page repository name selector")
+    for locator in element.alternative_locators or []:
+        if isinstance(locator, dict):
+            add(
+                str(locator.get("strategy") or ""),
+                str(locator.get("locator") or locator.get("selector") or ""),
+                str(locator.get("reason") or "Alternative page repository locator"),
+            )
+    return candidates
+
+
+def _apply_element_to_test_step(step: TestStepModel, page: PageRepositoryModel, element: PageElementModel) -> None:
+    locator = _element_primary_locator(element)
+    locators = _element_locator_candidates(element)
+    xpath = element.xpath or locator
+    test_data = dict(step.test_data or {})
+    bindings = dict(step.bindings or {})
+    web = dict(bindings.get("web") or {})
+
+    test_data.update({
+        "page_id": page.id,
+        "page_name": page.name,
+        "page_element_id": element.id,
+        "element_name": element.name,
+        "xpath": xpath,
+        "path_location": locator,
+        "locator": locator,
+        "css_selector": element.css_selector or "",
+        "locators": locators,
+    })
+    web.update({
+        "page": page.name,
+        "page_id": page.id,
+        "element_name": element.name,
+        "page_element_id": element.id,
+        "selector": locator,
+        "xpath": xpath,
+        "css_selector": element.css_selector or "",
+        "locators": locators,
+    })
+    bindings["web"] = web
+
+    step.page_id = page.id
+    step.page_element_id = element.id
+    step.target = element.name
+    step.test_data = test_data
+    step.bindings = bindings
+
+
+async def _sync_test_steps_for_element(
+    element: PageElementModel,
+    db: AsyncSession,
+    previous_name: str | None = None,
+) -> int:
+    page = await db.get(PageRepositoryModel, element.page_id)
+    if page is None:
+        return 0
+    target_names = [element.name]
+    if previous_name and previous_name not in target_names:
+        target_names.append(previous_name)
+    result = await db.execute(
+        select(TestStepModel).where(
+            or_(
+                TestStepModel.page_element_id == element.id,
+                (
+                    (TestStepModel.page_id == element.page_id)
+                    & (TestStepModel.target.in_(target_names))
+                ),
+            )
+        )
+    )
+    steps = list(result.scalars().all())
+    for step in steps:
+        _apply_element_to_test_step(step, page, element)
+    return len(steps)
+
+
 # ── Page routes ───────────────────────────────────────────────────────────────
 
 @router.get("/pages", response_model=list[PageListItem])
@@ -281,8 +405,11 @@ async def update_element(element_id: str, body: ElementUpdateSchema, db: AsyncSe
     elem = result.scalar_one_or_none()
     if not elem:
         raise HTTPException(status_code=404, detail="Element not found")
+    previous_name = elem.name
     for field, val in body.model_dump(exclude_none=True).items():
         setattr(elem, field, val)
+    await db.flush()
+    await _sync_test_steps_for_element(elem, db, previous_name=previous_name)
     await db.commit()
     await db.refresh(elem)
     return _elem(elem)
@@ -398,6 +525,7 @@ async def discover_page_elements(
 
         now = datetime.utcnow()
         saved_count = 0
+        changed_elements: list[PageElementModel] = []
 
         for disc_el in result.elements:
             is_low_conf = disc_el.confidence_score < body.min_confidence
@@ -432,6 +560,7 @@ async def discover_page_elements(
                 existing.last_verified_at = now
                 existing.tags = sorted(set((existing.tags or []) + disc_el.tags))
                 existing.updated_at = now
+                changed_elements.append(existing)
                 saved_count += 1
             else:
                 # Create new element
@@ -465,6 +594,15 @@ async def discover_page_elements(
                 )
                 db.add(elem)
                 saved_count += 1
+
+        if changed_elements:
+            await db.flush()
+            seen_element_ids: set[str] = set()
+            for element in changed_elements:
+                if element.id in seen_element_ids:
+                    continue
+                seen_element_ids.add(element.id)
+                await _sync_test_steps_for_element(element, db)
 
         await db.commit()
 

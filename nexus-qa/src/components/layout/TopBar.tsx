@@ -37,7 +37,7 @@ const WORKSPACE_META: Record<string, { label: string; env: string }> = {
   '/reports':            { label: 'Intelligence Reports',       env: 'prod' },
   '/workflows':          { label: 'Workflow Development',       env: 'build' },
   '/executions':         { label: 'Execution Monitoring',       env: 'run' },
-  '/ai-analysis':        { label: 'AI Investigation',           env: 'debug' },
+  '/ai-analysis':        { label: 'AI Inspect',                 env: 'debug' },
   '/test-configuration': { label: 'Test Configuration',         env: 'build' },
 };
 
@@ -113,7 +113,7 @@ export default function TopBar() {
 
   return (
     <header
-      className="relative z-20 flex h-[var(--shell-topbar-h)] shrink-0 items-center gap-3 px-4"
+      className="nex-topbar relative z-20 flex h-[var(--shell-topbar-h)] shrink-0 items-center gap-4 px-5"
       style={{
         background: 'var(--color-surface-overlay)',
         backdropFilter: 'blur(16px) saturate(160%)',
@@ -126,17 +126,17 @@ export default function TopBar() {
         className="pointer-events-none absolute bottom-0 left-0 right-0 h-px"
         style={{
           background:
-            'linear-gradient(90deg, transparent 0%, rgba(139,92,246,0.40) 30%, rgba(59,130,246,0.30) 70%, transparent 100%)',
+            'linear-gradient(90deg, transparent 0%, rgba(34,211,238,0.42) 30%, rgba(34,197,94,0.28) 70%, transparent 100%)',
         }}
       />
 
       {/* ── Left: Breadcrumb ─────────────────────────────────────── */}
-      <div className="flex min-w-0 items-center gap-1.5 shrink-0">
-        <span className="text-[10px] font-mono font-semibold uppercase tracking-[0.16em] text-[var(--color-accent-default)]">
+      <div className="flex min-w-0 items-center gap-2 shrink-0">
+        <span className="text-[12px] font-mono font-semibold uppercase tracking-[0.16em] text-[var(--color-accent-default)]">
           NEXCORE
         </span>
-        <ChevronRight size={11} className="text-[var(--color-fg-subtle)] shrink-0" />
-        <span className="truncate text-[11px] font-medium text-[var(--color-fg-muted)] max-w-[180px] md:max-w-none">
+        <ChevronRight size={14} className="text-[var(--color-fg-subtle)] shrink-0" />
+        <span className="truncate text-[14px] font-medium text-[var(--color-fg-muted)] max-w-[220px] md:max-w-none">
           {workspace.label}
         </span>
       </div>
@@ -146,17 +146,17 @@ export default function TopBar() {
         <button
           onClick={toggleCommandPalette}
           className={cn(
-            'group flex h-8 items-center gap-2.5 rounded-md transition-all duration-200',
-            'min-w-[220px] w-full max-w-[320px]',
+            'group flex h-10 items-center gap-3 rounded-xl transition-all duration-200',
+            'min-w-[260px] w-full max-w-[460px]',
             'border border-[var(--color-line-default)] bg-[var(--color-surface-2)]',
-            'px-3 text-[11px] text-[var(--color-fg-subtle)]',
-            'hover:border-[rgba(139,92,246,0.30)] hover:bg-[var(--color-surface-3)]',
+            'px-4 text-[14px] text-[var(--color-fg-subtle)]',
+            'hover:border-[rgba(34,211,238,0.32)] hover:bg-[var(--color-surface-3)]',
             'hover:text-[var(--color-fg-muted)]',
-            'focus:outline-none focus:border-[rgba(139,92,246,0.45)]',
+            'focus:outline-none focus:border-[rgba(34,211,238,0.46)]',
           )}
           aria-label="Open command palette (Ctrl+K)"
         >
-          <Search size={11} className="shrink-0 text-[var(--color-fg-subtle)] group-hover:text-[var(--color-accent-default)] transition-colors" />
+          <Search size={15} className="shrink-0 text-[var(--color-fg-subtle)] group-hover:text-[var(--color-accent-default)] transition-colors" />
           <span className="flex-1 text-left truncate">Search commands, routes, executions</span>
           <span className="kbd shrink-0">⌘K</span>
         </button>
@@ -167,15 +167,15 @@ export default function TopBar() {
         {/* Execution counters */}
         <div className="hidden items-center gap-2 md:flex">
           <div className="flex items-center gap-1.5">
-            <Loader2 size={10} className="animate-spin text-[var(--color-state-running)]" />
+            <Loader2 size={13} className="animate-spin text-[var(--color-state-running)]" />
             <FlashCounter value={running} colorClass="text-[var(--color-state-running)]" />
-            <span className="text-[10px] font-mono text-[var(--color-fg-subtle)]">run</span>
+            <span className="text-[12px] font-mono text-[var(--color-fg-subtle)]">run</span>
           </div>
           <div className="h-3 w-px bg-[var(--color-line-default)]" />
           <div className="flex items-center gap-1.5">
-            <Clock size={10} className="text-[var(--color-state-warning)]" />
+            <Clock size={13} className="text-[var(--color-state-warning)]" />
             <FlashCounter value={queued} colorClass="text-[var(--color-state-warning)]" />
-            <span className="text-[10px] font-mono text-[var(--color-fg-subtle)]">wait</span>
+            <span className="text-[12px] font-mono text-[var(--color-fg-subtle)]">wait</span>
           </div>
           <AnimatePresence>
             {failed > 0 && (
@@ -186,9 +186,9 @@ export default function TopBar() {
                 className="flex items-center gap-1.5 overflow-hidden"
               >
                 <div className="h-3 w-px bg-[var(--color-line-default)]" />
-                <AlertTriangle size={10} className="shrink-0 text-[var(--color-state-error)]" />
+                <AlertTriangle size={13} className="shrink-0 text-[var(--color-state-error)]" />
                 <FlashCounter value={failed} colorClass="text-[var(--color-state-error)]" />
-                <span className="shrink-0 text-[10px] font-mono text-[var(--color-fg-subtle)]">fail</span>
+                <span className="shrink-0 text-[12px] font-mono text-[var(--color-fg-subtle)]">fail</span>
               </motion.div>
             )}
           </AnimatePresence>
@@ -203,13 +203,13 @@ export default function TopBar() {
             onClick={toggleTerminal}
             title="Toggle terminal (Ctrl+`)"
             className={cn(
-              'flex h-7 items-center gap-1.5 rounded-md px-2 text-[10px] font-mono transition-all duration-150',
+              'flex h-9 items-center gap-2 rounded-lg px-3 text-[12px] font-mono transition-all duration-150',
               terminalOpen
-                ? 'border border-[rgba(139,92,246,0.35)] bg-[rgba(139,92,246,0.10)] text-[var(--color-accent-default)]'
+                ? 'border border-[rgba(34,211,238,0.35)] bg-[rgba(34,211,238,0.10)] text-[var(--color-accent-default)]'
                 : 'text-[var(--color-fg-subtle)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg-default)]',
             )}
           >
-            <Terminal size={11} />
+            <Terminal size={14} />
             <span className="hidden sm:inline">Terminal</span>
           </button>
 
@@ -218,21 +218,21 @@ export default function TopBar() {
             onClick={toggleInspector}
             title="Toggle AI Copilot"
             className={cn(
-              'flex h-7 w-7 items-center justify-center rounded-md transition-all duration-150',
+              'flex h-9 w-9 items-center justify-center rounded-lg transition-all duration-150',
               inspectorOpen
-                ? 'border border-[rgba(139,92,246,0.35)] bg-[rgba(139,92,246,0.10)] text-[var(--color-accent-default)]'
+                ? 'border border-[rgba(34,211,238,0.35)] bg-[rgba(34,211,238,0.10)] text-[var(--color-accent-default)]'
                 : 'text-[var(--color-fg-subtle)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg-default)]',
             )}
           >
-            <Brain size={13} />
+            <Brain size={16} />
           </button>
 
           {/* Notification bell */}
           <button
-            className="relative flex h-7 w-7 items-center justify-center rounded-md text-[var(--color-fg-subtle)] transition-colors hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg-default)]"
+            className="relative flex h-9 w-9 items-center justify-center rounded-lg text-[var(--color-fg-subtle)] transition-colors hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg-default)]"
             aria-label="Notifications"
           >
-            <Bell size={13} />
+            <Bell size={16} />
             <AnimatePresence>
               {unreadCount > 0 && (
                 <motion.span
@@ -241,7 +241,7 @@ export default function TopBar() {
                   animate={{ scale: 1 }}
                   exit={{ scale: 0 }}
                   transition={{ type: 'spring', stiffness: 500, damping: 28 }}
-                  className="absolute right-0.5 top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-[var(--color-state-error)] px-0.5 text-[8px] font-bold text-white"
+                  className="absolute right-0.5 top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[var(--color-state-error)] px-1 text-[10px] font-bold text-white"
                 >
                   {unreadCount}
                 </motion.span>
@@ -255,9 +255,9 @@ export default function TopBar() {
             title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
             whileTap={{ scale: 0.88 }}
             className={cn(
-              'relative flex h-7 w-7 items-center justify-center overflow-hidden rounded-md transition-all duration-150',
+              'relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg transition-all duration-150',
               theme === 'light'
-                ? 'border border-[rgba(124,58,237,0.30)] bg-[rgba(124,58,237,0.08)] text-[var(--color-accent-default)]'
+                ? 'border border-[rgba(34,211,238,0.30)] bg-[rgba(34,211,238,0.08)] text-[var(--color-accent-default)]'
                 : 'text-[var(--color-fg-subtle)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg-default)]',
             )}
             aria-label="Toggle theme"
@@ -272,7 +272,7 @@ export default function TopBar() {
                   transition={{ duration: 0.18, ease: [0.22, 0.61, 0.36, 1] }}
                   className="flex items-center justify-center"
                 >
-                  <Sun size={13} />
+                  <Sun size={16} />
                 </motion.span>
               ) : (
                 <motion.span
@@ -283,7 +283,7 @@ export default function TopBar() {
                   transition={{ duration: 0.18, ease: [0.22, 0.61, 0.36, 1] }}
                   className="flex items-center justify-center"
                 >
-                  <Moon size={13} />
+                  <Moon size={16} />
                 </motion.span>
               )}
             </AnimatePresence>
@@ -293,19 +293,19 @@ export default function TopBar() {
         {/* Environment chip */}
         <div
           className={cn(
-            'hidden h-7 items-center gap-1.5 rounded-md border border-[var(--color-line-default)]',
+            'hidden h-9 items-center gap-2 rounded-lg border border-[var(--color-line-default)]',
             'bg-[var(--color-surface-2)] px-2.5 lg:flex',
           )}
         >
-          <Zap size={9} className={cn('shrink-0', ENV_COLORS[workspace.env] ?? ENV_COLORS.prod)} />
-          <span className={cn('text-[10px] font-mono', ENV_COLORS[workspace.env] ?? ENV_COLORS.prod)}>
+          <Zap size={12} className={cn('shrink-0', ENV_COLORS[workspace.env] ?? ENV_COLORS.prod)} />
+          <span className={cn('text-[12px] font-mono', ENV_COLORS[workspace.env] ?? ENV_COLORS.prod)}>
             {workspace.env}
           </span>
           <span
             className={cn(
               'h-1.5 w-1.5 rounded-full',
               ENV_DOT[workspace.env] ?? ENV_DOT.prod,
-              workspace.env === 'run' && 'shadow-[0_0_5px_rgba(59,130,246,0.7)]',
+              workspace.env === 'run' && 'shadow-[0_0_5px_rgba(34,211,238,0.7)]',
               workspace.env === 'prod' && 'shadow-[0_0_5px_rgba(16,185,129,0.7)]',
             )}
           />

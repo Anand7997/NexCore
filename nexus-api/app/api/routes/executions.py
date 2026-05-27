@@ -1,7 +1,9 @@
 """Execution trigger, monitoring, and control routes."""
 from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.database.session import get_db
 from app.domain.executions.repository import ExecutionRepository
@@ -13,7 +15,7 @@ from app.domain.executions.schemas import (
 from app.domain.test_configuration.repository import TestConfigurationRepository
 from app.domain.workflows.schemas import WorkflowCreateSchema, WorkflowEdgeSchema, WorkflowNodePositionSchema, WorkflowNodeSchema
 from app.domain.workflows.repository import WorkflowRepository
-from app.database.models import TestCaseModel, TestModuleModel, TestProjectModel, WorkflowModel, WorkflowNodeModel
+from app.database.models import TestCaseModel, TestModuleModel, TestProjectModel, TestStepModel, WorkflowModel, WorkflowNodeModel
 from app.distributed.scheduler import DistributedScheduler
 from app.enterprise.audit import record_audit
 from app.enterprise.auth import AuthContext, get_auth_context
@@ -108,35 +110,78 @@ def _xpath_selector(xpath: str) -> str:
     return value
 
 
-def _step_selector(step) -> str:
+def _locator_entry(strategy: str, locator: str, source: str = "") -> dict[str, str]:
+    strategy = (strategy or "").strip().lower()
+    locator = str(locator or "").strip()
+    if not locator:
+        return {}
+    if not strategy:
+        if locator.startswith("role="):
+            strategy = "role"
+        elif locator.startswith(("xpath=", "/", "(")):
+            strategy = "xpath"
+        else:
+            strategy = "css"
+    return {"strategy": strategy, "locator": locator, "source": source}
+
+
+def _step_locator_candidates(step) -> list[dict[str, str]]:
+    locators: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+
+    def add(strategy: str, locator: str, source: str = "") -> None:
+        entry = _locator_entry(strategy, locator, source)
+        if not entry:
+            return
+        key = (entry["strategy"], entry["locator"])
+        if key not in seen:
+            seen.add(key)
+            locators.append(entry)
+
     element = getattr(step, "page_element", None)
     if element is not None:
-        for value in (
-            getattr(element, "xpath", None),
-            getattr(element, "css_selector", None),
-            f"#{getattr(element, 'id_attr', '')}" if getattr(element, "id_attr", "") else "",
-            f"[name='{getattr(element, 'name_attr', '')}']" if getattr(element, "name_attr", "") else "",
-        ):
-            selector = _xpath_selector(str(value or ""))
-            if selector:
-                return selector
+        for locator in getattr(element, "alternative_locators", None) or []:
+            if isinstance(locator, dict):
+                add(str(locator.get("strategy") or ""), str(locator.get("locator") or ""), "page_element")
+        add("css", getattr(element, "css_selector", "") or "", "page_element")
+        add("xpath", getattr(element, "xpath", "") or "", "page_element")
+        if getattr(element, "id_attr", ""):
+            add("css", f"#{getattr(element, 'id_attr')}", "page_element")
+        if getattr(element, "name_attr", ""):
+            add("css", f"[name='{getattr(element, 'name_attr')}']", "page_element")
 
     bindings = step.bindings or {}
     web_binding = bindings.get("web") if isinstance(bindings, dict) else None
     if isinstance(web_binding, dict):
-        for key in ("xpath", "selector", "best_locator", "css_selector"):
-            selector = _xpath_selector(str(web_binding.get(key) or ""))
-            if selector:
-                return selector
+        for locator in web_binding.get("alternative_locators") or web_binding.get("locators") or []:
+            if isinstance(locator, dict):
+                add(str(locator.get("strategy") or ""), str(locator.get("locator") or locator.get("selector") or ""), "binding")
+        for key, strategy in (
+            ("selector", ""),
+            ("best_locator", ""),
+            ("css_selector", "css"),
+            ("xpath", "xpath"),
+        ):
+            add(strategy, str(web_binding.get(key) or ""), "binding")
 
     data = step.test_data or {}
     if isinstance(data, dict):
-        for key in ("xpath", "selector", "css_selector"):
-            selector = _xpath_selector(str(data.get(key) or ""))
-            if selector:
-                return selector
+        for locator in data.get("alternative_locators") or data.get("locators") or []:
+            if isinstance(locator, dict):
+                add(str(locator.get("strategy") or ""), str(locator.get("locator") or locator.get("selector") or ""), "test_data")
+        for key, strategy in (("selector", ""), ("css_selector", "css"), ("xpath", "xpath"), ("locator", "")):
+            add(strategy, str(data.get(key) or ""), "test_data")
 
-    return _xpath_selector(step.target or "")
+    add("", step.target or "", "target")
+    return locators
+
+
+def _step_selector(step) -> str:
+    for locator in _step_locator_candidates(step):
+        selector = _xpath_selector(locator["locator"])
+        if selector:
+            return selector
+    return ""
 
 
 def _step_value(step) -> str:
@@ -158,8 +203,12 @@ def _step_value(step) -> str:
     return ""
 
 
+def _normalized_action(action: str) -> str:
+    return action.lower().replace("_", " ").replace("-", " ").strip()
+
+
 def _is_navigate_action(action: str) -> bool:
-    normalized = action.replace("_", " ").replace("-", " ")
+    normalized = _normalized_action(action)
     return any(
         token in normalized
         for token in ("navigate", "open browser", "open page", "open webpage", "go to", "goto", "visit", "launch", "load url")
@@ -204,7 +253,7 @@ def _step_element_type(step) -> str:
 
 
 def _is_dropdown_select_action(action: str, element_type: str, value: str) -> bool:
-    normalized = action.replace("_", " ").replace("-", " ")
+    normalized = _normalized_action(action)
     if element_type in {"select", "option", "combobox", "listbox"}:
         return bool(value)
     if any(token in normalized for token in ("dropdown", "pick option", "choose option", "select option")):
@@ -212,39 +261,152 @@ def _is_dropdown_select_action(action: str, element_type: str, value: str) -> bo
     return False
 
 
+def _step_target_locator(step) -> str:
+    data = step.test_data or {}
+    if isinstance(data, dict):
+        for key in ("target_selector", "target_xpath", "drop_target", "target_locator"):
+            value = data.get(key)
+            if value not in (None, ""):
+                return _xpath_selector(str(value))
+    bindings = step.bindings or {}
+    web_binding = bindings.get("web") if isinstance(bindings, dict) else None
+    if isinstance(web_binding, dict):
+        for key in ("target_selector", "target_xpath", "drop_target", "target_locator"):
+            value = web_binding.get(key)
+            if value not in (None, ""):
+                return _xpath_selector(str(value))
+    if step.secondary_value:
+        return _xpath_selector(step.secondary_value)
+    return ""
+
+
+def _step_target_locators(step) -> list[dict[str, str]]:
+    locators: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+
+    def add(strategy: str, locator: str, source: str = "") -> None:
+        entry = _locator_entry(strategy, locator, source)
+        if not entry:
+            return
+        key = (entry["strategy"], entry["locator"])
+        if key not in seen:
+            seen.add(key)
+            locators.append(entry)
+
+    data = step.test_data or {}
+    if isinstance(data, dict):
+        for locator in data.get("target_locators") or []:
+            if isinstance(locator, dict):
+                add(str(locator.get("strategy") or ""), str(locator.get("locator") or locator.get("selector") or ""), "test_data")
+        for key, strategy in (("target_selector", ""), ("target_xpath", "xpath"), ("drop_target", ""), ("target_locator", "")):
+            add(strategy, str(data.get(key) or ""), "test_data")
+
+    bindings = step.bindings or {}
+    web_binding = bindings.get("web") if isinstance(bindings, dict) else None
+    if isinstance(web_binding, dict):
+        for locator in web_binding.get("target_locators") or []:
+            if isinstance(locator, dict):
+                add(str(locator.get("strategy") or ""), str(locator.get("locator") or locator.get("selector") or ""), "binding")
+        for key, strategy in (("target_selector", ""), ("target_xpath", "xpath"), ("drop_target", ""), ("target_locator", "")):
+            add(strategy, str(web_binding.get(key) or ""), "binding")
+
+    add("", step.secondary_value or "", "secondary_value")
+    return locators
+
+
+def _normalise_key_value(value: str) -> str:
+    aliases = {
+        "CTRL": "Control",
+        "CONTROL": "Control",
+        "CMD": "Meta",
+        "COMMAND": "Meta",
+        "META": "Meta",
+        "ALT": "Alt",
+        "OPTION": "Alt",
+        "SHIFT": "Shift",
+        "TAB": "Tab",
+        "ENTER": "Enter",
+        "RETURN": "Enter",
+        "ESC": "Escape",
+        "ESCAPE": "Escape",
+        "SPACE": "Space",
+    }
+    parts = [part.strip() for part in str(value or "").split("+") if part.strip()]
+    if not parts:
+        return ""
+    normalized = []
+    for part in parts:
+        upper = part.upper()
+        normalized.append(aliases.get(upper, upper if len(part) == 1 else part))
+    return "+".join(normalized)
+
+
 def _node_type_and_config(step) -> tuple[str, dict]:
     action = (step.action_type or step.intent or step.name or "").lower()
+    normalized_action = _normalized_action(action)
     selector = _step_selector(step)
+    locators = _step_locator_candidates(step)
     value = _step_value(step)
     expected = step.expected_result or step.secondary_value or value
     element_type = _step_element_type(step)
+
+    def with_locators(config: dict) -> dict:
+        if locators:
+            config["locators"] = locators
+        return config
 
     if _is_navigate_action(action):
         url = _step_navigate_url(step)
         if url:
             return "web.navigate", {"url": url, "wait_until": "load", "timeout_ms": 30000}
 
+    if "press key" in normalized_action or normalized_action == "press key":
+        key = _normalise_key_value(value or step.secondary_value or expected)
+        focus_locators = [locator for locator in locators if locator.get("source") != "target"]
+        config = {"key": key, "timeout_ms": 15000}
+        if focus_locators:
+            config["selector"] = _xpath_selector(focus_locators[0]["locator"])
+            config["locators"] = focus_locators
+        return "web.press_key", config
+    if "drag" in normalized_action and "drop" in normalized_action and selector:
+        target_selector = _step_target_locator(step)
+        target_locators = _step_target_locators(step)
+        config = {"selector": selector, "target_selector": target_selector, "timeout_ms": 15000}
+        if target_locators:
+            config["target_locators"] = target_locators
+        return "web.drag_and_drop", with_locators(config)
+    if "double click" in normalized_action and selector:
+        return "web.double_click", with_locators({"selector": selector, "timeout_ms": 15000})
+    if any(token in normalized_action for token in ("right click", "context click")) and selector:
+        return "web.right_click", with_locators({"selector": selector, "timeout_ms": 15000})
+    if any(token in normalized_action for token in ("mouse over", "hover")) and selector:
+        return "web.hover", with_locators({"selector": selector, "timeout_ms": 15000})
+    if any(token in normalized_action for token in ("radio button", "checkbox", "check box")) and selector:
+        return "web.check", with_locators({"selector": selector, "checked": str(value).lower() not in {"false", "0", "no", "unchecked"}, "timeout_ms": 15000})
+
+    if _is_dropdown_select_action(action, element_type, value) and selector:
+        return "web.select", with_locators({"selector": selector, "value": value, "timeout_ms": 15000})
     if "select" in action and selector:
         if _is_dropdown_select_action(action, element_type, value):
-            return "web.select", {"selector": selector, "value": value, "timeout_ms": 15000}
-        return "web.click", {"selector": selector, "timeout_ms": 15000}
+            return "web.select", with_locators({"selector": selector, "value": value, "timeout_ms": 15000})
+        return "web.click", with_locators({"selector": selector, "timeout_ms": 15000})
     if any(token in action for token in ("fill", "type", "input", "enter")) and selector:
         if not value:
-            return "web.click", {
+            return "web.click", with_locators({
                 "selector": selector,
                 "timeout_ms": 15000,
                 "needs_review": True,
                 "review_reason": "Input step is missing a value; clicked the target for manual review.",
-            }
-        return "web.fill", {"selector": selector, "value": value, "timeout_ms": 15000}
+            })
+        return "web.fill", with_locators({"selector": selector, "value": value, "timeout_ms": 15000})
     if any(token in action for token in ("assert", "verify", "validate", "expect", "check")) and selector:
-        return "web.assert_text", {"selector": selector, "expected": expected, "match": "contains", "timeout_ms": 15000}
+        return "web.assert_text", with_locators({"selector": selector, "expected": expected, "match": "contains", "timeout_ms": 15000})
     if "upload" in action and selector:
-        return "web.upload", {"selector": selector, "file_path": value, "timeout_ms": 15000}
+        return "web.upload", with_locators({"selector": selector, "file_path": value, "timeout_ms": 15000})
     if any(token in action for token in ("wait", "pause")):
-        return "web.wait", {"selector": selector, "state": "visible", "delay_ms": 1000, "timeout_ms": 15000}
+        return "web.wait", with_locators({"selector": selector, "state": "visible", "delay_ms": 1000, "timeout_ms": 15000})
     if selector:
-        return "web.click", {"selector": selector, "timeout_ms": 15000}
+        return "web.click", with_locators({"selector": selector, "timeout_ms": 15000})
     return "web.wait", {"delay_ms": 750, "timeout_ms": 15000}
 
 
@@ -339,6 +501,54 @@ def _workflow_from_test_cases(test_cases: list, schema: TestCaseExecutionTrigger
     )
 
 
+async def _refresh_workflow_nodes_from_test_steps(db: AsyncSession, workflow_id: str) -> int:
+    """Refresh persisted workflow nodes that were generated from Test Configuration.
+
+    Older generated workflows can outlive action-mapping fixes. Before launching an
+    existing workflow, rebuild node type/config from the linked TestStep rows so
+    current page-element locators and action mappings are used.
+    """
+    nodes = (
+        await db.scalars(
+            select(WorkflowNodeModel)
+            .where(WorkflowNodeModel.workflow_id == workflow_id)
+            .order_by(WorkflowNodeModel.position_x)
+        )
+    ).all()
+    refreshed = 0
+    for node in nodes:
+        step_id = (node.config or {}).get("test_step_id")
+        if not step_id:
+            continue
+        step = await db.scalar(
+            select(TestStepModel)
+            .where(TestStepModel.id == step_id)
+            .options(
+                selectinload(TestStepModel.page),
+                selectinload(TestStepModel.page_element),
+            )
+        )
+        if step is None or not step.is_enabled:
+            continue
+        node_type, config = _node_type_and_config(step)
+        config = {
+            **config,
+            "test_step_id": step.id,
+            "page_id": step.page_id,
+            "page_element_id": step.page_element_id,
+        }
+        if node.type != node_type or node.config != config or node.label != step.name:
+            node.type = node_type
+            node.label = step.name or node.label
+            node.description = step.description or step.expected_result or ""
+            node.test_case_id = step.test_case_id
+            node.config = config
+            refreshed += 1
+    if refreshed:
+        await db.flush()
+    return refreshed
+
+
 def _node_to_response(n) -> ExecutionNodeResponse:
     return ExecutionNodeResponse(
         id=n.id,
@@ -366,6 +576,7 @@ async def trigger_execution(
     workflow = await wf_repo.get(schema.workflow_id)
     if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
+    await _refresh_workflow_nodes_from_test_steps(db, workflow.id)
 
     repo = ExecutionRepository(db)
     execution = await repo.create(schema)

@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className="h-full" suppressHydrationWarning>
-      <body className="h-full bg-(--color-bg-base) text-(--color-fg-default) antialiased">
+      <body className="readability-boost h-full bg-(--color-bg-base) text-(--color-fg-default) antialiased">
         <QueryProvider>
           <AppShell>{children}</AppShell>
         </QueryProvider>

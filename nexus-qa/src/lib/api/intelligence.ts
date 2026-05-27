@@ -43,6 +43,8 @@ export interface FixSuggestion {
   execution_id: string;
   node_key: string;
   node_label: string;
+  scope: 'execution_quick_heal';
+  category: 'minor_locator' | 'minor_element';
   title: string;
   rationale: string;
   target_type: 'page_element' | 'test_step';
@@ -119,6 +121,10 @@ export function useImplementFixSuggestion() {
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: intelligenceKeys.fixes(variables.executionId) });
       qc.invalidateQueries({ queryKey: intelligenceKeys.execution(variables.executionId) });
+      qc.invalidateQueries({ queryKey: ['executions', variables.executionId] });
+      qc.invalidateQueries({ queryKey: ['test-configuration'] });
+      qc.invalidateQueries({ queryKey: ['page-repository'] });
+      qc.invalidateQueries({ queryKey: ['workflows'] });
     },
   });
 }

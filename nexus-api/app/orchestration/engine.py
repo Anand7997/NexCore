@@ -136,6 +136,7 @@ class ExecutionEngine:
                 duration_ms=duration_ms,
             ))
         else:
+            await self._mark_execution_failed("One or more nodes failed")
             await self._finish_queue("failed")
             await bus.publish(ExecutionFailed(
                 execution_id=self.execution_id,
@@ -207,8 +208,11 @@ class ExecutionEngine:
                 )
                 self._active_tasks[node_key] = task
 
-            # Termination: nothing pending
+            # Continue after a skip-only wave so failure propagation reaches
+            # every descendant before the execution closes.
             if not in_progress:
+                if skippable:
+                    continue
                 break
 
             # Always wait for at least one in-progress task to finish

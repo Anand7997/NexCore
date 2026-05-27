@@ -502,6 +502,7 @@ class TestConfigurationRepository:
         step = await self.db.get(TestStepModel, step_id)
         if step is None:
             return None
+        fields_set = getattr(schema, "model_fields_set", set())
         if schema.name is not None:
             step.name = schema.name
         if schema.description is not None:
@@ -511,11 +512,11 @@ class TestConfigurationRepository:
         # Normalized fields
         if schema.action_type is not None:
             step.action_type = schema.action_type
-        if schema.page_id is not None:
+        if "page_id" in fields_set:
             step.page_id = schema.page_id
-        if schema.page_element_id is not None:
+        if "page_element_id" in fields_set:
             step.page_element_id = schema.page_element_id
-        if schema.api_endpoint_id is not None:
+        if "api_endpoint_id" in fields_set:
             step.api_endpoint_id = schema.api_endpoint_id
         if schema.input_value is not None:
             step.input_value = schema.input_value

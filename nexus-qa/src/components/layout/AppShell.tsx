@@ -158,7 +158,7 @@ function CommandPalette() {
     <AnimatePresence>
       {commandPaletteOpen && (
         <motion.div
-          className="fixed inset-0 z-[60] flex items-start justify-center bg-black/60 px-4 pt-[10vh] backdrop-blur-sm"
+          className="fixed inset-0 z-[60] flex items-start justify-center bg-[rgba(3,17,24,0.72)] px-4 pt-[10vh] backdrop-blur-sm"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -170,25 +170,25 @@ function CommandPalette() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -8, scale: 0.97 }}
             transition={{ duration: 0.18, ease: [0.22, 0.61, 0.36, 1] }}
-            className="w-full max-w-[640px] overflow-hidden rounded-xl glass-ultra shadow-[var(--shadow-modal)]"
+            className="w-full max-w-[780px] overflow-hidden rounded-2xl glass-ultra shadow-[var(--shadow-modal)]"
             onMouseDown={(e) => e.stopPropagation()}
           >
             {/* Search input */}
-            <div className="flex items-center gap-3 border-b border-[var(--color-line-default)] px-4 py-3.5">
-              <Search size={15} className="shrink-0 text-[var(--color-accent-default)]" />
+            <div className="flex items-center gap-3.5 border-b border-[var(--color-line-default)] px-5 py-4">
+              <Search size={18} className="shrink-0 text-[var(--color-accent-default)]" />
               <input
                 ref={inputRef}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="Navigate to a workspace or run a command..."
-                className="flex-1 bg-transparent text-[13px] text-[var(--color-fg-default)] outline-none placeholder:text-[var(--color-fg-subtle)]"
+                className="flex-1 bg-transparent text-[15px] leading-6 text-[var(--color-fg-default)] outline-none placeholder:text-[var(--color-fg-subtle)]"
               />
               <span className="kbd shrink-0">Esc</span>
             </div>
 
             {/* Results */}
-            <div className="max-h-[420px] overflow-y-auto p-2">
+            <div className="max-h-[520px] overflow-y-auto p-3">
               {flatFiltered.length === 0 ? (
                 <div className="flex flex-col items-center gap-2 py-10 text-center">
                   <Search size={20} className="text-[var(--color-fg-subtle)]" />
@@ -201,7 +201,7 @@ function CommandPalette() {
                   if (!items || items.length === 0) return null;
                   return (
                     <div key={cat} className="mb-1">
-                      <p className={cn('mb-1 mt-2 px-3 text-[9px] font-mono uppercase tracking-[0.18em]', CATEGORY_COLORS[cat])}>
+                      <p className={cn('mb-1.5 mt-3 px-3 text-[11px] font-mono uppercase tracking-[0.18em]', CATEGORY_COLORS[cat])}>
                         {cat}
                       </p>
                       {items.map((command) => {
@@ -215,27 +215,27 @@ function CommandPalette() {
                             onClick={() => setCommandPaletteOpen(false)}
                             onMouseEnter={() => setSelectedIndex(globalIdx)}
                             className={cn(
-                              'flex items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-all duration-100',
+                              'flex items-center gap-4 rounded-xl px-3.5 py-3 text-left transition-all duration-100',
                               isSelected
-                                ? 'bg-[rgba(139,92,246,0.12)] border border-[rgba(139,92,246,0.20)]'
+                                ? 'bg-[rgba(34,211,238,0.12)] border border-[rgba(34,211,238,0.22)]'
                                 : 'border border-transparent hover:bg-[var(--color-surface-2)]',
                             )}
                           >
                             <div
                               className={cn(
-                                'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-colors duration-100',
+                                'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border transition-colors duration-100',
                                 isSelected
-                                  ? 'border-[rgba(139,92,246,0.35)] bg-[rgba(139,92,246,0.12)] text-violet-400'
+                                  ? 'border-[rgba(34,211,238,0.35)] bg-[rgba(34,211,238,0.12)] text-[var(--color-accent-default)]'
                                   : 'border-[var(--color-line-default)] bg-[var(--color-bg-base)] text-[var(--color-fg-muted)]',
                               )}
                             >
-                              <Icon size={14} />
+                              <Icon size={17} />
                             </div>
                             <div className="min-w-0 flex-1">
-                              <p className={cn('text-[13px] font-medium', isSelected ? 'text-[var(--color-fg-default)]' : 'text-[var(--color-fg-default)]')}>
+                              <p className={cn('text-[15px] font-semibold', isSelected ? 'text-[var(--color-fg-default)]' : 'text-[var(--color-fg-default)]')}>
                                 {command.label}
                               </p>
-                              <p className="truncate text-[11px] text-[var(--color-fg-subtle)]">
+                              <p className="truncate text-[13px] leading-5 text-[var(--color-fg-subtle)]">
                                 {command.hint}
                               </p>
                             </div>
@@ -252,11 +252,11 @@ function CommandPalette() {
             </div>
 
             {/* Footer */}
-            <div className="flex items-center gap-3 border-t border-[var(--color-line-subtle)] px-4 py-2">
+            <div className="flex items-center gap-3 border-t border-[var(--color-line-subtle)] px-5 py-3">
               <span className="text-[10px] text-[var(--color-fg-subtle)] font-mono">↑↓ navigate</span>
               <span className="text-[10px] text-[var(--color-fg-subtle)] font-mono">↵ open</span>
               <div className="flex-1" />
-              <span className="text-[10px] text-[var(--color-fg-subtle)]">
+              <span className="text-[12px] text-[var(--color-fg-subtle)]">
                 {flatFiltered.length} result{flatFiltered.length !== 1 ? 's' : ''}
               </span>
             </div>
@@ -359,28 +359,28 @@ function AICopilotPanel() {
   }
 
   return (
-    <div className="flex h-full w-80 flex-col bg-[var(--color-surface-1)] border-l border-[var(--color-line-default)]">
+    <div className="flex h-full w-96 flex-col bg-[var(--color-surface-1)] border-l border-[var(--color-line-default)]">
       {/* Header */}
       <div
         className="flex shrink-0 items-center justify-between border-b border-[var(--color-line-default)] px-4 py-3"
         style={{
-          background: 'linear-gradient(135deg, rgba(139,92,246,0.08) 0%, rgba(59,130,246,0.04) 100%)',
+          background: 'linear-gradient(135deg, rgba(34,211,238,0.10) 0%, rgba(34,197,94,0.055) 100%)',
         }}
       >
         <div className="flex items-center gap-2.5">
           <div
             className="flex h-7 w-7 items-center justify-center rounded-lg"
             style={{
-              background: 'linear-gradient(135deg, rgba(139,92,246,0.25) 0%, rgba(59,130,246,0.15) 100%)',
-              border: '1px solid rgba(139,92,246,0.30)',
+              background: 'linear-gradient(135deg, rgba(34,211,238,0.25) 0%, rgba(34,197,94,0.15) 100%)',
+              border: '1px solid rgba(34,211,238,0.30)',
               boxShadow: 'var(--glow-violet-sm)',
             }}
           >
-            <Brain size={13} className="text-violet-400" />
+            <Brain size={13} className="text-[var(--color-accent-default)]" />
           </div>
           <div>
             <p className="text-[11px] font-bold tracking-tight text-[var(--color-fg-default)]">
-              NEXCORE <span className="text-violet-400">AI</span>
+              NEXCORE <span className="text-[var(--color-accent-default)]">AI</span>
             </p>
             <div className="flex items-center gap-1">
               <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-state-success)] shadow-[0_0_4px_rgba(16,185,129,0.6)]" />
@@ -444,13 +444,13 @@ function AICopilotPanel() {
                 'max-w-[85%] rounded-lg px-3 py-2 text-[12px] leading-relaxed',
                 msg.role === 'assistant'
                   ? 'bg-[var(--color-surface-2)] border border-[var(--color-line-subtle)] text-[var(--color-fg-default)]'
-                  : 'bg-[rgba(139,92,246,0.15)] border border-[rgba(139,92,246,0.20)] text-[var(--color-fg-default)]',
+                  : 'bg-[rgba(34,211,238,0.14)] border border-[rgba(34,211,238,0.22)] text-[var(--color-fg-default)]',
               )}
             >
               {msg.role === 'assistant' && (
                 <div className="flex items-center gap-1 mb-1">
-                  <Brain size={9} className="text-violet-400" />
-                  <span className="text-[9px] font-mono text-violet-400">AI</span>
+                  <Brain size={9} className="text-[var(--color-accent-default)]" />
+                  <span className="text-[9px] font-mono text-[var(--color-accent-default)]">AI</span>
                 </div>
               )}
               {msg.content}
@@ -463,11 +463,11 @@ function AICopilotPanel() {
           <div className="flex justify-start">
             <div className="max-w-[85%] rounded-lg border border-[var(--color-line-subtle)] bg-[var(--color-surface-2)] px-3 py-2 text-[12px] leading-relaxed text-[var(--color-fg-default)]">
               <div className="flex items-center gap-1 mb-1">
-                <Brain size={9} className="text-violet-400 animate-pulse" />
-                <span className="text-[9px] font-mono text-violet-400">AI</span>
+                <Brain size={9} className="text-[var(--color-accent-default)] animate-pulse" />
+                <span className="text-[9px] font-mono text-[var(--color-accent-default)]">AI</span>
               </div>
               {streamingContent}
-              <span className="animate-blink-caret inline-block ml-0.5 h-3 w-0.5 bg-violet-400" />
+              <span className="animate-blink-caret inline-block ml-0.5 h-3 w-0.5 bg-[var(--color-accent-default)]" />
             </div>
           </div>
         )}
@@ -476,12 +476,12 @@ function AICopilotPanel() {
           <div className="flex justify-start">
             <div className="rounded-lg border border-[var(--color-line-subtle)] bg-[var(--color-surface-2)] px-3 py-2.5">
               <div className="flex items-center gap-1.5">
-                <Brain size={10} className="text-violet-400 animate-pulse" />
+                <Brain size={10} className="text-[var(--color-accent-default)] animate-pulse" />
                 <div className="flex gap-1">
                   {[0, 1, 2].map((i) => (
                     <span
                       key={i}
-                      className="h-1.5 w-1.5 rounded-full bg-violet-400 opacity-60 animate-bounce"
+                      className="h-1.5 w-1.5 rounded-full bg-[var(--color-accent-default)] opacity-60 animate-bounce"
                       style={{ animationDelay: `${i * 120}ms` }}
                     />
                   ))}
@@ -500,7 +500,7 @@ function AICopilotPanel() {
           className={cn(
             'flex items-end gap-2 rounded-lg border px-3 py-2 transition-colors',
             'bg-[var(--color-surface-2)] border-[var(--color-line-default)]',
-            'focus-within:border-[rgba(139,92,246,0.35)]',
+            'focus-within:border-[rgba(34,211,238,0.38)]',
           )}
         >
           <textarea
@@ -564,7 +564,7 @@ export default function AppShell({ children }: AppShellProps) {
 
   return (
     <TooltipProvider delayDuration={400}>
-      <div className="relative flex h-screen w-screen overflow-hidden bg-[var(--color-bg-base)] noise-overlay">
+      <div className="nex-shell relative flex h-screen w-screen overflow-hidden bg-[var(--color-bg-base)] noise-overlay">
         {/* Subtle dot grid */}
         <div className="pointer-events-none absolute inset-0 z-0 bg-grid opacity-100" />
 
@@ -572,14 +572,14 @@ export default function AppShell({ children }: AppShellProps) {
         <div
           className="pointer-events-none absolute left-[20%] top-[30%] h-px w-[200px] opacity-20 animate-beam-line"
           style={{
-            background: 'linear-gradient(90deg, transparent, rgba(139,92,246,0.5), transparent)',
+            background: 'linear-gradient(90deg, transparent, rgba(34,211,238,0.50), transparent)',
             animationDuration: '6s',
           }}
         />
         <div
           className="pointer-events-none absolute right-[25%] bottom-[40%] h-px w-[150px] opacity-15 animate-beam-line"
           style={{
-            background: 'linear-gradient(90deg, transparent, rgba(59,130,246,0.4), transparent)',
+            background: 'linear-gradient(90deg, transparent, rgba(34,197,94,0.34), transparent)',
             animationDuration: '8s',
             animationDelay: '3s',
           }}
@@ -587,17 +587,17 @@ export default function AppShell({ children }: AppShellProps) {
         <div
           className="pointer-events-none absolute left-[60%] top-[60%] h-px w-[100px] opacity-10 animate-beam-line"
           style={{
-            background: 'linear-gradient(90deg, transparent, rgba(6,182,212,0.35), transparent)',
+            background: 'linear-gradient(90deg, transparent, rgba(103,232,249,0.35), transparent)',
             animationDuration: '10s',
             animationDelay: '5s',
           }}
         />
 
-        {/* Radial ambient glow — violet core */}
+        {/* Radial ambient glow — AI Inspect cyan core */}
         <div
           className="pointer-events-none absolute left-1/4 top-0 h-[400px] w-[600px] rounded-full opacity-[0.035] animate-glow-breathe"
           style={{
-            background: 'radial-gradient(ellipse, rgba(139,92,246,0.8) 0%, transparent 70%)',
+            background: 'radial-gradient(ellipse, rgba(34,211,238,0.85) 0%, transparent 70%)',
             transform: 'translate(-50%, -30%)',
             filter: 'blur(40px)',
           }}
@@ -607,7 +607,7 @@ export default function AppShell({ children }: AppShellProps) {
         <div
           className="pointer-events-none fixed left-0 right-0 top-0 z-50 h-px"
           style={{
-            background: 'linear-gradient(90deg, transparent 0%, rgba(139,92,246,0.45) 35%, rgba(59,130,246,0.30) 65%, transparent 100%)',
+            background: 'linear-gradient(90deg, transparent 0%, rgba(34,211,238,0.45) 35%, rgba(34,197,94,0.30) 65%, transparent 100%)',
           }}
         />
 
@@ -618,7 +618,7 @@ export default function AppShell({ children }: AppShellProps) {
           <TopBar />
 
           <div className="flex min-h-0 flex-1 overflow-hidden">
-            <main className="min-h-0 flex-1 overflow-y-auto">
+            <main className="nex-main min-h-0 flex-1 overflow-y-auto scroll-smooth">
               {children}
             </main>
 
@@ -628,10 +628,10 @@ export default function AppShell({ children }: AppShellProps) {
                 <motion.div
                   key="copilot-panel"
                   initial={{ width: 0, opacity: 0 }}
-                  animate={{ width: 320, opacity: 1 }}
+                  animate={{ width: 384, opacity: 1 }}
                   exit={{ width: 0, opacity: 0 }}
                   transition={{ duration: 0.28, ease: [0.25, 0.46, 0.45, 0.94] }}
-                  className="shrink-0 overflow-hidden"
+                  className="nex-inspector shrink-0 overflow-hidden"
                   style={{ minWidth: 0 }}
                 >
                   {inspectorExecutionId ? <AIInspector /> : <AICopilotPanel />}
@@ -661,7 +661,7 @@ export default function AppShell({ children }: AppShellProps) {
                   n.severity === 'error'   && 'glass-md border border-red-500/20',
                   n.severity === 'success' && 'glass-md border border-emerald-500/20',
                   n.severity === 'warn'    && 'glass-md border border-amber-500/20',
-                  n.severity === 'info'    && 'glass-md border border-violet-500/20',
+                  n.severity === 'info'    && 'glass-md border border-cyan-500/20',
                 )}
               >
                 {/* Severity icon dot */}
@@ -671,7 +671,7 @@ export default function AppShell({ children }: AppShellProps) {
                     n.severity === 'error'   && 'bg-red-500/15 text-red-400',
                     n.severity === 'success' && 'bg-emerald-500/15 text-emerald-400',
                     n.severity === 'warn'    && 'bg-amber-500/15 text-amber-400',
-                    n.severity === 'info'    && 'bg-violet-500/15 text-violet-400',
+                    n.severity === 'info'    && 'bg-cyan-500/15 text-cyan-300',
                   )}
                 >
                   {n.severity === 'error' ? '!' : n.severity === 'success' ? '✓' : n.severity === 'warn' ? '!' : 'i'}

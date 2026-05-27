@@ -144,6 +144,9 @@ const LLM_PROVIDERS = [
   { id: 'anthropic', label: 'Anthropic', icon: Bot },
 ] as const;
 
+const DEFAULT_AI_PROVIDER = 'openai' as const;
+const DEFAULT_AI_MODEL = 'gpt-5.5';
+
 const TEXT_BRD_EXTENSIONS = ['.txt', '.md', '.markdown', '.text'];
 const DOCX_BRD_EXTENSIONS = ['.docx'];
 
@@ -1275,8 +1278,8 @@ function InputStep({ onStart, isPending }: {
       module_name: moduleName || projectName,
       page_name: pageName,
       platform,
-      ai_provider: 'null',
-      ai_model: 'null',
+      ai_provider: DEFAULT_AI_PROVIDER,
+      ai_model: DEFAULT_AI_MODEL,
     });
   }
 
@@ -1452,17 +1455,19 @@ function ModelSelectionStep({ onSelectModel, isPending }: {
   onSelectModel: (model: AIModelInfo) => void; isPending: boolean;
 }) {
   const { data: modelsData, isLoading } = useAIModels();
-  const [provider, setProvider] = useState<'openai' | 'anthropic'>('openai');
+  const [provider, setProvider] = useState<'openai' | 'anthropic'>(DEFAULT_AI_PROVIDER);
   const [selected, setSelected] = useState<AIModelInfo | null>(null);
   const models = modelsData?.models ?? [];
   const providerModels = models.filter((model) => model.provider === provider);
-  const recommended = providerModels.find((m) => m.configured && m.tier === 'balanced')
-    ?? providerModels.find((m) => m.configured)
+  const configuredModels = providerModels.filter((model) => model.configured);
+  const recommended = configuredModels.find((m) => m.model_id === DEFAULT_AI_MODEL)
+    ?? configuredModels.find((m) => m.tier === 'best')
+    ?? configuredModels[0]
     ?? providerModels[0];
 
   useEffect(() => {
-    setSelected(null);
-  }, [provider]);
+    setSelected(recommended?.configured ? recommended : null);
+  }, [provider, recommended?.model_id, recommended?.configured]);
 
   return (
     <div className="max-w-3xl mx-auto space-y-5">
@@ -1541,8 +1546,8 @@ function ModelSelectionStep({ onSelectModel, isPending }: {
           </div>
         </div>
       )}
-      <Button variant="neon" size="md" disabled={!selected || isPending}
-        onClick={() => selected && onSelectModel(selected)}
+      <Button variant="neon" size="md" disabled={!selected?.configured || isPending}
+        onClick={() => selected?.configured && onSelectModel(selected)}
         className="w-full justify-center gap-2">
         {isPending ? <><Loader2 size={14} className="animate-spin" /> Processing&hellip;</> : <><Sparkles size={14} />{selected ? `Generate Scenarios with ${selected.display_name}` : 'Select a configured model'}</>}
       </Button>

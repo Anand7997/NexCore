@@ -27,7 +27,7 @@ export default function MetricCard({
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, delay, ease: [0.25, 0.46, 0.45, 0.94] }}
-      className="glass rounded-xl p-4 relative overflow-hidden group transition-all duration-300 hover:border-white/10"
+      className="glass rounded-2xl p-5 relative overflow-hidden group transition-all duration-300 hover:border-white/10"
       style={{ '--glow': glowColor } as React.CSSProperties}
     >
       {/* Ambient glow */}
@@ -38,12 +38,12 @@ export default function MetricCard({
 
       <div className="relative z-10">
         <div className="flex items-start justify-between mb-3">
-          <div className="p-2 rounded-lg bg-white/5">
-            <Icon size={16} className={iconColor} />
+          <div className="p-2.5 rounded-xl bg-white/5">
+            <Icon size={19} className={iconColor} />
           </div>
           {change !== undefined && (
             <span className={cn(
-              'text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded',
+              'text-[12px] font-mono font-semibold px-2 py-1 rounded-md',
               isPositive ? 'text-emerald-400 bg-emerald-500/10' : 'text-red-400 bg-red-500/10',
             )}>
               {isPositive ? '+' : ''}{change.toFixed(1)}%
@@ -53,11 +53,11 @@ export default function MetricCard({
 
         <div className="space-y-0.5">
           <div className="flex items-baseline gap-1">
-            <span className="text-2xl font-bold text-white tracking-tight">{displayValue}</span>
-            {unit && <span className="text-xs text-slate-400 font-mono">{unit}</span>}
+            <span className="text-3xl font-bold text-white tracking-tight">{displayValue}</span>
+            {unit && <span className="text-sm text-slate-400 font-mono">{unit}</span>}
           </div>
-          <p className="text-xs text-slate-400 font-medium">{label}</p>
-          {sublabel && <p className="text-[10px] text-slate-600 font-mono">{sublabel}</p>}
+          <p className="text-sm text-slate-400 font-medium">{label}</p>
+          {sublabel && <p className="text-[12px] text-slate-600 font-mono">{sublabel}</p>}
         </div>
       </div>
     </motion.div>

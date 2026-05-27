@@ -139,18 +139,53 @@ class BrowserDiscoveryAdapter:
 
         for mcp_el in parsed:
             alt_locators: list[LocatorCandidate] = []
+
+            def add_locator(strategy: str, locator: str, score: float, reason: str, *, verified: bool = True, element_count: int = 1) -> None:
+                if not locator:
+                    return
+                if any(existing.strategy == strategy and existing.locator == locator for existing in alt_locators):
+                    return
+                alt_locators.append(LocatorCandidate(
+                    strategy=strategy,
+                    locator=locator,
+                    verified=verified,
+                    element_count=element_count,
+                    score=score,
+                    reason=reason,
+                ))
+
+            for locator in mcp_el.alternative_locators:
+                if isinstance(locator, dict):
+                    add_locator(
+                        str(locator.get("strategy") or "css"),
+                        str(locator.get("locator") or ""),
+                        float(locator.get("score") or 0.5),
+                        str(locator.get("reason") or "MCP-provided alternative locator"),
+                        verified=bool(locator.get("verified", False)),
+                        element_count=int(locator.get("element_count") or 0),
+                    )
+            for locator in mcp_el.semantic_locator_candidates():
+                add_locator(
+                    str(locator.get("strategy") or "xpath"),
+                    str(locator.get("locator") or ""),
+                    float(locator.get("score") or 0.5),
+                    str(locator.get("reason") or "AI semantic MCP locator"),
+                    verified=bool(locator.get("verified", False)),
+                    element_count=int(locator.get("element_count") or 0),
+                )
+            add_locator(
+                mcp_el.locator_strategy,
+                mcp_el.selector,
+                mcp_el.confidence,
+                "MCP primary selector",
+                verified=True,
+                element_count=1,
+            )
             if mcp_el.xpath:
-                alt_locators.append(LocatorCandidate(
-                    strategy="xpath", locator=mcp_el.xpath,
-                    verified=True, element_count=1,
-                    score=0.40, reason="MCP-provided xpath",
-                ))
+                add_locator("xpath", mcp_el.xpath, 0.40, "MCP-provided xpath")
             if mcp_el.css_selector and mcp_el.css_selector != mcp_el.xpath:
-                alt_locators.append(LocatorCandidate(
-                    strategy="css", locator=mcp_el.css_selector,
-                    verified=True, element_count=1,
-                    score=0.60, reason="MCP-provided css",
-                ))
+                add_locator("css", mcp_el.css_selector, 0.60, "MCP-provided css")
+            alt_locators.sort(key=lambda locator: locator.score, reverse=True)
 
             el_model = PageElementModel(
                 page_id=resolved_page_id,

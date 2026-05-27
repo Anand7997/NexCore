@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 
 import httpx
@@ -23,6 +24,19 @@ _STRATEGY_CONFIDENCE: dict[str, float] = {
 }
 
 
+def _xpath_literal(value: str) -> str:
+    if '"' not in value:
+        return f'"{value}"'
+    if "'" not in value:
+        return f"'{value}'"
+    parts = value.split('"')
+    return "concat(" + ', '.join(f'"{part}"' if part else "'\"'" for part in parts) + ")"
+
+
+def _short_text(value: str, limit: int = 80) -> str:
+    return re.sub(r"\s+", " ", value).strip()[:limit]
+
+
 @dataclass
 class MCPElement:
     selector: str
@@ -37,6 +51,7 @@ class MCPElement:
     placeholder: str
     label: str
     confidence: float
+    alternative_locators: list[dict] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
 
     @property
@@ -52,15 +67,68 @@ class MCPElement:
     @property
     def locator_strategy(self) -> str:
         sel = self.selector.lower()
+        if sel.startswith("role="):
+            return "role"
+        if sel.startswith(("xpath=", "/", "(")):
+            return "xpath"
         if "data-testid" in sel or "[testid]" in sel:
             return "testid"
-        if self.aria_label:
-            return "aria-label"
+        if sel.startswith(("#", ".", "[")) or ">" in sel:
+            return "css"
         if self.id_attr:
             return "id"
         if self.css_selector:
             return "css"
+        if self.aria_label:
+            return "aria-label"
         return "xpath"
+
+    def semantic_locator_candidates(self) -> list[dict]:
+        candidates: list[dict] = []
+        form_tag = "input"
+        if self.element_type in {"textarea", "select"}:
+            form_tag = self.element_type
+
+        label = _short_text(self.label or self.aria_label)
+        if label and self.element_type in {"input", "textarea", "select", "textbox", "searchbox"}:
+            candidates.append({
+                "strategy": "xpath",
+                "locator": f"//label[contains(normalize-space(.), {_xpath_literal(label)})]/following::{form_tag}[1]",
+                "verified": False,
+                "element_count": 0,
+                "score": 0.82,
+                "reason": "AI semantic label-relative xpath from MCP element metadata",
+            })
+        placeholder = _short_text(self.placeholder)
+        if placeholder and self.element_type in {"input", "textarea", "textbox", "searchbox"}:
+            candidates.append({
+                "strategy": "css",
+                "locator": f'{form_tag}[placeholder="{placeholder.replace(chr(34), chr(92) + chr(34))}"]',
+                "verified": False,
+                "element_count": 0,
+                "score": 0.78,
+                "reason": "AI semantic placeholder css from MCP element metadata",
+            })
+            candidates.append({
+                "strategy": "xpath",
+                "locator": f"//{form_tag}[contains(@placeholder, {_xpath_literal(placeholder)})]",
+                "verified": False,
+                "element_count": 0,
+                "score": 0.76,
+                "reason": "AI semantic placeholder xpath from MCP element metadata",
+            })
+        text = _short_text(self.text)
+        if text:
+            tag = "a" if self.element_type in {"a", "link"} else self.element_type or "*"
+            candidates.append({
+                "strategy": "xpath",
+                "locator": f"//{tag}[contains(text(), {_xpath_literal(text)})]",
+                "verified": False,
+                "element_count": 0,
+                "score": 0.64,
+                "reason": "AI semantic text xpath from MCP element metadata",
+            })
+        return candidates
 
 
 class MCPPlaywrightAdapter:
@@ -126,7 +194,30 @@ class MCPPlaywrightAdapter:
             text = item.get("text") or item.get("innerText") or item.get("textContent") or ""
             text = str(text).strip()[:120]
             xpath = item.get("xpath") or item.get("full_xpath") or ""
-            css_sel = item.get("css") or item.get("css_selector") or selector
+            css_sel = item.get("css") or item.get("css_selector") or ""
+            if not css_sel and not str(selector).startswith(("/", "xpath=")):
+                css_sel = selector
+            raw_alternatives = (
+                item.get("alternative_locators")
+                or item.get("locators")
+                or item.get("locator_candidates")
+                or []
+            )
+            alternative_locators: list[dict] = []
+            if isinstance(raw_alternatives, list):
+                for locator in raw_alternatives:
+                    if isinstance(locator, dict):
+                        loc = locator.get("locator") or locator.get("selector") or ""
+                        if loc:
+                            strategy = str(locator.get("strategy") or "").lower()
+                            alternative_locators.append({
+                                "strategy": strategy or ("xpath" if str(loc).startswith(("/", "xpath=")) else "css"),
+                                "locator": str(loc),
+                                "verified": bool(locator.get("verified", False)),
+                                "element_count": int(locator.get("element_count") or locator.get("count") or 0),
+                                "score": float(locator.get("score") or locator.get("confidence") or 0.5),
+                                "reason": str(locator.get("reason") or "MCP-provided alternative locator"),
+                            })
 
             # Score the confidence based on what attributes are available
             confidence = _STRATEGY_CONFIDENCE["xpath"]  # default
@@ -158,6 +249,7 @@ class MCPPlaywrightAdapter:
                 placeholder=str(placeholder),
                 label=str(aria_label),
                 confidence=confidence,
+                alternative_locators=alternative_locators,
                 tags=tags,
             ))
 

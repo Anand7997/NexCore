@@ -85,6 +85,22 @@ def _candidate(strategy: str, locator: str, priority_weight: int) -> dict[str, A
     return {"strategy": strategy, "locator": locator, "priority_weight": priority_weight}
 
 
+def _short_text(value: str, limit: int = 80) -> str:
+    return re.sub(r"\s+", " ", value).strip()[:limit]
+
+
+def _contains_xpath(tag: str, target: str, value: str) -> str:
+    text = _short_text(value)
+    if target == "text":
+        return f"//{tag}[contains(normalize-space(.), {_xpath_literal(text)})]"
+    return f"//{tag}[contains(@{target}, {_xpath_literal(text)})]"
+
+
+def _is_absolute_xpath(locator: str) -> bool:
+    value = locator.strip()
+    return value.startswith("/html") or value.startswith("/body") or value.startswith("html/")
+
+
 def _generate_locator_candidates(tag: str, attrs: dict[str, Any], roles: list[str]) -> list[dict[str, Any]]:
     """Generate candidate locators in preference order."""
     candidates: list[dict[str, Any]] = []
@@ -104,18 +120,24 @@ def _generate_locator_candidates(tag: str, attrs: dict[str, Any], roles: list[st
     placeholder = str(attrs.get("placeholder") or "")
     if placeholder and tag in ("input", "textarea"):
         candidates.append(_candidate("css", f'{tag}[placeholder="{_quote_attr(placeholder)}"]', 88))
+        candidates.append(_candidate("xpath", _contains_xpath(tag, "placeholder", placeholder), 86))
 
     id_val = str(attrs.get("id") or "")
     if _is_stable_id(id_val):
         candidates.append(_candidate("id", _css_id(id_val), 82))
+        candidates.append(_candidate("xpath", f"//{tag}[@id={_xpath_literal(id_val)}]", 76))
 
     name_val = str(attrs.get("name") or "")
     if name_val and len(name_val) > 1:
         candidates.append(_candidate("name", f'[name="{_quote_attr(name_val)}"]', 78))
+        candidates.append(_candidate("xpath", f"//{tag}[@name={_xpath_literal(name_val)}]", 74))
 
     text_content = str(attrs.get("text_content") or "").strip()
-    if text_content and tag in ("button", "a", "span", "h1", "h2", "h3", "h4", "h5", "h6") and len(text_content) < 80:
+    text_tags = {"button", "a", "span", "label", "p", "h1", "h2", "h3", "h4", "h5", "h6"}
+    if text_content and tag in text_tags and len(text_content) < 80:
         candidates.append(_candidate("text", f'{tag}:has-text("{_quote_playwright(text_content)}")', 66))
+        candidates.append(_candidate("xpath", _contains_xpath(tag, "text", text_content), 64))
+        candidates.append(_candidate("xpath", f"//{tag}[contains(text(), {_xpath_literal(_short_text(text_content))})]", 62))
 
     classes = attrs.get("class_list") or []
     if isinstance(classes, list) and classes and _is_stable_class([str(c) for c in classes]):
@@ -132,19 +154,21 @@ def _generate_locator_candidates(tag: str, attrs: dict[str, Any], roles: list[st
         val = str(attrs.get(attr_name) or "")
         if val and len(val) < 60:
             candidates.append(_candidate("css", f'{tag}[{attr_name}="{_quote_attr(val)}"]', 45))
+            candidates.append(_candidate("xpath", _contains_xpath(tag, attr_name, val), 60))
 
     label_text = str(attrs.get("label_text") or "").strip()
     if label_text and tag in ("input", "textarea", "select"):
-        xpath = str(attrs.get("xpath") or "")
-        if xpath:
-            candidates.append(_candidate("xpath", xpath, 35))
+        candidates.append(_candidate("xpath", f"//label[contains(normalize-space(.), {_xpath_literal(label_text)})]/following::{tag}[1]", 90))
+        if id_val:
+            candidates.append(_candidate("xpath", f"//label[@for={_xpath_literal(id_val)}]/following::{tag}[1]", 84))
 
     if text_content and tag in ("button", "a", "span"):
         candidates.append(_candidate("xpath", f"//{tag}[normalize-space()={_xpath_literal(text_content)}]", 32))
 
     original_xpath = str(attrs.get("xpath") or "")
     if original_xpath:
-        candidates.append(_candidate("xpath", original_xpath, 22))
+        weight = 12 if _is_absolute_xpath(original_xpath) else 28
+        candidates.append(_candidate("xpath", original_xpath, weight))
 
     seen: set[tuple[str, str]] = set()
     unique: list[dict[str, Any]] = []
@@ -177,6 +201,8 @@ def _score_locator(
     length = len(locator)
     length_score = 1.0 if length < 60 else (0.75 if length < 140 else 0.45)
     xpath_penalty = 0.85 if strategy == "xpath" and len(locator) > 120 else 1.0
+    if strategy == "xpath" and _is_absolute_xpath(locator):
+        xpath_penalty *= 0.45
 
     score = (
         base * 0.24

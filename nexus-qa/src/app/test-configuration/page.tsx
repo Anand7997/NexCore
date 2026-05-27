@@ -17,7 +17,7 @@ import {
   useUpdateTestModule, useUpdateTestProject,
 } from '@/lib/api/testConfiguration';
 import { useAllPages } from '@/lib/api/pageRepository';
-import type { TestCase, TestModule, TestProject, TestStep, PageDetail } from '@/lib/api/types';
+import type { LocatorCandidate, PageDetail, PageElement, TestCase, TestModule, TestProject, TestStep } from '@/lib/api/types';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -87,25 +87,70 @@ function normalizeAction(raw?: string) {
 
 function asStr(v: unknown) { return typeof v === 'string' ? v : ''; }
 function webBind(s: TestStep) { return s.bindings?.web ?? {}; }
-function stepPage(s: TestStep) { return asStr(webBind(s).page); }
-function stepElement(s: TestStep) { return asStr(webBind(s).element_name) || s.target; }
+function findRepoPage(pageRepo: PageDetail[], pageName?: string, pageId?: string | null) {
+  const byId = pageId ? pageRepo.find((p) => p.id === pageId) : null;
+  if (byId) return byId;
+  const name = (pageName || '').trim().toLowerCase();
+  return name ? pageRepo.find((p) => p.name.toLowerCase() === name) ?? null : null;
+}
+function findRepoElement(page: PageDetail | null | undefined, elementName?: string, elementId?: string | null) {
+  if (!page) return null;
+  const byId = elementId ? page.elements.find((e) => e.id === elementId) : null;
+  if (byId) return byId;
+  const name = (elementName || '').trim().toLowerCase();
+  return name ? page.elements.find((e) => e.name.toLowerCase() === name) ?? null : null;
+}
+function stepPage(s: TestStep, pageRepo: PageDetail[] = []) {
+  return asStr(webBind(s).page) || findRepoPage(pageRepo, undefined, s.page_id)?.name || '';
+}
+function stepElement(s: TestStep, pageRepo: PageDetail[] = []) {
+  const bound = asStr(webBind(s).element_name) || s.target;
+  if (bound) return bound;
+  const page = findRepoPage(pageRepo, undefined, s.page_id);
+  return findRepoElement(page, undefined, s.page_element_id)?.name || '';
+}
 function isNavigateAction(action?: string) {
   const normalized = normalizeAction(action);
   return normalized === 'OPEN_BROWSER' || normalized === 'NAVIGATE_TO_URL';
 }
 function pageUrlForStep(s: TestStep, pageRepo: PageDetail[] = []) {
-  const pageName = stepPage(s);
-  const repoPage = pageRepo.find((p) => p.name.toLowerCase() === pageName.toLowerCase());
+  const pageName = stepPage(s, pageRepo);
+  const repoPage = findRepoPage(pageRepo, pageName, s.page_id);
   return repoPage?.url_pattern || '';
 }
-function stepLocator(s: TestStep) {
+function resolvePathFromRepo(el: Pick<PageElement, 'xpath' | 'css_selector' | 'id_attr' | 'name_attr' | 'name'>): string {
+  if (el.xpath) return el.xpath;
+  if (el.css_selector) return el.css_selector;
+  if (el.id_attr) return `#${el.id_attr}`;
+  if (el.name_attr) return `[name="${el.name_attr}"]`;
+  return el.name;
+}
+function locatorCandidatesForElement(el: PageElement | null | undefined): LocatorCandidate[] {
+  if (!el) return [];
+  const candidates: LocatorCandidate[] = [];
+  const add = (strategy: string, locator?: string, reason = 'Page repository locator') => {
+    const value = (locator || '').trim();
+    if (!value) return;
+    if (candidates.some((c) => c.strategy === strategy && c.locator === value)) return;
+    candidates.push({ strategy, locator: value, verified: false, element_count: 0, score: 1, reason });
+  };
+  add(el.locator_strategy || (el.xpath ? 'xpath' : 'css'), resolvePathFromRepo(el), 'Primary page repository locator');
+  add('xpath', el.xpath, 'XPath from page repository');
+  add('css', el.css_selector, 'CSS selector from page repository');
+  (el.alternative_locators ?? []).forEach((candidate) => add(candidate.strategy, candidate.locator, candidate.reason || 'Alternative page repository locator'));
+  return candidates;
+}
+function stepLocator(s: TestStep, pageRepo: PageDetail[] = []) {
+  const page = findRepoPage(pageRepo, stepPage(s, pageRepo), s.page_id);
+  const repoEl = findRepoElement(page, stepElement(s, pageRepo), s.page_element_id);
   return (
     asStr(s.path_location) ||
     asStr(s.xpath) ||
     asStr(webBind(s).xpath) ||
     asStr(s.test_data?.xpath) ||
     asStr(s.test_data?.locator) ||
-    asStr(webBind(s).selector)
+    asStr(webBind(s).selector) ||
+    resolvePathFromRepo(repoEl ?? { xpath: '', css_selector: '', id_attr: '', name_attr: '', name: '' })
   );
 }
 function stepValue(s: TestStep, pageRepo: PageDetail[] = []) {
@@ -113,9 +158,6 @@ function stepValue(s: TestStep, pageRepo: PageDetail[] = []) {
 }
 function stepAssertionType(s: TestStep) { return asStr(s.test_data?.assertion_type); }
 function stepSecondaryAction(s: TestStep) { return asStr(s.test_data?.secondary_action); }
-function resolvePathFromRepo(el: { xpath: string; css_selector: string; name: string }): string {
-  return el.xpath || el.css_selector || el.name;
-}
 function tagsToCSV(t: string[]) { return t.join(', '); }
 function csvToTags(c: string) { return c.split(',').map((t) => t.trim()).filter(Boolean); }
 function uniqueSorted(vs: string[]) { return [...new Set(vs.filter(Boolean))].sort((a, b) => a.localeCompare(b)); }
@@ -124,24 +166,36 @@ type StepUpdates = {
   description?: string; action?: string; page?: string;
   element?: string; locator?: string; value?: string;
   assertionType?: string; secondaryAction?: string;
+  pageId?: string | null; pageElementId?: string | null;
   stepOrder?: number; isEnabled?: boolean;
 };
 
-function buildPayload(step: TestStep, u: StepUpdates) {
+function buildPayload(step: TestStep, u: StepUpdates, pageRepo: PageDetail[] = []) {
   const action          = normalizeAction(u.action ?? step.intent);
-  const page            = u.page            ?? stepPage(step);
-  const elem            = u.element         ?? stepElement(step);
-  const loc             = u.locator         ?? stepLocator(step);
-  const val             = u.value           ?? stepValue(step);
+  const page            = u.page            ?? stepPage(step, pageRepo);
+  const lookupPageId    = u.pageId !== undefined ? u.pageId : step.page_id;
+  const lookupElementId = u.pageElementId !== undefined ? u.pageElementId : step.page_element_id;
+  const repoPage        = findRepoPage(pageRepo, page, lookupPageId);
+  const elem            = u.element         ?? stepElement(step, pageRepo);
+  const repoElement     = findRepoElement(repoPage, elem, lookupElementId);
+  const loc             = (u.locator         ?? stepLocator(step, pageRepo)) || resolvePathFromRepo(repoElement ?? { xpath: '', css_selector: '', id_attr: '', name_attr: '', name: '' });
+  const val             = u.value           ?? stepValue(step, pageRepo);
   const assertionType   = u.assertionType   ?? stepAssertionType(step);
   const secondaryAction = u.secondaryAction ?? stepSecondaryAction(step);
   const desc            = u.description     ?? step.description;
+  const pageId          = u.pageId !== undefined ? u.pageId : repoPage?.id ?? step.page_id ?? null;
+  const pageElementId   = u.pageElementId !== undefined
+    ? u.pageElementId
+    : repoElement?.id ?? ((u.page !== undefined || u.element !== undefined) ? null : step.page_element_id ?? null);
+  const locators        = repoElement ? locatorCandidatesForElement(repoElement) : [];
   return {
     name: desc.trim().slice(0, 90) || `Step ${u.stepOrder ?? step.step_order}`,
     description: desc,
     step_order: u.stepOrder ?? step.step_order,
     intent: action,
     action_type: action,
+    page_id: pageId,
+    page_element_id: pageElementId,
     target: elem,
     input_value: val,
     expected_result: step.expected_result,
@@ -149,15 +203,30 @@ function buildPayload(step: TestStep, u: StepUpdates) {
       ...step.test_data,
       value: val,
       action_type: action,
+      page_id: pageId,
+      page_element_id: pageElementId,
+      page_name: page,
+      element_name: elem,
       xpath: loc,
       path_location: loc,
+      locator: loc,
+      locators,
       ...(assertionType   ? { assertion_type:   assertionType   } : {}),
       ...(secondaryAction ? { secondary_action: secondaryAction } : {}),
     },
     tags: step.tags,
     bindings: {
       ...step.bindings,
-      web: { ...(step.bindings?.web ?? {}), page, element_name: elem, selector: loc, xpath: loc },
+      web: {
+        ...(step.bindings?.web ?? {}),
+        page,
+        page_id: pageId,
+        element_name: elem,
+        page_element_id: pageElementId,
+        selector: loc,
+        xpath: loc,
+        locators,
+      },
     },
     is_enabled: u.isEnabled ?? step.is_enabled,
   };
@@ -178,24 +247,26 @@ function StepRow({
 }) {
   const [desc, setDesc]               = useState(step.description);
   const [action, setAction]           = useState(normalizeAction(step.intent));
-  const [page, setPage]               = useState(stepPage(step));
-  const [element, setElement]         = useState(stepElement(step));
-  const [locator, setLocator]         = useState(stepLocator(step));
+  const [page, setPage]               = useState(stepPage(step, pageRepo));
+  const [element, setElement]         = useState(stepElement(step, pageRepo));
+  const [locator, setLocator]         = useState(stepLocator(step, pageRepo));
   const [value, setValue]             = useState(stepValue(step, pageRepo));
   const [assertionType, setAssType]   = useState(stepAssertionType(step));
   const [secondaryAction, setSecAct]  = useState(stepSecondaryAction(step));
   const [enabled, setEnabled]         = useState(step.is_enabled);
   const prevId = useRef(step.id);
   const pageRepoSignature = pageRepo.map((p) => `${p.id}:${p.url_pattern}`).join('|');
+  const prevPageRepoSignature = useRef(pageRepoSignature);
 
   useEffect(() => {
-    if (prevId.current === step.id && value) return;
+    if (prevId.current === step.id && prevPageRepoSignature.current === pageRepoSignature && value) return;
     prevId.current = step.id;
+    prevPageRepoSignature.current = pageRepoSignature;
     setDesc(step.description);
     setAction(normalizeAction(step.intent));
-    setPage(stepPage(step));
-    setElement(stepElement(step));
-    setLocator(stepLocator(step));
+    setPage(stepPage(step, pageRepo));
+    setElement(stepElement(step, pageRepo));
+    setLocator(stepLocator(step, pageRepo));
     setValue(stepValue(step, pageRepo));
     setAssType(stepAssertionType(step));
     setSecAct(stepSecondaryAction(step));
@@ -205,28 +276,109 @@ function StepRow({
   const color = ACTION_COLOR[action] ?? '#8b8c97';
 
   // Page repository: elements for the selected page
-  const repoPage = pageRepo.find((p) => p.name.toLowerCase() === page.toLowerCase());
+  const repoPage = findRepoPage(pageRepo, page, step.page_id);
   const repoElems = repoPage?.elements ?? [];
   const repoPageNames = pageRepo.map((p) => p.name);
   const repoElemNames = repoElems.map((e) => e.name);
+  const elementChoices = repoPage ? repoElemNames : elementOptions;
 
   const isAssertionAction = action === 'ASSERTION' || action === 'VISUAL_ASSERTION';
 
   function save(overrides: StepUpdates = {}) {
-    onUpdate({ description: desc, action, page, element, locator, value, assertionType, secondaryAction, isEnabled: enabled, ...overrides });
+    onUpdate({
+      description: desc,
+      action,
+      page,
+      pageId: repoPage?.id ?? null,
+      element,
+      pageElementId: findRepoElement(repoPage, element, step.page_element_id)?.id ?? null,
+      locator,
+      value,
+      assertionType,
+      secondaryAction,
+      isEnabled: enabled,
+      ...overrides,
+    });
+  }
+
+  function handlePageChange(nextPageName: string) {
+    const nextPage = findRepoPage(pageRepo, nextPageName);
+    const matchingElement = findRepoElement(nextPage, element);
+    const nextElement = matchingElement ? matchingElement.name : '';
+    const nextLocator = matchingElement ? resolvePathFromRepo(matchingElement) : '';
+    setPage(nextPageName);
+    setElement(nextElement);
+    setLocator(nextLocator);
+    onUpdate({
+      description: desc,
+      action,
+      page: nextPageName,
+      pageId: nextPage?.id ?? null,
+      element: nextElement,
+      pageElementId: matchingElement?.id ?? null,
+      locator: nextLocator,
+      value,
+      assertionType,
+      secondaryAction,
+      isEnabled: enabled,
+    });
+  }
+
+  function handleElementChange(nextElementName: string) {
+    const repoEl = findRepoElement(repoPage, nextElementName);
+    const nextLocator = repoEl ? resolvePathFromRepo(repoEl) : locatorByElement.get(nextElementName) || '';
+    setElement(nextElementName);
+    setLocator(nextLocator);
+    onUpdate({
+      description: desc,
+      action,
+      page,
+      pageId: repoPage?.id ?? null,
+      element: nextElementName,
+      pageElementId: repoEl?.id ?? null,
+      locator: nextLocator,
+      value,
+      assertionType,
+      secondaryAction,
+      isEnabled: enabled,
+    });
   }
 
   function handleElementBlur() {
-    const repoEl = repoElems.find((e) => e.name.toLowerCase() === element.toLowerCase());
+    const repoEl = findRepoElement(repoPage, element);
     if (repoEl) {
       const repoLoc = resolvePathFromRepo(repoEl);
       if (repoLoc && !locator) setLocator(repoLoc);
-      onUpdate({ description: desc, action, page, element, locator: repoLoc || locator, value, assertionType, secondaryAction, isEnabled: enabled });
+      onUpdate({
+        description: desc,
+        action,
+        page,
+        pageId: repoPage?.id ?? null,
+        element,
+        pageElementId: repoEl.id,
+        locator: repoLoc || locator,
+        value,
+        assertionType,
+        secondaryAction,
+        isEnabled: enabled,
+      });
       return;
     }
     const auto = locatorByElement.get(element);
     if (auto && !locator) setLocator(auto);
-    onUpdate({ description: desc, action, page, element, locator: auto || locator, value, assertionType, secondaryAction, isEnabled: enabled });
+    onUpdate({
+      description: desc,
+      action,
+      page,
+      pageId: repoPage?.id ?? null,
+      element,
+      pageElementId: null,
+      locator: auto || locator,
+      value,
+      assertionType,
+      secondaryAction,
+      isEnabled: enabled,
+    });
   }
 
   const ic = 'w-full bg-transparent text-[11px] font-mono text-[var(--color-fg-default)] outline-none placeholder:text-[var(--color-fg-subtle)]/40';
@@ -261,19 +413,34 @@ function StepRow({
       </td>
       {/* Page */}
       <td className={`${bd} w-28`}>
-        <input value={page} onChange={(e) => setPage(e.target.value)} onBlur={() => save()}
-          className={ic} placeholder="Page" list={`pg-${step.id}`} />
-        <datalist id={`pg-${step.id}`}>
-          {[...new Set([...repoPageNames, ...pageOptions])].map((p) => <option key={p} value={p} />)}
-        </datalist>
+        <select
+          value={page}
+          onChange={(e) => handlePageChange(e.target.value)}
+          onBlur={() => save()}
+          className={`${ic} cursor-pointer`}
+        >
+          <option value="" style={{ background: '#0d0d18', color: '#8b8c97' }}>Select page</option>
+          {[...new Set([...repoPageNames, ...(page ? [page] : []), ...pageOptions])].map((p) => (
+            <option key={p} value={p} style={{ background: '#0d0d18', color: '#e7e7f0' }}>{p}</option>
+          ))}
+        </select>
       </td>
       {/* Element */}
       <td className={`${bd} min-w-[140px]`}>
-        <input value={element} onChange={(e) => setElement(e.target.value)} onBlur={handleElementBlur}
-          className={ic} placeholder="Element" list={`el-${step.id}`} />
-        <datalist id={`el-${step.id}`}>
-          {[...new Set([...repoElemNames, ...elementOptions])].map((e) => <option key={e} value={e} />)}
-        </datalist>
+        <select
+          value={element}
+          onChange={(e) => handleElementChange(e.target.value)}
+          onBlur={handleElementBlur}
+          className={`${ic} cursor-pointer`}
+          disabled={!page}
+        >
+          <option value="" style={{ background: '#0d0d18', color: '#8b8c97' }}>
+            {repoPage ? 'Select element' : 'Select page first'}
+          </option>
+          {[...new Set([...(element ? [element] : []), ...elementChoices])].map((e) => (
+            <option key={e} value={e} style={{ background: '#0d0d18', color: '#e7e7f0' }}>{e}</option>
+          ))}
+        </select>
       </td>
       {/* Paths / Location */}
       <td className={`${bd} min-w-[190px]`}>
@@ -489,9 +656,9 @@ export default function TestConfigurationPage() {
   }, [selCase?.id]);
 
   const allSteps      = projects.flatMap((p) => p.modules.flatMap((m) => m.test_cases.flatMap((c) => c.test_steps)));
-  const pageOptions   = uniqueSorted(allSteps.map(stepPage));
-  const elemOptions   = uniqueSorted(allSteps.map(stepElement));
-  const locByElem     = new Map(allSteps.map((s) => [stepElement(s), stepLocator(s)] as const).filter(([e, l]) => e && l));
+  const pageOptions   = uniqueSorted(allSteps.map((s) => stepPage(s, pageRepo)));
+  const elemOptions   = uniqueSorted(allSteps.map((s) => stepElement(s, pageRepo)));
+  const locByElem     = new Map(allSteps.map((s) => [stepElement(s, pageRepo), stepLocator(s, pageRepo)] as const).filter(([e, l]) => e && l));
   const totalModules  = projects.reduce((s, p) => s + p.modules.length, 0);
   const totalCases    = projects.reduce((s, p) => p.modules.reduce((ms, m) => ms + m.test_cases.length, s), 0);
   const totalSteps    = projects.reduce((s, p) => p.modules.reduce((ms, m) => m.test_cases.reduce((cs, c) => cs + c.test_steps.length, ms), s), 0);
@@ -516,7 +683,7 @@ export default function TestConfigurationPage() {
   }
 
   function doUpdateStep(step: TestStep, u: StepUpdates) {
-    updateAnyStep.mutate({ stepId: step.id, input: buildPayload(step, u) });
+    updateAnyStep.mutate({ stepId: step.id, input: buildPayload(step, u, pageRepo) });
   }
 
   function doMoveStep(step: TestStep, dir: -1 | 1) {
@@ -537,10 +704,17 @@ export default function TestConfigurationPage() {
   function addStep(after?: TestStep) {
     if (!selCase) return;
     const order = after ? after.step_order + 1 : selCase.test_steps.length + 1;
+    const sorted = [...selCase.test_steps].sort((a, b) => a.step_order - b.step_order);
+    const fallbackStep = after ?? sorted[sorted.length - 1];
+    const defaultPageName = fallbackStep ? stepPage(fallbackStep, pageRepo) : '';
+    const defaultPage = findRepoPage(pageRepo, defaultPageName);
     createStep.mutate({
       name: `Step ${order}`, description: '', step_order: order, intent: 'CLICK', target: '',
-      input_value: '', expected_result: '', test_data: { value: '', action_type: 'CLICK' },
-      tags: ['configured'], bindings: { web: { page:'', element_name:'', selector:'', xpath:'' } }, is_enabled: true,
+      action_type: 'CLICK',
+      page_id: defaultPage?.id ?? null,
+      page_element_id: null,
+      input_value: '', expected_result: '', test_data: { value: '', action_type: 'CLICK', page_id: defaultPage?.id ?? null, page_name: defaultPage?.name ?? '' },
+      tags: ['configured'], bindings: { web: { page: defaultPage?.name ?? '', page_id: defaultPage?.id ?? null, element_name:'', page_element_id: null, selector:'', xpath:'' } }, is_enabled: true,
     });
   }
 
