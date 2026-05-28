@@ -22,7 +22,7 @@ import type { LocatorCandidate, PageDetail, PageElement, TestCase, TestModule, T
 // ── Constants ──────────────────────────────────────────────────────────────────
 
 const ACTION_TYPES = [
-  'OPEN_BROWSER','CLICK','DOUBLE_CLICK','RIGHT_CLICK','MOUSE_OVER',
+  'OPEN_BROWSER','LAUNCH_APP','ATTACH_APP','ACTIVATE_WINDOW','CLICK','DOUBLE_CLICK','RIGHT_CLICK','MOUSE_OVER',
   'CLICK_AND_SELECT','CLICK_AND_TYPE','TYPE_AND_SELECT','CLEAR_AND_TYPE',
   'RADIO_BUTTON','DRAG_AND_DROP','SELECT_COUNT','INCREMENT','DECREMENT',
   'HANDLE_CHECKBOX','SWITCH_TO_NEW_WINDOW','SWITCH_TO_WINDOW_BY_INDEX',
@@ -47,6 +47,7 @@ const SECONDARY_ACTIONS = [
 const LEGACY_MAP: Record<string, string> = {
   DOUBLECLICK:'DOUBLE_CLICK',RIGHTCLICK:'RIGHT_CLICK',MOUSEOVER:'MOUSE_OVER',
   MOUSE_HOVER:'MOUSE_OVER',HOVER:'MOUSE_OVER',HOVER_MOUSE_OVER:'MOUSE_OVER',
+  LAUNCH_DESKTOP_APP:'LAUNCH_APP',OPEN_DESKTOP_APP:'LAUNCH_APP',ATTACH_DESKTOP_APP:'ATTACH_APP',
   CLEAR_TYPE:'CLEAR_AND_TYPE',TYPE_AND_CLEAR:'CLEAR_AND_TYPE',
   TYPE_SELECT:'TYPE_AND_SELECT',TYPE_AND_PICK:'TYPE_AND_SELECT',
   RADIO:'RADIO_BUTTON',RADIOBUTTON:'RADIO_BUTTON',HANDLE_RADIO:'RADIO_BUTTON',
@@ -61,7 +62,7 @@ const ACTION_COLOR: Record<string, string> = {
   CLICK:'#5b8cff',DOUBLE_CLICK:'#5b8cff',RIGHT_CLICK:'#5b8cff',MOUSE_OVER:'#4dd1e1',
   CLICK_AND_SELECT:'#5b8cff',CLICK_AND_TYPE:'#5b8cff',
   TYPE:'#45c08a',TYPE_AND_SELECT:'#45c08a',CLEAR_AND_TYPE:'#45c08a',SELECT:'#45c08a',
-  OPEN_BROWSER:'#a195ff',NAVIGATE_TO_URL:'#a195ff',REFRESH_PAGE:'#a195ff',
+  OPEN_BROWSER:'#a195ff',LAUNCH_APP:'#a195ff',ATTACH_APP:'#a195ff',ACTIVATE_WINDOW:'#a195ff',NAVIGATE_TO_URL:'#a195ff',REFRESH_PAGE:'#a195ff',
   GO_BACK:'#a195ff',GO_FORWARD:'#a195ff',
   ASSERTION:'#f0b558',VISUAL_ASSERTION:'#f0b558',
   READ_TEXT:'#4dd1e1',READ_VALUE:'#4dd1e1',READ_TOOLTIP:'#4dd1e1',READ_LABEL:'#4dd1e1',
@@ -87,6 +88,13 @@ function normalizeAction(raw?: string) {
 
 function asStr(v: unknown) { return typeof v === 'string' ? v : ''; }
 function webBind(s: TestStep) { return s.bindings?.web ?? {}; }
+function desktopBind(s: TestStep) { return s.bindings?.desktop ?? {}; }
+function isDesktopPlatform(platforms?: string[]) {
+  return (platforms ?? []).some((p) => ['desktop', 'windows'].includes(String(p).toLowerCase()));
+}
+function hasDesktopBinding(s: TestStep) {
+  return Object.keys(desktopBind(s)).length > 0 || asStr(s.test_data?.platform).toLowerCase() === 'desktop';
+}
 function findRepoPage(pageRepo: PageDetail[], pageName?: string, pageId?: string | null) {
   const byId = pageId ? pageRepo.find((p) => p.id === pageId) : null;
   if (byId) return byId;
@@ -101,31 +109,54 @@ function findRepoElement(page: PageDetail | null | undefined, elementName?: stri
   return name ? page.elements.find((e) => e.name.toLowerCase() === name) ?? null : null;
 }
 function stepPage(s: TestStep, pageRepo: PageDetail[] = []) {
-  return asStr(webBind(s).page) || findRepoPage(pageRepo, undefined, s.page_id)?.name || '';
+  const desktop = desktopBind(s);
+  return (
+    asStr(desktop.screen) ||
+    asStr(desktop.window) ||
+    asStr(desktop.application) ||
+    asStr(webBind(s).page) ||
+    findRepoPage(pageRepo, undefined, s.page_id)?.name ||
+    ''
+  );
 }
 function stepElement(s: TestStep, pageRepo: PageDetail[] = []) {
-  const bound = asStr(webBind(s).element_name) || s.target;
+  const desktop = desktopBind(s);
+  const bound = asStr(desktop.element_name) || asStr(desktop.object_name) || asStr(webBind(s).element_name) || s.target;
   if (bound) return bound;
   const page = findRepoPage(pageRepo, undefined, s.page_id);
   return findRepoElement(page, undefined, s.page_element_id)?.name || '';
 }
 function isNavigateAction(action?: string) {
   const normalized = normalizeAction(action);
-  return normalized === 'OPEN_BROWSER' || normalized === 'NAVIGATE_TO_URL';
+  return normalized === 'OPEN_BROWSER' || normalized === 'NAVIGATE_TO_URL' || normalized === 'LAUNCH_APP' || normalized === 'ATTACH_APP';
 }
 function pageUrlForStep(s: TestStep, pageRepo: PageDetail[] = []) {
   const pageName = stepPage(s, pageRepo);
   const repoPage = findRepoPage(pageRepo, pageName, s.page_id);
-  return repoPage?.url_pattern || '';
+  const desktop = desktopBind(s);
+  return (
+    asStr(desktop.application_path) ||
+    asStr(desktop.app) ||
+    asStr(s.test_data?.application_path) ||
+    repoPage?.url_pattern ||
+    ''
+  );
 }
-function resolvePathFromRepo(el: Pick<PageElement, 'xpath' | 'css_selector' | 'id_attr' | 'name_attr' | 'name'>): string {
+function resolvePathFromRepo(el: Pick<PageElement, 'xpath' | 'css_selector' | 'id_attr' | 'name_attr' | 'name'>, isDesktop = false): string {
+  if (isDesktop) {
+    if (el.id_attr) return el.id_attr;
+    if (el.name_attr) return el.name_attr;
+    if (el.xpath) return el.xpath;
+    if (el.css_selector) return el.css_selector;
+    return el.name;
+  }
   if (el.xpath) return el.xpath;
   if (el.css_selector) return el.css_selector;
   if (el.id_attr) return `#${el.id_attr}`;
   if (el.name_attr) return `[name="${el.name_attr}"]`;
   return el.name;
 }
-function locatorCandidatesForElement(el: PageElement | null | undefined): LocatorCandidate[] {
+function locatorCandidatesForElement(el: PageElement | null | undefined, isDesktop = false): LocatorCandidate[] {
   if (!el) return [];
   const candidates: LocatorCandidate[] = [];
   const add = (strategy: string, locator?: string, reason = 'Page repository locator') => {
@@ -134,15 +165,36 @@ function locatorCandidatesForElement(el: PageElement | null | undefined): Locato
     if (candidates.some((c) => c.strategy === strategy && c.locator === value)) return;
     candidates.push({ strategy, locator: value, verified: false, element_count: 0, score: 1, reason });
   };
-  add(el.locator_strategy || (el.xpath ? 'xpath' : 'css'), resolvePathFromRepo(el), 'Primary page repository locator');
-  add('xpath', el.xpath, 'XPath from page repository');
-  add('css', el.css_selector, 'CSS selector from page repository');
-  (el.alternative_locators ?? []).forEach((candidate) => add(candidate.strategy, candidate.locator, candidate.reason || 'Alternative page repository locator'));
+  add(el.locator_strategy || (isDesktop ? 'accessibility id' : (el.xpath ? 'xpath' : 'css')), resolvePathFromRepo(el, isDesktop), 'Primary repository locator');
+  if (isDesktop) {
+    add('accessibility id', el.id_attr, 'Automation ID from repository');
+    add('name', el.name_attr || el.name, 'Desktop name from repository');
+    add('xpath', el.xpath, 'UIA path from repository');
+    add('class name', el.css_selector, 'Class name from repository');
+  } else {
+    add('xpath', el.xpath, 'XPath from page repository');
+    add('css', el.css_selector, 'CSS selector from page repository');
+  }
+  (el.alternative_locators ?? []).forEach((candidate) => add(candidate.strategy, candidate.locator, candidate.reason || 'Alternative repository locator'));
   return candidates;
 }
-function stepLocator(s: TestStep, pageRepo: PageDetail[] = []) {
+function stepLocator(s: TestStep, pageRepo: PageDetail[] = [], isDesktop = false) {
   const page = findRepoPage(pageRepo, stepPage(s, pageRepo), s.page_id);
   const repoEl = findRepoElement(page, stepElement(s, pageRepo), s.page_element_id);
+  const desktop = desktopBind(s);
+  if (isDesktop || hasDesktopBinding(s)) {
+    return (
+      asStr(desktop.automation_id) ||
+      asStr(s.test_data?.automation_id) ||
+      asStr(desktop.selector) ||
+      asStr(desktop.locator) ||
+      asStr(s.test_data?.locator) ||
+      asStr(desktop.uia_path) ||
+      asStr(s.test_data?.uia_path) ||
+      asStr(s.path_location) ||
+      resolvePathFromRepo(repoEl ?? { xpath: '', css_selector: '', id_attr: '', name_attr: '', name: '' }, true)
+    );
+  }
   return (
     asStr(s.path_location) ||
     asStr(s.xpath) ||
@@ -153,7 +205,7 @@ function stepLocator(s: TestStep, pageRepo: PageDetail[] = []) {
     resolvePathFromRepo(repoEl ?? { xpath: '', css_selector: '', id_attr: '', name_attr: '', name: '' })
   );
 }
-function stepValue(s: TestStep, pageRepo: PageDetail[] = []) {
+function stepValue(s: TestStep, pageRepo: PageDetail[] = [], isDesktop = false) {
   return asStr(s.input_value) || asStr(s.test_data?.value) || (isNavigateAction(s.intent || s.action_type) ? pageUrlForStep(s, pageRepo) : '');
 }
 function stepAssertionType(s: TestStep) { return asStr(s.test_data?.assertion_type); }
@@ -170,7 +222,7 @@ type StepUpdates = {
   stepOrder?: number; isEnabled?: boolean;
 };
 
-function buildPayload(step: TestStep, u: StepUpdates, pageRepo: PageDetail[] = []) {
+function buildPayload(step: TestStep, u: StepUpdates, pageRepo: PageDetail[] = [], isDesktop = false) {
   const action          = normalizeAction(u.action ?? step.intent);
   const page            = u.page            ?? stepPage(step, pageRepo);
   const lookupPageId    = u.pageId !== undefined ? u.pageId : step.page_id;
@@ -178,8 +230,8 @@ function buildPayload(step: TestStep, u: StepUpdates, pageRepo: PageDetail[] = [
   const repoPage        = findRepoPage(pageRepo, page, lookupPageId);
   const elem            = u.element         ?? stepElement(step, pageRepo);
   const repoElement     = findRepoElement(repoPage, elem, lookupElementId);
-  const loc             = (u.locator         ?? stepLocator(step, pageRepo)) || resolvePathFromRepo(repoElement ?? { xpath: '', css_selector: '', id_attr: '', name_attr: '', name: '' });
-  const val             = u.value           ?? stepValue(step, pageRepo);
+  const loc             = (u.locator         ?? stepLocator(step, pageRepo, isDesktop)) || resolvePathFromRepo(repoElement ?? { xpath: '', css_selector: '', id_attr: '', name_attr: '', name: '' }, isDesktop);
+  const val             = u.value           ?? stepValue(step, pageRepo, isDesktop);
   const assertionType   = u.assertionType   ?? stepAssertionType(step);
   const secondaryAction = u.secondaryAction ?? stepSecondaryAction(step);
   const desc            = u.description     ?? step.description;
@@ -187,7 +239,34 @@ function buildPayload(step: TestStep, u: StepUpdates, pageRepo: PageDetail[] = [
   const pageElementId   = u.pageElementId !== undefined
     ? u.pageElementId
     : repoElement?.id ?? ((u.page !== undefined || u.element !== undefined) ? null : step.page_element_id ?? null);
-  const locators        = repoElement ? locatorCandidatesForElement(repoElement) : [];
+  const locators        = repoElement ? locatorCandidatesForElement(repoElement, isDesktop) : [];
+  const platformBindingKey = isDesktop ? 'desktop' : 'web';
+  const platformBinding = isDesktop
+    ? {
+        ...(step.bindings?.desktop ?? {}),
+        application: page,
+        window: page,
+        screen: page,
+        page_id: pageId,
+        element_name: elem,
+        object_name: elem,
+        page_element_id: pageElementId,
+        locator_strategy: 'accessibility id',
+        automation_id: loc,
+        selector: loc,
+        uia_path: asStr(step.test_data?.uia_path) || loc,
+        locators,
+      }
+    : {
+        ...(step.bindings?.web ?? {}),
+        page,
+        page_id: pageId,
+        element_name: elem,
+        page_element_id: pageElementId,
+        selector: loc,
+        xpath: loc,
+        locators,
+      };
   return {
     name: desc.trim().slice(0, 90) || `Step ${u.stepOrder ?? step.step_order}`,
     description: desc,
@@ -203,13 +282,17 @@ function buildPayload(step: TestStep, u: StepUpdates, pageRepo: PageDetail[] = [
       ...step.test_data,
       value: val,
       action_type: action,
+      platform: isDesktop ? 'desktop' : asStr(step.test_data?.platform),
       page_id: pageId,
       page_element_id: pageElementId,
       page_name: page,
+      screen: page,
+      window: page,
       element_name: elem,
       xpath: loc,
       path_location: loc,
       locator: loc,
+      ...(isDesktop ? { automation_id: loc, uia_path: loc, application_path: isNavigateAction(action) ? val : pageUrlForStep(step, pageRepo) } : {}),
       locators,
       ...(assertionType   ? { assertion_type:   assertionType   } : {}),
       ...(secondaryAction ? { secondary_action: secondaryAction } : {}),
@@ -217,16 +300,7 @@ function buildPayload(step: TestStep, u: StepUpdates, pageRepo: PageDetail[] = [
     tags: step.tags,
     bindings: {
       ...step.bindings,
-      web: {
-        ...(step.bindings?.web ?? {}),
-        page,
-        page_id: pageId,
-        element_name: elem,
-        page_element_id: pageElementId,
-        selector: loc,
-        xpath: loc,
-        locators,
-      },
+      [platformBindingKey]: platformBinding,
     },
     is_enabled: u.isEnabled ?? step.is_enabled,
   };
@@ -237,20 +311,20 @@ function buildPayload(step: TestStep, u: StepUpdates, pageRepo: PageDetail[] = [
 function StepRow({
   step, index, isFirst, isLast,
   onAddAfter, onMoveUp, onMoveDown, onDelete, onUpdate,
-  pageOptions, elementOptions, locatorByElement, pageRepo,
+  pageOptions, elementOptions, locatorByElement, pageRepo, isDesktop,
 }: {
   step: TestStep; index: number; isFirst: boolean; isLast: boolean;
   onAddAfter: () => void; onMoveUp: () => void; onMoveDown: () => void;
   onDelete: () => void; onUpdate: (u: StepUpdates) => void;
   pageOptions: string[]; elementOptions: string[]; locatorByElement: Map<string, string>;
-  pageRepo: PageDetail[];
+  pageRepo: PageDetail[]; isDesktop: boolean;
 }) {
   const [desc, setDesc]               = useState(step.description);
   const [action, setAction]           = useState(normalizeAction(step.intent));
   const [page, setPage]               = useState(stepPage(step, pageRepo));
   const [element, setElement]         = useState(stepElement(step, pageRepo));
-  const [locator, setLocator]         = useState(stepLocator(step, pageRepo));
-  const [value, setValue]             = useState(stepValue(step, pageRepo));
+  const [locator, setLocator]         = useState(stepLocator(step, pageRepo, isDesktop));
+  const [value, setValue]             = useState(stepValue(step, pageRepo, isDesktop));
   const [assertionType, setAssType]   = useState(stepAssertionType(step));
   const [secondaryAction, setSecAct]  = useState(stepSecondaryAction(step));
   const [enabled, setEnabled]         = useState(step.is_enabled);
@@ -266,14 +340,17 @@ function StepRow({
     setAction(normalizeAction(step.intent));
     setPage(stepPage(step, pageRepo));
     setElement(stepElement(step, pageRepo));
-    setLocator(stepLocator(step, pageRepo));
-    setValue(stepValue(step, pageRepo));
+    setLocator(stepLocator(step, pageRepo, isDesktop));
+    setValue(stepValue(step, pageRepo, isDesktop));
     setAssType(stepAssertionType(step));
     setSecAct(stepSecondaryAction(step));
     setEnabled(step.is_enabled);
-  }, [pageRepoSignature, step.id]);
+  }, [isDesktop, pageRepoSignature, step.id]);
 
   const color = ACTION_COLOR[action] ?? '#8b8c97';
+  const scopeLabel = isDesktop ? 'Screen' : 'Page';
+  const objectLabel = isDesktop ? 'Desktop Object' : 'Element';
+  const locatorLabel = isDesktop ? 'Automation ID / UIA Path' : 'Paths / Location';
 
   // Page repository: elements for the selected page
   const repoPage = findRepoPage(pageRepo, page, step.page_id);
@@ -305,7 +382,7 @@ function StepRow({
     const nextPage = findRepoPage(pageRepo, nextPageName);
     const matchingElement = findRepoElement(nextPage, element);
     const nextElement = matchingElement ? matchingElement.name : '';
-    const nextLocator = matchingElement ? resolvePathFromRepo(matchingElement) : '';
+    const nextLocator = matchingElement ? resolvePathFromRepo(matchingElement, isDesktop) : '';
     setPage(nextPageName);
     setElement(nextElement);
     setLocator(nextLocator);
@@ -326,7 +403,7 @@ function StepRow({
 
   function handleElementChange(nextElementName: string) {
     const repoEl = findRepoElement(repoPage, nextElementName);
-    const nextLocator = repoEl ? resolvePathFromRepo(repoEl) : locatorByElement.get(nextElementName) || '';
+    const nextLocator = repoEl ? resolvePathFromRepo(repoEl, isDesktop) : locatorByElement.get(nextElementName) || '';
     setElement(nextElementName);
     setLocator(nextLocator);
     onUpdate({
@@ -347,7 +424,7 @@ function StepRow({
   function handleElementBlur() {
     const repoEl = findRepoElement(repoPage, element);
     if (repoEl) {
-      const repoLoc = resolvePathFromRepo(repoEl);
+      const repoLoc = resolvePathFromRepo(repoEl, isDesktop);
       if (repoLoc && !locator) setLocator(repoLoc);
       onUpdate({
         description: desc,
@@ -411,7 +488,7 @@ function StepRow({
           ))}
         </select>
       </td>
-      {/* Page */}
+      {/* Page / Screen */}
       <td className={`${bd} w-28`}>
         <select
           value={page}
@@ -419,13 +496,15 @@ function StepRow({
           onBlur={() => save()}
           className={`${ic} cursor-pointer`}
         >
-          <option value="" style={{ background: '#0d0d18', color: '#8b8c97' }}>Select page</option>
+          <option value="" style={{ background: '#0d0d18', color: '#8b8c97' }}>
+            Select {scopeLabel.toLowerCase()}
+          </option>
           {[...new Set([...repoPageNames, ...(page ? [page] : []), ...pageOptions])].map((p) => (
             <option key={p} value={p} style={{ background: '#0d0d18', color: '#e7e7f0' }}>{p}</option>
           ))}
         </select>
       </td>
-      {/* Element */}
+      {/* Element / Desktop Object */}
       <td className={`${bd} min-w-[140px]`}>
         <select
           value={element}
@@ -435,21 +514,21 @@ function StepRow({
           disabled={!page}
         >
           <option value="" style={{ background: '#0d0d18', color: '#8b8c97' }}>
-            {repoPage ? 'Select element' : 'Select page first'}
+            {repoPage ? `Select ${objectLabel.toLowerCase()}` : `Select ${scopeLabel.toLowerCase()} first`}
           </option>
           {[...new Set([...(element ? [element] : []), ...elementChoices])].map((e) => (
             <option key={e} value={e} style={{ background: '#0d0d18', color: '#e7e7f0' }}>{e}</option>
           ))}
         </select>
       </td>
-      {/* Paths / Location */}
+      {/* Locator */}
       <td className={`${bd} min-w-[190px]`}>
         <input
           value={locator}
           onChange={(e) => setLocator(e.target.value)}
           onBlur={() => save()}
           className={`${ic} text-[10px] text-[var(--color-fg-muted)]`}
-          placeholder="XPath / selector"
+          placeholder={locatorLabel}
           title={locator}
         />
       </td>
@@ -658,7 +737,8 @@ export default function TestConfigurationPage() {
   const allSteps      = projects.flatMap((p) => p.modules.flatMap((m) => m.test_cases.flatMap((c) => c.test_steps)));
   const pageOptions   = uniqueSorted(allSteps.map((s) => stepPage(s, pageRepo)));
   const elemOptions   = uniqueSorted(allSteps.map((s) => stepElement(s, pageRepo)));
-  const locByElem     = new Map(allSteps.map((s) => [stepElement(s, pageRepo), stepLocator(s, pageRepo)] as const).filter(([e, l]) => e && l));
+  const selectedIsDesktop = isDesktopPlatform(selCase?.platforms) || (selCase?.test_steps ?? []).some(hasDesktopBinding);
+  const locByElem     = new Map(allSteps.map((s) => [stepElement(s, pageRepo), stepLocator(s, pageRepo, selectedIsDesktop)] as const).filter(([e, l]) => e && l));
   const totalModules  = projects.reduce((s, p) => s + p.modules.length, 0);
   const totalCases    = projects.reduce((s, p) => p.modules.reduce((ms, m) => ms + m.test_cases.length, s), 0);
   const totalSteps    = projects.reduce((s, p) => p.modules.reduce((ms, m) => m.test_cases.reduce((cs, c) => cs + c.test_steps.length, ms), s), 0);
@@ -683,7 +763,7 @@ export default function TestConfigurationPage() {
   }
 
   function doUpdateStep(step: TestStep, u: StepUpdates) {
-    updateAnyStep.mutate({ stepId: step.id, input: buildPayload(step, u, pageRepo) });
+    updateAnyStep.mutate({ stepId: step.id, input: buildPayload(step, u, pageRepo, selectedIsDesktop) });
   }
 
   function doMoveStep(step: TestStep, dir: -1 | 1) {
@@ -713,8 +793,20 @@ export default function TestConfigurationPage() {
       action_type: 'CLICK',
       page_id: defaultPage?.id ?? null,
       page_element_id: null,
-      input_value: '', expected_result: '', test_data: { value: '', action_type: 'CLICK', page_id: defaultPage?.id ?? null, page_name: defaultPage?.name ?? '' },
-      tags: ['configured'], bindings: { web: { page: defaultPage?.name ?? '', page_id: defaultPage?.id ?? null, element_name:'', page_element_id: null, selector:'', xpath:'' } }, is_enabled: true,
+      input_value: '', expected_result: '',
+      test_data: {
+        value: '',
+        action_type: 'CLICK',
+        platform: selectedIsDesktop ? 'desktop' : 'web',
+        page_id: defaultPage?.id ?? null,
+        page_name: defaultPage?.name ?? '',
+        ...(selectedIsDesktop ? { screen: defaultPage?.name ?? '', window: defaultPage?.name ?? '', automation_id: '', uia_path: '' } : {}),
+      },
+      tags: ['configured'],
+      bindings: selectedIsDesktop
+        ? { desktop: { screen: defaultPage?.name ?? '', window: defaultPage?.name ?? '', page_id: defaultPage?.id ?? null, object_name:'', element_name:'', page_element_id: null, automation_id:'', selector:'', uia_path:'' } }
+        : { web: { page: defaultPage?.name ?? '', page_id: defaultPage?.id ?? null, element_name:'', page_element_id: null, selector:'', xpath:'' } },
+      is_enabled: true,
     });
   }
 
@@ -738,12 +830,15 @@ export default function TestConfigurationPage() {
     else if (editorMode === 'case' && selCase && window.confirm(`Delete case "${selCase.name}"?`)) { deleteCase.mutate(selCase.id); }
   }
 
-  const catPlatforms  = tagCatalog.find((d) => d.key === 'platform')?.values       ?? ['web','android','ios','windows','api'];
+  const catPlatforms  = tagCatalog.find((d) => d.key === 'platform')?.values       ?? ['web','android','ios','desktop','windows','api'];
   const catTypes      = tagCatalog.find((d) => d.key === 'test_type')?.values      ?? ['functional','smoke','regression'];
   const catPriorities = tagCatalog.find((d) => d.key === 'priority')?.values       ?? ['p0','p1','p2'];
   const catModes      = tagCatalog.find((d) => d.key === 'execution_mode')?.values ?? ['automated','manual','hybrid'];
   const filteredCases = selModule?.test_cases.filter((c) => !caseSearch || c.name.toLowerCase().includes(caseSearch.toLowerCase())) ?? [];
   const sortedSteps   = selCase ? [...selCase.test_steps].sort((a, b) => a.step_order - b.step_order) : [];
+  const stepHeaders = selectedIsDesktop
+    ? ['#','Description','Action','Screen / Window','Desktop Object','Automation ID / UIA Path','Value / Assertion','2nd','','']
+    : ['#','Description','Action','Page','Element','Paths / Location','Value / Assertion','2nd','',''];
 
   const INP = 'w-full rounded-lg border border-[var(--color-line-default)] bg-[var(--color-surface-2)] px-3 py-2 text-sm text-[var(--color-fg-default)] outline-none transition-colors focus:border-[var(--color-accent-default)] placeholder:text-[var(--color-fg-subtle)]';
   const LBL = 'text-[10px] font-mono uppercase tracking-[0.14em] text-[var(--color-fg-subtle)] mb-1.5 block';
@@ -987,7 +1082,7 @@ export default function TestConfigurationPage() {
                     <table className="w-full border-collapse" style={{ minWidth: 1180 }}>
                       <thead className="sticky top-0 z-10" style={{ background: 'var(--color-surface-1)' }}>
                         <tr className="border-b border-[var(--color-line-default)]">
-                          {['#','Description','Action','Page','Element','Paths / Location','Value / Assertion','2nd','',''].map((h, i) => (
+                          {stepHeaders.map((h, i) => (
                             <th key={i} className="px-2 py-2 text-left font-mono text-[9px] uppercase tracking-[0.14em] text-[var(--color-fg-subtle)] border-r border-[var(--color-line-subtle)] last:border-r-0">
                               {h}
                             </th>
@@ -1006,6 +1101,7 @@ export default function TestConfigurationPage() {
                             onUpdate={(u) => doUpdateStep(step, u)}
                             pageOptions={pageOptions} elementOptions={elemOptions} locatorByElement={locByElem}
                             pageRepo={pageRepo}
+                            isDesktop={selectedIsDesktop}
                           />
                         ))}
                         <tr>

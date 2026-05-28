@@ -311,6 +311,29 @@ class DesktopAction(BaseEvent):
 
 
 @dataclass
+class DesktopFailure(BaseEvent):
+    """Desktop step failure with recovery plan metadata (drives the AI investigation pipeline)."""
+    execution_id: str = ""
+    node_id: str = ""
+    node_type: str = ""
+    error: str = ""
+    recovery_category: str = ""
+    failure_outcome: str = "fail"
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class AIInvestigationRequest(BaseEvent):
+    """Request the AI investigation pipeline to analyse a desktop failure."""
+    execution_id: str = ""
+    node_id: str = ""
+    node_type: str = ""
+    error: str = ""
+    recovery_category: str = ""
+    failure_outcome: str = "fail"
+
+
+@dataclass
 class ArtifactCaptured(BaseEvent):
     """A new artifact (screenshot, trace, response body, …) is available."""
     execution_id: str = ""
@@ -341,6 +364,7 @@ EVENT_REGISTRY: dict[str, type[BaseEvent]] = {
         NodeQueued, NodeStarted, NodeCompleted, NodeFailed, NodeRetrying, NodeSkipped,
         AIAnalysisGenerated, AIJobQueued, AIJobProgress, AIJobCompleted,
         TerminalLog, WebSocketConnected, WebSocketDisconnected,
-        BrowserAction, ApiCall, MobileAction, DesktopAction, ArtifactCaptured, VariableSet,
+        BrowserAction, ApiCall, MobileAction, DesktopAction, DesktopFailure, AIInvestigationRequest,
+        ArtifactCaptured, VariableSet,
     ]
 }

@@ -99,6 +99,19 @@ _MIGRATIONS: list[str] = [
     "ALTER TABLE page_elements ADD COLUMN IF NOT EXISTS last_verified_at TIMESTAMP",
     "ALTER TABLE page_elements ADD COLUMN IF NOT EXISTS discovery_metadata JSON",
 
+    # desktop_object_history: new table handled by create_all; keep indexes
+    # here for existing databases where table may be created manually.
+    "CREATE INDEX IF NOT EXISTS ix_desktop_object_history_page_id ON desktop_object_history(page_id)",
+    "CREATE INDEX IF NOT EXISTS ix_desktop_object_history_element_id ON desktop_object_history(element_id)",
+    "CREATE INDEX IF NOT EXISTS ix_desktop_object_history_object_key ON desktop_object_history(object_key)",
+
+    # desktop_object_healing_suggestions: new table handled by create_all;
+    # keep lookup indexes idempotent for existing databases.
+    "CREATE INDEX IF NOT EXISTS ix_desktop_object_healing_suggestions_page_id ON desktop_object_healing_suggestions(page_id)",
+    "CREATE INDEX IF NOT EXISTS ix_desktop_object_healing_suggestions_element_id ON desktop_object_healing_suggestions(element_id)",
+    "CREATE INDEX IF NOT EXISTS ix_desktop_object_healing_suggestions_object_key ON desktop_object_healing_suggestions(object_key)",
+    "CREATE INDEX IF NOT EXISTS ix_desktop_object_healing_suggestions_status ON desktop_object_healing_suggestions(status)",
+
     # AI workflow: user-provided page name used for Page Repository creation
     "ALTER TABLE ai_workflows ADD COLUMN IF NOT EXISTS page_name VARCHAR(255) DEFAULT ''",
     "ALTER TABLE ai_workflows ADD COLUMN IF NOT EXISTS activity_log JSON DEFAULT '[]'::json",

@@ -101,6 +101,10 @@ class WebDriverClient:
         session_id = self.require_session()
         await self.post(f"/session/{session_id}/element/{element.element_id}/click")
 
+    async def clear(self, element: WebDriverElement) -> None:
+        session_id = self.require_session()
+        await self.post(f"/session/{session_id}/element/{element.element_id}/clear")
+
     async def send_keys(self, element: WebDriverElement, text: str) -> None:
         session_id = self.require_session()
         await self.post(
@@ -108,10 +112,65 @@ class WebDriverClient:
             {"text": text, "value": list(text)},
         )
 
+    async def send_global_keys(self, text: str) -> None:
+        session_id = self.require_session()
+        await self.post(
+            f"/session/{session_id}/keys",
+            {"text": text, "value": list(text)},
+        )
+
     async def element_text(self, element: WebDriverElement) -> str:
         session_id = self.require_session()
         data = await self.get(f"/session/{session_id}/element/{element.element_id}/text")
         return str(data.get("value") or "")
+
+    async def element_attribute(self, element: WebDriverElement, name: str) -> str:
+        session_id = self.require_session()
+        data = await self.get(f"/session/{session_id}/element/{element.element_id}/attribute/{name}")
+        return str(data.get("value") or "")
+
+    async def element_property(self, element: WebDriverElement, name: str) -> str:
+        session_id = self.require_session()
+        data = await self.get(f"/session/{session_id}/element/{element.element_id}/property/{name}")
+        return str(data.get("value") or "")
+
+    async def pointer_action(
+        self,
+        element: WebDriverElement,
+        *,
+        kind: str,
+        button: int = 0,
+    ) -> None:
+        session_id = self.require_session()
+        origin = {"element-6066-11e4-a52e-4f735466cecf": element.element_id}
+        actions: list[dict[str, Any]] = [{"type": "pointerMove", "origin": origin, "x": 0, "y": 0}]
+        if kind == "hover":
+            pass
+        elif kind == "double_click":
+            actions.extend([
+                {"type": "pointerDown", "button": button},
+                {"type": "pointerUp", "button": button},
+                {"type": "pointerDown", "button": button},
+                {"type": "pointerUp", "button": button},
+            ])
+        else:
+            actions.extend([
+                {"type": "pointerDown", "button": button},
+                {"type": "pointerUp", "button": button},
+            ])
+        await self.post(
+            f"/session/{session_id}/actions",
+            {
+                "actions": [
+                    {
+                        "type": "pointer",
+                        "id": "mouse",
+                        "parameters": {"pointerType": "mouse"},
+                        "actions": actions,
+                    }
+                ]
+            },
+        )
 
     async def screenshot_png(self) -> bytes:
         session_id = self.require_session()

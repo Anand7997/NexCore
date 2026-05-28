@@ -39,9 +39,16 @@ from app.api.routes import (
     enterprise,
     test_configuration,
     page_repository,
+    master_sheets,
+    desktop_spy,
+    desktop_recorder,
     testing_types,
     api_testing,
     execution_results,
+    desktop_recovery_rules,
+    desktop_reporting,
+    desktop_nl_compiler,
+    desktop_agents,
 )
 
 logging.basicConfig(
@@ -251,9 +258,16 @@ app.include_router(runtime.router, prefix="/api")
 app.include_router(enterprise.router, prefix="/api")
 app.include_router(test_configuration.router, prefix="/api")
 app.include_router(page_repository.router, prefix="/api")
+app.include_router(master_sheets.router, prefix="/api")
+app.include_router(desktop_spy.router, prefix="/api")
+app.include_router(desktop_recorder.router, prefix="/api")
 app.include_router(testing_types.router, prefix="/api")
 app.include_router(api_testing.router, prefix="/api")
 app.include_router(execution_results.router, prefix="/api")
+app.include_router(desktop_recovery_rules.router, prefix="/api")
+app.include_router(desktop_reporting.router, prefix="/api")
+app.include_router(desktop_nl_compiler.router, prefix="/api")
+app.include_router(desktop_agents.router, prefix="/api")
 app.include_router(websocket.router)
 
 

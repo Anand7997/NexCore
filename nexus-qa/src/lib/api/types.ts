@@ -419,7 +419,9 @@ export interface WsEvent {
 
 // ── Page Object Repository ──────────────────────────────────────────────────
 
-export type LocatorStrategy = 'xpath' | 'css' | 'id' | 'name' | 'text' | 'role' | 'testid';
+export type LocatorStrategy =
+  | 'xpath' | 'css' | 'id' | 'name' | 'text' | 'role' | 'testid'
+  | 'accessibility id' | 'automation id' | 'class name' | 'ocr' | 'visual';
 
 export type ElementType =
   | 'button' | 'input' | 'link' | 'dropdown' | 'checkbox' | 'radio'
@@ -439,6 +441,7 @@ export interface PageElement {
   tags: string[];
   confidence_score?: number | null;
   alternative_locators?: LocatorCandidate[] | null;
+  discovery_metadata?: Record<string, unknown> | null;
   source_url?: string;
   last_verified_at?: string | null;
   created_at: string;
@@ -460,6 +463,437 @@ export interface PageListItem {
 export interface PageDetail extends PageListItem {
   elements: PageElement[];
 }
+
+export interface DesktopObject {
+  id: string;
+  page_id: string;
+  object_key: string;
+  name: string;
+  application: string;
+  application_path?: string;
+  repository_scope: string;
+  control_type: string;
+  automation_id?: string;
+  name_text?: string;
+  class_name?: string;
+  uia_path?: string;
+  locator_strategy: string;
+  primary_locator?: string;
+  alternative_locators: LocatorCandidate[];
+  window?: string;
+  screen?: string;
+  ui_framework?: string;
+  process_name?: string;
+  hierarchy_path?: string;
+  bounding_box?: Record<string, unknown> | null;
+  screenshot_url?: string;
+  ocr_text?: string;
+  ai_label?: string;
+  confidence_score?: number | null;
+  tags: string[];
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DesktopObjectImpactStep {
+  step_id: string;
+  step_order: number;
+  step_name: string;
+  action_type: string;
+  target: string;
+  is_enabled: boolean;
+  test_case_id: string;
+  test_case_name: string;
+  module_id: string;
+  module_name: string;
+  project_id: string;
+  project_name: string;
+  match_reasons: string[];
+  risk: 'high' | 'medium' | 'low' | string;
+  current_locator: string;
+}
+
+export interface DesktopObjectImpactWorkflowNode {
+  workflow_id: string;
+  workflow_name: string;
+  node_key: string;
+  node_type: string;
+  node_label: string;
+  test_step_id: string;
+}
+
+export interface DesktopObjectImpactResponse {
+  object_key: string;
+  object_name: string;
+  application: string;
+  page_id: string;
+  element_id: string;
+  impacted_step_count: number;
+  workflow_node_count: number;
+  risk_summary: Record<string, number>;
+  steps: DesktopObjectImpactStep[];
+  workflow_nodes: DesktopObjectImpactWorkflowNode[];
+}
+
+export interface DesktopObjectHistoryItem {
+  id: string;
+  page_id: string;
+  element_id: string;
+  object_key: string;
+  action: string;
+  source: string;
+  actor: string;
+  changed_fields: string[];
+  before_snapshot: Record<string, unknown>;
+  after_snapshot: Record<string, unknown>;
+  impact_summary: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface DesktopObjectLocatorCandidateProfile {
+  strategy: string;
+  locator: string;
+  score: number;
+  strength: string;
+  reason: string;
+  risk_flags: string[];
+}
+
+export interface DesktopObjectLocatorProfileResponse {
+  object_key: string;
+  object_name: string;
+  application: string;
+  page_id: string;
+  element_id: string;
+  stability_score: number;
+  stale: boolean;
+  stale_reasons: string[];
+  suggestions: string[];
+  primary_locator: string;
+  best_strategy: string;
+  history_count: number;
+  locator_change_count: number;
+  last_changed_at?: string | null;
+  candidates: DesktopObjectLocatorCandidateProfile[];
+}
+
+export interface DesktopObjectHealingSuggestion {
+  id: string;
+  page_id: string;
+  element_id: string;
+  object_key: string;
+  object_name: string;
+  application: string;
+  status: 'pending' | 'approved' | 'rejected' | string;
+  source: string;
+  suggested_strategy: string;
+  suggested_locator: string;
+  suggested_field: string;
+  confidence?: number | null;
+  reason: string;
+  evidence: Array<Record<string, unknown>>;
+  preview_update: Record<string, unknown>;
+  created_at: string;
+  resolved_at?: string | null;
+  resolved_by: string;
+  resolution_note: string;
+}
+
+export interface DesktopObjectHealingSuggestionCreateInput {
+  locator_attempts?: Array<Record<string, unknown>>;
+  attempts?: Array<Record<string, unknown>>;
+  successful_strategy?: string;
+  successful_locator?: string;
+  confidence?: number | null;
+  source?: string;
+  reason?: string;
+  actor?: string;
+  min_confidence?: number;
+}
+
+export interface DesktopObjectHealingSuggestionDecisionInput {
+  approved: boolean;
+  actor?: string;
+  note?: string;
+}
+
+export interface DesktopObjectCreateInput {
+  page_id?: string | null;
+  application?: string;
+  application_path?: string;
+  repository_scope?: string;
+  object_key: string;
+  name: string;
+  control_type?: string;
+  automation_id?: string;
+  name_text?: string;
+  class_name?: string;
+  uia_path?: string;
+  locator_strategy?: string;
+  primary_locator?: string;
+  alternative_locators?: LocatorCandidate[];
+  window?: string;
+  screen?: string;
+  ui_framework?: string;
+  process_name?: string;
+  hierarchy_path?: string;
+  bounding_box?: Record<string, unknown> | null;
+  screenshot_url?: string;
+  ocr_text?: string;
+  ai_label?: string;
+  confidence_score?: number | null;
+  tags?: string[];
+  metadata?: Record<string, unknown>;
+}
+
+export type DesktopObjectUpdateInput = Partial<DesktopObjectCreateInput>;
+
+export interface DesktopSpyCandidate {
+  object_key: string;
+  name: string;
+  control_type: string;
+  automation_id?: string;
+  name_text?: string;
+  class_name?: string;
+  uia_path?: string;
+  locator_strategy: string;
+  primary_locator: string;
+  alternative_locators: LocatorCandidate[];
+    bounding_box?: Record<string, unknown> | null;
+    ocr_text?: string;
+    confidence_score: number;
+    strength?: string;
+    risk_flags?: string[];
+    explanation?: string;
+    metadata: Record<string, unknown>;
+  }
+
+export interface DesktopSpySnapshotInput {
+  driver_type?: string;
+  server_url?: string;
+  app?: string;
+  args?: string[] | string | null;
+  window_title?: string;
+  process_name?: string;
+  timeout_ms?: number;
+  close_after?: boolean;
+  include_screenshot?: boolean;
+  max_objects?: number;
+}
+
+export interface DesktopSpySnapshot {
+  driver: string;
+  attached: boolean;
+  launched: boolean;
+  window_title: string;
+  process_name: string;
+  screenshot_base64: string;
+  screenshot_size_bytes: number;
+  ui_tree: string;
+  candidates: DesktopSpyCandidate[];
+  capabilities: Record<string, unknown>;
+}
+
+export interface DesktopRecorderSessionCreate {
+  name?: string;
+  application?: string;
+  application_path?: string;
+  window_title?: string;
+  process_name?: string;
+  driver_type?: string;
+  repository_page_id?: string | null;
+  metadata?: Record<string, unknown>;
+}
+
+export interface DesktopRecordedActionCreate {
+  action_type: string;
+  object_key?: string;
+  object_name?: string;
+  control_type?: string;
+  automation_id?: string;
+  name_text?: string;
+  class_name?: string;
+  uia_path?: string;
+  locator_strategy?: string;
+  value?: string;
+  expected?: string;
+  property_name?: string;
+  variable?: string;
+  window_title?: string;
+  screen?: string;
+  x?: number | null;
+  y?: number | null;
+  duration_ms?: number | null;
+  locators?: LocatorCandidate[];
+  screenshot_artifact_id?: string;
+  ui_tree_artifact_id?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface DesktopRecordedAction extends DesktopRecordedActionCreate {
+  id: string;
+  session_id: string;
+  action_order: number;
+  created_at: string;
+}
+
+export interface DesktopRecorderSession {
+  id: string;
+  name: string;
+  status: string;
+  application: string;
+  application_path: string;
+  window_title: string;
+  process_name: string;
+  driver_type: string;
+  repository_page_id?: string | null;
+  metadata: Record<string, unknown>;
+  action_count: number;
+  started_at?: string | null;
+  stopped_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DesktopRecorderSessionDetail extends DesktopRecorderSession {
+  actions: DesktopRecordedAction[];
+}
+
+export interface MasterSheetIssue {
+  severity: 'error' | 'warning' | string;
+  section: string;
+  key: string;
+  field: string;
+  message: string;
+}
+
+  export interface MasterSheetPreviewInput {
+    master_sheet?: Record<string, unknown>;
+    master_sheet_path?: string;
+    master_sheet_url?: string;
+    master_sheet_headers?: Record<string, string>;
+    db_connection_string?: string;
+    db_query?: string;
+    repository_source?: boolean;
+  }
+
+export interface MasterSheetPreviewResponse {
+  source: string;
+  saved_path: string;
+  filename: string;
+  summary: Record<string, number>;
+  issues: MasterSheetIssue[];
+  normalized: Record<string, Record<string, Record<string, unknown>> | unknown>;
+  valid: boolean;
+}
+
+export interface MasterSheetTemplateResponse {
+  supported_extensions: string[];
+  required_sections: string[];
+  template: Record<string, unknown>;
+}
+
+export interface MasterSheetRepositorySyncInput extends MasterSheetPreviewInput {
+  application_key?: string;
+  repository_scope?: string;
+  update_existing?: boolean;
+  skip_invalid?: boolean;
+}
+
+export interface MasterSheetRepositorySyncItem {
+  object_key: string;
+  name: string;
+  application: string;
+  action: string;
+  reason: string;
+  object?: DesktopObject | null;
+}
+
+export interface MasterSheetRepositorySyncResponse {
+  source: string;
+  created: number;
+  updated: number;
+  skipped: number;
+  pages_created: number;
+  issues: MasterSheetIssue[];
+  objects: MasterSheetRepositorySyncItem[];
+}
+
+export interface DesktopRecorderAgentCommandInput {
+  api_url?: string;
+  session_id?: string;
+  name?: string;
+  application?: string;
+  application_path?: string;
+  window_title?: string;
+  process_name?: string;
+  driver_type?: string;
+  stop_hotkey?: string;
+  pause_hotkey?: string;
+  flush_interval_ms?: number;
+}
+
+export interface DesktopMcpCommandInput extends DesktopRecorderAgentCommandInput {
+  mode?: 'stdio' | 'watch';
+}
+
+  export interface DesktopRecorderAgentCommandResponse {
+    command: string;
+    script_path: string;
+    requirements: string[];
+    stop_hotkey: string;
+    pause_hotkey: string;
+  }
+
+export interface DesktopMcpCommandResponse extends DesktopRecorderAgentCommandResponse {
+  mode: 'stdio' | 'watch';
+  tools: string[];
+}
+
+  export interface DesktopReusableComponentSuggestion {
+    component_key: string;
+    name: string;
+    description: string;
+    component_type: string;
+    confidence: number;
+    reason: string;
+    start_step: number;
+    end_step: number;
+    action_count: number;
+    objects: string[];
+    operations: string[];
+    suggested_parameters: Array<Record<string, unknown>>;
+    suggested_outputs: Array<Record<string, unknown>>;
+    tags: string[];
+    definition: Record<string, unknown>;
+  }
+  
+  export interface DesktopRecorderCompileResponse {
+    session_id: string;
+    name: string;
+    platform: 'desktop';
+  keyword_steps: Array<{
+    step: number;
+    object: string;
+    operation: string;
+    value: string;
+    assignment: string;
+    checkpoint: string;
+    comment: string;
+    node_type: string;
+  }>;
+  workflow: {
+    name: string;
+    description: string;
+    platforms: string[];
+    nodes: WorkflowNodeInput[];
+    edges: WorkflowEdgeInput[];
+    };
+    repository_suggestions: DesktopObjectCreateInput[];
+    component_suggestions: DesktopReusableComponentSuggestion[];
+    summary: Record<string, number>;
+  }
 
 export interface PageCreateInput {
   name: string;
@@ -487,6 +921,9 @@ export interface ElementCreateInput {
   name_attr?: string;
   locator_strategy?: string;
   tags?: string[];
+  confidence_score?: number | null;
+  alternative_locators?: LocatorCandidate[] | null;
+  discovery_metadata?: Record<string, unknown> | null;
 }
 
 export interface ElementUpdateInput {
@@ -499,6 +936,9 @@ export interface ElementUpdateInput {
   name_attr?: string;
   locator_strategy?: string;
   tags?: string[];
+  confidence_score?: number | null;
+  alternative_locators?: LocatorCandidate[] | null;
+  discovery_metadata?: Record<string, unknown> | null;
 }
 
 // ── Element Discovery Agent ────────────────────────────────────────────────

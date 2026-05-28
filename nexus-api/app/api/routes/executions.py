@@ -1,5 +1,7 @@
 """Execution trigger, monitoring, and control routes."""
 from __future__ import annotations
+from copy import deepcopy
+from types import SimpleNamespace
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,6 +21,7 @@ from app.database.models import TestCaseModel, TestModuleModel, TestProjectModel
 from app.distributed.scheduler import DistributedScheduler
 from app.enterprise.audit import record_audit
 from app.enterprise.auth import AuthContext, get_auth_context
+from app.execution.master_sheet import DesktopMasterSheet, MasterSheetError
 from app.orchestration.engine import launch_execution, cancel_execution
 
 router = APIRouter(prefix="/executions", tags=["executions"])
@@ -125,6 +128,218 @@ def _locator_entry(strategy: str, locator: str, source: str = "") -> dict[str, s
     return {"strategy": strategy, "locator": locator, "source": source}
 
 
+def _desktop_strategy(strategy: str) -> str:
+    normalized = (strategy or "").strip().lower().replace("_", " ")
+    aliases = {
+        "automation id": "accessibility id",
+        "accessibility id": "accessibility id",
+        "accessibility": "accessibility id",
+        "id": "accessibility id",
+        "name": "name",
+        "text": "name",
+        "xpath": "xpath",
+        "uia path": "xpath",
+        "path": "xpath",
+        "class": "class name",
+        "class name": "class name",
+        "ocr": "ocr",
+        "visual": "visual",
+    }
+    return aliases.get(normalized, normalized or "accessibility id")
+
+
+def _is_desktop_step(step) -> bool:
+    bindings = step.bindings or {}
+    data = step.test_data or {}
+    page = getattr(step, "page", None)
+    page_platform = str(getattr(page, "platform", "") or "").strip().lower()
+    element = getattr(step, "page_element", None)
+    element_metadata = getattr(element, "discovery_metadata", None) or {}
+    element_platform = ""
+    if isinstance(element_metadata, dict):
+        element_platform = str(element_metadata.get("platform") or "").strip().lower()
+    return (
+        isinstance(bindings, dict)
+        and isinstance(bindings.get("desktop"), dict)
+    ) or str(data.get("platform") or "").strip().lower() in {"desktop", "windows"} or page_platform in {
+        "desktop",
+        "windows",
+    } or element_platform in {"desktop", "windows"}
+
+
+def _first_non_empty(*values: object) -> str:
+    for value in values:
+        if value not in (None, ""):
+            return str(value)
+    return ""
+
+
+def _set_if_missing(target: dict, key: str, value: object, *, replace_values: set[str] | None = None) -> None:
+    if value in (None, ""):
+        return
+    current = target.get(key)
+    if current in (None, "") or (replace_values and str(current) in replace_values):
+        target[key] = value
+
+
+def _merge_locators(existing: list, extra: list[dict]) -> list[dict]:
+    locators: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    for item in [*(existing or []), *(extra or [])]:
+        if not isinstance(item, dict):
+            continue
+        strategy = str(item.get("strategy") or "")
+        locator = str(item.get("locator") or item.get("selector") or item.get("value") or "")
+        if not locator:
+            continue
+        key = (strategy.lower(), locator)
+        if key in seen:
+            continue
+        seen.add(key)
+        locators.append({**item, "strategy": strategy, "locator": locator})
+    return locators
+
+
+def _master_sheet_keys(step, master_sheet: DesktopMasterSheet) -> tuple[str, str, str, str]:
+    data = step.test_data or {}
+    bindings = step.bindings or {}
+    desktop = bindings.get("desktop") if isinstance(bindings, dict) else {}
+    desktop = desktop if isinstance(desktop, dict) else {}
+    app_key = _first_non_empty(
+        desktop.get("app_key"),
+        desktop.get("application_key"),
+        data.get("app_key"),
+        data.get("application_key"),
+    )
+    object_key = _first_non_empty(
+        desktop.get("object_key"),
+        desktop.get("element_key"),
+        desktop.get("repository_key"),
+        data.get("object_key"),
+        data.get("element_key"),
+        data.get("repository_key"),
+    )
+    if not object_key and master_sheet.has_element(getattr(step, "target", "")):
+        object_key = str(getattr(step, "target", "") or "")
+    data_key = _first_non_empty(desktop.get("data_key"), data.get("data_key"))
+    path_key = _first_non_empty(desktop.get("path_key"), data.get("path_key"))
+    return app_key, object_key, data_key, path_key
+
+
+def _resolve_desktop_step_from_master_sheet(step, master_sheet: DesktopMasterSheet | None, *, force_desktop: bool = False):
+    if not master_sheet or master_sheet.is_empty:
+        return step, {}
+    if not force_desktop and not _is_desktop_step(step):
+        return step, {}
+
+    bindings = deepcopy(step.bindings or {})
+    data = deepcopy(step.test_data or {})
+    if force_desktop:
+        data.setdefault("platform", "desktop")
+    desktop = deepcopy(bindings.get("desktop") or {})
+    bindings["desktop"] = desktop
+    metadata: dict[str, object] = {"source": master_sheet.source}
+    input_value = getattr(step, "input_value", "") or ""
+    target = getattr(step, "target", "") or ""
+    app_key, object_key, data_key, path_key = _master_sheet_keys(step, master_sheet)
+
+    if app_key:
+        metadata["app_key"] = app_key
+        app = master_sheet.application(app_key)
+        if app:
+            app_path = master_sheet.application_path(app_key)
+            _set_if_missing(desktop, "app_key", app_key)
+            _set_if_missing(data, "app_key", app_key)
+            _set_if_missing(desktop, "application_path", app_path)
+            _set_if_missing(desktop, "app", app_path)
+            _set_if_missing(data, "application_path", app_path)
+            _set_if_missing(desktop, "args", app.get("args") or app.get("app_args") or app.get("arguments"))
+            _set_if_missing(desktop, "working_directory", app.get("working_directory") or app.get("cwd"))
+            if not input_value and _is_navigate_action(getattr(step, "action_type", "") or getattr(step, "intent", "")):
+                input_value = app_path
+        else:
+            metadata.setdefault("missing", []).append(f"app_key:{app_key}")
+
+    if object_key:
+        metadata["object_key"] = object_key
+        element = master_sheet.element(object_key)
+        if element:
+            replace = {object_key}
+            locators = master_sheet.locators_for(element)
+            automation_id = _first_non_empty(element.get("automation_id"), element.get("auto_id"))
+            uia_path = _first_non_empty(element.get("uia_path"), element.get("xpath"))
+            object_name = _first_non_empty(element.get("friendly_name"), element.get("name"), element.get("text"), object_key)
+            _set_if_missing(desktop, "object_key", object_key)
+            _set_if_missing(data, "object_key", object_key)
+            _set_if_missing(desktop, "object_name", object_name, replace_values=replace)
+            _set_if_missing(desktop, "element_name", object_name, replace_values=replace)
+            _set_if_missing(data, "element_name", object_name, replace_values=replace)
+            _set_if_missing(desktop, "control_type", element.get("control_type") or element.get("element_type"))
+            _set_if_missing(desktop, "automation_id", automation_id, replace_values=replace)
+            _set_if_missing(data, "automation_id", automation_id, replace_values=replace)
+            _set_if_missing(desktop, "selector", automation_id or uia_path or object_name, replace_values=replace)
+            _set_if_missing(data, "locator", automation_id or uia_path or object_name, replace_values=replace)
+            _set_if_missing(desktop, "uia_path", uia_path, replace_values=replace)
+            _set_if_missing(data, "uia_path", uia_path, replace_values=replace)
+            _set_if_missing(desktop, "class_name", element.get("class_name") or element.get("class"))
+            _set_if_missing(desktop, "window", element.get("window") or element.get("window_key"))
+            _set_if_missing(desktop, "screen", element.get("screen") or element.get("window") or element.get("window_key"))
+            if locators:
+                desktop["locators"] = _merge_locators(desktop.get("locators") or desktop.get("alternative_locators") or [], locators)
+                data["locators"] = _merge_locators(data.get("locators") or data.get("alternative_locators") or [], locators)
+            if not target or target == object_key:
+                target = object_name
+        else:
+            metadata.setdefault("missing", []).append(f"object_key:{object_key}")
+
+    if data_key:
+        metadata["data_key"] = data_key
+        resolved = master_sheet.data_value(data_key)
+        if resolved not in (None, ""):
+            _set_if_missing(data, "value", resolved)
+            _set_if_missing(data, "sample_value", resolved)
+            _set_if_missing(desktop, "value", resolved)
+            _set_if_missing(desktop, "input_value", resolved)
+            if not input_value:
+                input_value = str(resolved)
+        else:
+            metadata.setdefault("missing", []).append(f"data_key:{data_key}")
+
+    if path_key:
+        metadata["path_key"] = path_key
+        resolved_path = master_sheet.path_value(path_key)
+        if resolved_path:
+            _set_if_missing(data, "path_value", resolved_path)
+            _set_if_missing(desktop, "path_value", resolved_path)
+            if not input_value:
+                input_value = resolved_path
+        else:
+            metadata.setdefault("missing", []).append(f"path_key:{path_key}")
+
+    return SimpleNamespace(
+        **{
+            **getattr(step, "__dict__", {}),
+            "action_type": getattr(step, "action_type", ""),
+            "intent": getattr(step, "intent", ""),
+            "name": getattr(step, "name", ""),
+            "description": getattr(step, "description", ""),
+            "input_value": input_value,
+            "secondary_value": getattr(step, "secondary_value", ""),
+            "expected_result": getattr(step, "expected_result", ""),
+            "target": target,
+            "test_data": data,
+            "bindings": bindings,
+            "page": getattr(step, "page", None),
+            "page_element": getattr(step, "page_element", None),
+            "step_order": getattr(step, "step_order", 0),
+            "id": getattr(step, "id", None),
+            "page_id": getattr(step, "page_id", None),
+            "page_element_id": getattr(step, "page_element_id", None),
+            "is_enabled": getattr(step, "is_enabled", True),
+        }
+    ), metadata
+
+
 def _step_locator_candidates(step) -> list[dict[str, str]]:
     locators: list[dict[str, str]] = []
     seen: set[tuple[str, str]] = set()
@@ -140,18 +355,50 @@ def _step_locator_candidates(step) -> list[dict[str, str]]:
 
     element = getattr(step, "page_element", None)
     if element is not None:
-        for locator in getattr(element, "alternative_locators", None) or []:
-            if isinstance(locator, dict):
-                add(str(locator.get("strategy") or ""), str(locator.get("locator") or ""), "page_element")
-        add("css", getattr(element, "css_selector", "") or "", "page_element")
-        add("xpath", getattr(element, "xpath", "") or "", "page_element")
-        if getattr(element, "id_attr", ""):
-            add("css", f"#{getattr(element, 'id_attr')}", "page_element")
-        if getattr(element, "name_attr", ""):
-            add("css", f"[name='{getattr(element, 'name_attr')}']", "page_element")
+        if _is_desktop_step(step):
+            add("accessibility id", getattr(element, "id_attr", "") or "", "desktop_page_element")
+            add("name", getattr(element, "name_attr", "") or getattr(element, "name", "") or "", "desktop_page_element")
+            add("xpath", getattr(element, "xpath", "") or "", "desktop_page_element")
+            add("class name", getattr(element, "css_selector", "") or "", "desktop_page_element")
+            for locator in getattr(element, "alternative_locators", None) or []:
+                if isinstance(locator, dict):
+                    add(
+                        _desktop_strategy(str(locator.get("strategy") or "")),
+                        str(locator.get("locator") or locator.get("selector") or locator.get("value") or ""),
+                        "desktop_page_element",
+                    )
+        else:
+            for locator in getattr(element, "alternative_locators", None) or []:
+                if isinstance(locator, dict):
+                    add(str(locator.get("strategy") or ""), str(locator.get("locator") or ""), "page_element")
+            add("css", getattr(element, "css_selector", "") or "", "page_element")
+            add("xpath", getattr(element, "xpath", "") or "", "page_element")
+            if getattr(element, "id_attr", ""):
+                add("css", f"#{getattr(element, 'id_attr')}", "page_element")
+            if getattr(element, "name_attr", ""):
+                add("css", f"[name='{getattr(element, 'name_attr')}']", "page_element")
 
     bindings = step.bindings or {}
     web_binding = bindings.get("web") if isinstance(bindings, dict) else None
+    desktop_binding = bindings.get("desktop") if isinstance(bindings, dict) else None
+    if isinstance(desktop_binding, dict):
+        for key, strategy in (
+            ("automation_id", "accessibility id"),
+            ("selector", ""),
+            ("uia_path", "xpath"),
+            ("xpath", "xpath"),
+            ("name", "name"),
+            ("object_name", "name"),
+            ("class_name", "class name"),
+        ):
+            add(_desktop_strategy(strategy), str(desktop_binding.get(key) or ""), "desktop_binding")
+        for locator in desktop_binding.get("alternative_locators") or desktop_binding.get("locators") or []:
+            if isinstance(locator, dict):
+                add(
+                    _desktop_strategy(str(locator.get("strategy") or "")),
+                    str(locator.get("locator") or locator.get("selector") or locator.get("value") or ""),
+                    "desktop_binding",
+                )
     if isinstance(web_binding, dict):
         for locator in web_binding.get("alternative_locators") or web_binding.get("locators") or []:
             if isinstance(locator, dict):
@@ -168,7 +415,16 @@ def _step_locator_candidates(step) -> list[dict[str, str]]:
     if isinstance(data, dict):
         for locator in data.get("alternative_locators") or data.get("locators") or []:
             if isinstance(locator, dict):
-                add(str(locator.get("strategy") or ""), str(locator.get("locator") or locator.get("selector") or ""), "test_data")
+                add(str(locator.get("strategy") or ""), str(locator.get("locator") or locator.get("selector") or locator.get("value") or ""), "test_data")
+        if _is_desktop_step(step):
+            for key, strategy in (
+                ("automation_id", "accessibility id"),
+                ("locator", ""),
+                ("uia_path", "xpath"),
+                ("xpath", "xpath"),
+                ("class_name", "class name"),
+            ):
+                add(_desktop_strategy(strategy), str(data.get(key) or ""), "test_data")
         for key, strategy in (("selector", ""), ("css_selector", "css"), ("xpath", "xpath"), ("locator", "")):
             add(strategy, str(data.get(key) or ""), "test_data")
 
@@ -189,6 +445,12 @@ def _step_value(step) -> str:
         return step.input_value
     bindings = step.bindings or {}
     web_binding = bindings.get("web") if isinstance(bindings, dict) else None
+    desktop_binding = bindings.get("desktop") if isinstance(bindings, dict) else None
+    if isinstance(desktop_binding, dict):
+        for key in ("value", "input_value", "sample_value", "app", "application_path"):
+            value = desktop_binding.get(key)
+            if value not in (None, ""):
+                return str(value)
     if isinstance(web_binding, dict):
         for key in ("value", "input_value", "sample_value", "option", "test_data"):
             value = web_binding.get(key)
@@ -216,6 +478,18 @@ def _is_navigate_action(action: str) -> bool:
 
 
 def _step_page_url(step) -> str:
+    bindings = step.bindings or {}
+    desktop_binding = bindings.get("desktop") if isinstance(bindings, dict) else None
+    if isinstance(desktop_binding, dict):
+        for key in ("application_path", "app"):
+            value = desktop_binding.get(key)
+            if value not in (None, ""):
+                return str(value)
+    data = step.test_data or {}
+    if isinstance(data, dict):
+        value = data.get("application_path")
+        if value not in (None, ""):
+            return str(value)
     page = getattr(step, "page", None)
     if page is None:
         return ""
@@ -240,6 +514,11 @@ def _step_element_type(step) -> str:
             return value
 
     bindings = step.bindings or {}
+    desktop_binding = bindings.get("desktop") if isinstance(bindings, dict) else None
+    if isinstance(desktop_binding, dict):
+        value = str(desktop_binding.get("control_type") or desktop_binding.get("element_type") or "").lower()
+        if value:
+            return value
     web_binding = bindings.get("web") if isinstance(bindings, dict) else None
     if isinstance(web_binding, dict):
         value = str(web_binding.get("element_type") or "").lower()
@@ -341,7 +620,13 @@ def _normalise_key_value(value: str) -> str:
     return "+".join(normalized)
 
 
-def _node_type_and_config(step) -> tuple[str, dict]:
+def _node_type_and_config(
+    step,
+    master_sheet: DesktopMasterSheet | None = None,
+    *,
+    force_desktop: bool = False,
+) -> tuple[str, dict]:
+    step, master_metadata = _resolve_desktop_step_from_master_sheet(step, master_sheet, force_desktop=force_desktop)
     action = (step.action_type or step.intent or step.name or "").lower()
     normalized_action = _normalized_action(action)
     selector = _step_selector(step)
@@ -354,6 +639,100 @@ def _node_type_and_config(step) -> tuple[str, dict]:
         if locators:
             config["locators"] = locators
         return config
+
+    if _is_desktop_step(step):
+        primary = next((locator for locator in locators if locator.get("locator")), None)
+        desktop_selector = selector or (primary or {}).get("locator") or value
+        desktop_strategy = _desktop_strategy((primary or {}).get("strategy", ""))
+        data = step.test_data or {}
+        bindings = step.bindings or {}
+        desktop_binding = bindings.get("desktop") if isinstance(bindings, dict) else {}
+        desktop_binding = desktop_binding if isinstance(desktop_binding, dict) else {}
+        property_name = str(
+            desktop_binding.get("property")
+            or data.get("property")
+            or data.get("property_name")
+            or data.get("attribute")
+            or ""
+        )
+
+        def desktop_config(extra: dict | None = None) -> dict:
+            config = {
+                "selector": desktop_selector,
+                "strategy": desktop_strategy,
+                "timeout_ms": 15000,
+            }
+            if locators:
+                config["locators"] = [
+                    {
+                        **locator,
+                        "strategy": _desktop_strategy(locator.get("strategy", "")),
+                    }
+                    for locator in locators
+                    if locator.get("locator")
+                ]
+            if extra:
+                config.update(extra)
+            if master_metadata and len(master_metadata) > 1:
+                config["master_sheet"] = master_metadata
+            return config
+
+        if _is_navigate_action(action):
+            app = _step_navigate_url(step) or value
+            if app:
+                config = {"app": app, "timeout_ms": 30000}
+                if master_metadata and len(master_metadata) > 1:
+                    config["master_sheet"] = master_metadata
+                return "desktop.launch", config
+        if "hotkey" in normalized_action or "shortcut" in normalized_action:
+            return "desktop.hotkey", {"keys": [part for part in _normalise_key_value(value or step.secondary_value or expected).split("+") if part]}
+        if "press key" in normalized_action or normalized_action == "press key":
+            return "desktop.press_key", {"key": _normalise_key_value(value or step.secondary_value or expected)}
+        if "double click" in normalized_action and desktop_selector:
+            return "desktop.double_click", desktop_config()
+        if any(token in normalized_action for token in ("right click", "context click")) and desktop_selector:
+            return "desktop.right_click", desktop_config()
+        if any(token in normalized_action for token in ("mouse over", "hover")) and desktop_selector:
+            return "desktop.hover", desktop_config()
+        if "clear" in normalized_action and desktop_selector:
+            return "desktop.clear", desktop_config()
+        if any(token in normalized_action for token in ("checkbox", "check box", "radio button", "toggle")) and desktop_selector:
+            checked = str(value).lower() not in {"false", "0", "no", "unchecked", "off"}
+            return ("desktop.check" if checked else "desktop.uncheck"), desktop_config()
+        if "uncheck" in normalized_action and desktop_selector:
+            return "desktop.uncheck", desktop_config()
+        if "check" in normalized_action and desktop_selector and "assert" not in normalized_action:
+            return "desktop.check", desktop_config()
+        if "select" in normalized_action and desktop_selector:
+            if value:
+                return "desktop.select", desktop_config({"value": value})
+            return "desktop.click", desktop_config()
+        if any(token in normalized_action for token in ("assert", "verify", "validate", "expect", "check")) and desktop_selector:
+            if property_name:
+                config = desktop_config({"property": property_name, "expected": expected, "match": "contains"})
+                if master_metadata and len(master_metadata) > 1:
+                    config["master_sheet"] = master_metadata
+                return "desktop.assert_property", config
+            config = desktop_config({"expected": expected, "match": "contains"})
+            if master_metadata and len(master_metadata) > 1:
+                config["master_sheet"] = master_metadata
+            return "desktop.assert_text", config
+        if any(token in normalized_action for token in ("read", "extract", "capture")) and desktop_selector and property_name:
+            return "desktop.extract_property", desktop_config({"property": property_name, "variable": data.get("variable") or property_name})
+        if any(token in action for token in ("fill", "type", "input", "enter")) and desktop_selector:
+            config = desktop_config({"value": value})
+            if master_metadata and len(master_metadata) > 1:
+                config["master_sheet"] = master_metadata
+            return "desktop.type_text", config
+        if desktop_selector:
+            config = desktop_config()
+            if master_metadata and len(master_metadata) > 1:
+                config["master_sheet"] = master_metadata
+            return "desktop.click", config
+        config = {"name": "desktop.png"}
+        if master_metadata and len(master_metadata) > 1:
+            config["master_sheet"] = master_metadata
+        return "desktop.screenshot", config
 
     if _is_navigate_action(action):
         url = _step_navigate_url(step)
@@ -410,9 +789,15 @@ def _node_type_and_config(step) -> tuple[str, dict]:
     return "web.wait", {"delay_ms": 750, "timeout_ms": 15000}
 
 
-def _first_page_url(test_cases: list) -> str:
+def _first_page_url(
+    test_cases: list,
+    master_sheet: DesktopMasterSheet | None = None,
+    *,
+    force_desktop: bool = False,
+) -> str:
     for test_case in test_cases:
         for step in sorted(test_case.test_steps or [], key=lambda item: item.step_order):
+            step, _ = _resolve_desktop_step_from_master_sheet(step, master_sheet, force_desktop=force_desktop)
             action = (step.action_type or step.intent or step.name or "").lower()
             url = _step_navigate_url(step) if _is_navigate_action(action) else _step_page_url(step)
             if url:
@@ -435,16 +820,51 @@ def _workflow_from_test_cases(test_cases: list, schema: TestCaseExecutionTrigger
     previous_key: str | None = None
     x = 0
 
-    start_url = str(schema.variables.get("base_url") or schema.variables.get("url") or _first_page_url(test_cases))
+    try:
+        master_sheet = DesktopMasterSheet.from_variables(schema.variables)
+    except MasterSheetError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    is_desktop = str(schema.platform or "").strip().lower() in {"desktop", "windows"}
+    if is_desktop:
+        app_key = str(
+            schema.variables.get("app_key")
+            or schema.variables.get("application_key")
+            or schema.variables.get("desktop_app_key")
+            or ""
+        )
+        master_app_path = master_sheet.application_path(app_key) if app_key else ""
+        start_url = str(
+            master_app_path
+            or schema.variables.get("application_path")
+            or schema.variables.get("app_path")
+            or schema.variables.get("app")
+            or schema.variables.get("path")
+            or schema.variables.get("base_url")
+            or schema.variables.get("url")
+            or _first_page_url(test_cases, master_sheet, force_desktop=True)
+        )
+    else:
+        start_url = str(schema.variables.get("base_url") or schema.variables.get("url") or _first_page_url(test_cases))
     if start_url and not _has_explicit_navigate_step(test_cases):
         previous_key = "start_navigate"
+        start_config = (
+            {"app": start_url, "timeout_ms": 30000}
+            if is_desktop
+            else {"url": start_url, "wait_until": "load", "timeout_ms": 30000}
+        )
+        if is_desktop and app_key:
+            start_config["master_sheet"] = {"source": master_sheet.source, "app_key": app_key}
         nodes.append(
             WorkflowNodeSchema(
                 node_key=previous_key,
-                type="web.navigate",
+                type="desktop.launch" if is_desktop else "web.navigate",
                 label="Open application",
-                description="Navigate to the configured page URL before executing test steps.",
-                config={"url": start_url, "wait_until": "load", "timeout_ms": 30000},
+                description=(
+                    "Launch the configured desktop application before executing test steps."
+                    if is_desktop
+                    else "Navigate to the configured page URL before executing test steps."
+                ),
+                config=start_config,
                 position=WorkflowNodePositionSchema(x=x, y=0),
                 timeout_seconds=45,
             )
@@ -457,7 +877,7 @@ def _workflow_from_test_cases(test_cases: list, schema: TestCaseExecutionTrigger
             key=lambda item: item.step_order,
         )
         for step_index, step in enumerate(steps, start=1):
-            node_type, config = _node_type_and_config(step)
+            node_type, config = _node_type_and_config(step, master_sheet, force_desktop=is_desktop)
             config = {
                 **config,
                 "test_step_id": step.id,

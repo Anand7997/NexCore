@@ -110,6 +110,20 @@ class ComputerVisionAdapter(DesktopDriver):
         except Exception as exc:
             return DriverResult(success=False, error=str(exc))
 
+    async def activate_window(self, window_title: str | None = None) -> DriverResult:
+        return DriverResult(success=True, metadata={"window_title": window_title or ""})
+
+    async def wait_app(
+        self,
+        process_name: str | None = None,
+        timeout: float = 10.0,
+    ) -> DriverResult:
+        if self._process and self._process.poll() is None:
+            return DriverResult(success=True, metadata={"pid": self._process.pid})
+        if process_name:
+            return DriverResult(success=True, metadata={"process_name": process_name})
+        return DriverResult(success=False, error="No active computer-vision process")
+
     async def find_element(
         self,
         candidates: list[LocatorCandidate],
@@ -166,6 +180,72 @@ class ComputerVisionAdapter(DesktopDriver):
         except Exception as exc:
             return DriverResult(success=False, error=str(exc))
 
+    async def double_click(
+        self,
+        candidates: list[LocatorCandidate],
+        timeout: float = 10.0,
+    ) -> DriverResult:
+        def _do():
+            import pyautogui
+            for candidate in candidates:
+                pos = self._locate(candidate)
+                if pos:
+                    pyautogui.doubleClick(pos[0], pos[1])
+                    return pos, candidate
+            return None, None
+
+        try:
+            pos, candidate = await asyncio.to_thread(_do)
+            if pos is None:
+                return DriverResult(success=False, error="Double click failed: element not found")
+            return DriverResult(success=True, metadata={"x": pos[0], "y": pos[1], "strategy": candidate.strategy})
+        except Exception as exc:
+            return DriverResult(success=False, error=str(exc))
+
+    async def right_click(
+        self,
+        candidates: list[LocatorCandidate],
+        timeout: float = 10.0,
+    ) -> DriverResult:
+        def _do():
+            import pyautogui
+            for candidate in candidates:
+                pos = self._locate(candidate)
+                if pos:
+                    pyautogui.rightClick(pos[0], pos[1])
+                    return pos, candidate
+            return None, None
+
+        try:
+            pos, candidate = await asyncio.to_thread(_do)
+            if pos is None:
+                return DriverResult(success=False, error="Right click failed: element not found")
+            return DriverResult(success=True, metadata={"x": pos[0], "y": pos[1], "strategy": candidate.strategy})
+        except Exception as exc:
+            return DriverResult(success=False, error=str(exc))
+
+    async def hover(
+        self,
+        candidates: list[LocatorCandidate],
+        timeout: float = 10.0,
+    ) -> DriverResult:
+        def _do():
+            import pyautogui
+            for candidate in candidates:
+                pos = self._locate(candidate)
+                if pos:
+                    pyautogui.moveTo(pos[0], pos[1])
+                    return pos, candidate
+            return None, None
+
+        try:
+            pos, candidate = await asyncio.to_thread(_do)
+            if pos is None:
+                return DriverResult(success=False, error="Hover failed: element not found")
+            return DriverResult(success=True, metadata={"x": pos[0], "y": pos[1], "strategy": candidate.strategy})
+        except Exception as exc:
+            return DriverResult(success=False, error=str(exc))
+
     async def type_text(
         self,
         candidates: list[LocatorCandidate],
@@ -194,6 +274,170 @@ class ComputerVisionAdapter(DesktopDriver):
             )
         except Exception as exc:
             return DriverResult(success=False, error=str(exc))
+
+    async def clear_text(
+        self,
+        candidates: list[LocatorCandidate],
+        timeout: float = 10.0,
+    ) -> DriverResult:
+        def _do():
+            import pyautogui
+            for candidate in candidates:
+                pos = self._locate(candidate)
+                if pos:
+                    pyautogui.click(pos[0], pos[1])
+                    pyautogui.hotkey("ctrl", "a")
+                    pyautogui.press("backspace")
+                    return pos, candidate
+            return None, None
+
+        try:
+            pos, candidate = await asyncio.to_thread(_do)
+            if pos is None:
+                return DriverResult(success=False, error="Clear text failed: element not found")
+            return DriverResult(success=True, metadata={"strategy": candidate.strategy})
+        except Exception as exc:
+            return DriverResult(success=False, error=str(exc))
+
+    async def scroll(
+        self,
+        candidates: list[LocatorCandidate] | None = None,
+        delta: int = -5,
+        timeout: float = 10.0,
+    ) -> DriverResult:
+        def _do():
+            import pyautogui
+            if candidates:
+                for candidate in candidates:
+                    pos = self._locate(candidate)
+                    if pos:
+                        pyautogui.moveTo(pos[0], pos[1])
+                        break
+            pyautogui.scroll(int(delta))
+
+        try:
+            await asyncio.to_thread(_do)
+            return DriverResult(success=True, metadata={"delta": delta})
+        except Exception as exc:
+            return DriverResult(success=False, error=str(exc))
+
+    async def drag_and_drop(
+        self,
+        source_candidates: list[LocatorCandidate],
+        target_candidates: list[LocatorCandidate],
+        timeout: float = 10.0,
+    ) -> DriverResult:
+        def _do():
+            import pyautogui
+            source_pos = None
+            target_pos = None
+            source_candidate = None
+            target_candidate = None
+            for candidate in source_candidates:
+                source_pos = self._locate(candidate)
+                if source_pos:
+                    source_candidate = candidate
+                    break
+            for candidate in target_candidates:
+                target_pos = self._locate(candidate)
+                if target_pos:
+                    target_candidate = candidate
+                    break
+            if not source_pos or not target_pos:
+                raise RuntimeError("Source or target element not found for drag_and_drop")
+            pyautogui.moveTo(source_pos[0], source_pos[1])
+            pyautogui.dragTo(target_pos[0], target_pos[1], duration=0.25, button="left")
+            return source_candidate, target_candidate
+
+        try:
+            source_candidate, target_candidate = await asyncio.to_thread(_do)
+            return DriverResult(
+                success=True,
+                metadata={
+                    "source_strategy": source_candidate.strategy,
+                    "target_strategy": target_candidate.strategy,
+                },
+            )
+        except Exception as exc:
+            return DriverResult(success=False, error=str(exc))
+
+    async def press_key(self, key: str) -> DriverResult:
+        def _do():
+            import pyautogui
+            pyautogui.press(key.lower())
+
+        try:
+            await asyncio.to_thread(_do)
+            return DriverResult(success=True, metadata={"key": key})
+        except Exception as exc:
+            return DriverResult(success=False, error=str(exc))
+
+    async def hotkey(self, keys: list[str]) -> DriverResult:
+        def _do():
+            import pyautogui
+            pyautogui.hotkey(*[str(key).lower() for key in keys])
+
+        try:
+            await asyncio.to_thread(_do)
+            return DriverResult(success=True, metadata={"keys": keys})
+        except Exception as exc:
+            return DriverResult(success=False, error=str(exc))
+
+    async def clipboard_set(self, text: str) -> DriverResult:
+        def _do():
+            import tkinter as tk
+            root = tk.Tk()
+            root.withdraw()
+            root.clipboard_clear()
+            root.clipboard_append(text)
+            root.update()
+            root.destroy()
+
+        try:
+            await asyncio.to_thread(_do)
+            return DriverResult(success=True, metadata={"chars": len(text)})
+        except Exception as exc:
+            return DriverResult(success=False, error=str(exc))
+
+    async def clipboard_get(self) -> DriverResult:
+        def _do():
+            import tkinter as tk
+            root = tk.Tk()
+            root.withdraw()
+            value = root.clipboard_get()
+            root.destroy()
+            return value
+
+        try:
+            value = await asyncio.to_thread(_do)
+            return DriverResult(success=True, value=str(value), metadata={"chars": len(str(value))})
+        except Exception as exc:
+            return DriverResult(success=False, error=str(exc))
+
+    async def select(
+        self,
+        candidates: list[LocatorCandidate],
+        value: str,
+        timeout: float = 10.0,
+    ) -> DriverResult:
+        click = await self.click(candidates, timeout=timeout)
+        if not click.success:
+            return click
+        text = await self.type_text(candidates, value, timeout=timeout)
+        if text.success:
+            text.metadata["selected"] = value
+        return text
+
+    async def set_checked(
+        self,
+        candidates: list[LocatorCandidate],
+        checked: bool,
+        timeout: float = 10.0,
+    ) -> DriverResult:
+        click = await self.click(candidates, timeout=timeout)
+        if click.success:
+            click.metadata["checked"] = checked
+        return click
 
     async def get_text(
         self,

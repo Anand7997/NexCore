@@ -16,7 +16,7 @@ TAG_CATALOG = [
     {
         "key": "platform",
         "label": "Platform",
-        "values": ["web", "android", "ios", "windows", "api"],
+        "values": ["web", "android", "ios", "desktop", "windows", "api"],
     },
     {
         "key": "framework",

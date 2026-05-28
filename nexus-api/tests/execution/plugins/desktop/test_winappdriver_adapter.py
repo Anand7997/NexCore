@@ -12,6 +12,11 @@ def _make_mock_client(session_id="sess1"):
     client.close = AsyncMock()
     client.find_element = AsyncMock()
     client.click = AsyncMock()
+    client.pointer_action = AsyncMock()
+    client.clear = AsyncMock()
+    client.send_global_keys = AsyncMock()
+    client.element_property = AsyncMock(return_value="")
+    client.element_attribute = AsyncMock(return_value="")
     client.send_keys = AsyncMock()
     client.element_text = AsyncMock(return_value="")
     client.screenshot_png = AsyncMock(return_value=b"PNG")
@@ -143,6 +148,56 @@ async def test_type_text_sends_keys():
     assert result.success is True
     mock_client.send_keys.assert_called_once_with(mock_el, "hello world")
     assert result.metadata["chars"] == 11
+
+
+@pytest.mark.asyncio
+async def test_double_click_uses_pointer_action():
+    mock_client = _make_mock_client()
+    mock_el = WebDriverElement(element_id="el6")
+    mock_client.find_element = AsyncMock(return_value=mock_el)
+
+    from app.execution.plugins.desktop.drivers.winappdriver import WinAppDriverAdapter
+    adapter = WinAppDriverAdapter(server_url="http://localhost:4723")
+    adapter._client = mock_client
+
+    result = await adapter.double_click([LocatorCandidate(strategy="accessibility_id", value="btn_ok")])
+
+    assert result.success is True
+    mock_client.pointer_action.assert_called_once_with(mock_el, kind="double_click")
+
+
+@pytest.mark.asyncio
+async def test_clear_text_calls_clear():
+    mock_client = _make_mock_client()
+    mock_el = WebDriverElement(element_id="el7")
+    mock_client.find_element = AsyncMock(return_value=mock_el)
+
+    from app.execution.plugins.desktop.drivers.winappdriver import WinAppDriverAdapter
+    adapter = WinAppDriverAdapter(server_url="http://localhost:4723")
+    adapter._client = mock_client
+
+    result = await adapter.clear_text([LocatorCandidate(strategy="name", value="Input")])
+
+    assert result.success is True
+    mock_client.clear.assert_called_once_with(mock_el)
+
+
+@pytest.mark.asyncio
+async def test_get_property_prefers_webdriver_property():
+    mock_client = _make_mock_client()
+    mock_el = WebDriverElement(element_id="el8")
+    mock_client.find_element = AsyncMock(return_value=mock_el)
+    mock_client.element_property = AsyncMock(return_value="Enabled")
+
+    from app.execution.plugins.desktop.drivers.winappdriver import WinAppDriverAdapter
+    adapter = WinAppDriverAdapter(server_url="http://localhost:4723")
+    adapter._client = mock_client
+
+    result = await adapter.get_property([LocatorCandidate(strategy="name", value="Input")], "enabled")
+
+    assert result.success is True
+    assert result.value == "Enabled"
+    mock_client.element_property.assert_called_once_with(mock_el, "enabled")
 
 
 @pytest.mark.asyncio

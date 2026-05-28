@@ -122,6 +122,10 @@ def _normalize_ai_selection(ai_provider: str | None, ai_model: str | None) -> tu
     return provider, model
 
 
+def _is_desktop_platform(platform: str | None) -> bool:
+    return (platform or "").strip().lower() in {"desktop", "windows"}
+
+
 def _require_provider_package(provider_name: str, package_name: str) -> None:
     if importlib.util.find_spec(package_name) is None:
         raise ValueError(
@@ -974,9 +978,57 @@ def _build_step_bindings(
     step: GeneratedTestStep,
     element: dict[str, Any] | None,
     page_url: str = "",
+    platform: str = "web",
 ) -> dict[str, dict[str, Any]]:
     action = _workflow_action_to_test_config(step.action_type, element)
     input_value = _step_configured_input_value(step, element, page_url=page_url)
+    if _is_desktop_platform(platform):
+        desktop_action = "LAUNCH_APP" if action == "NAVIGATE_TO_URL" else action
+        desktop_binding: dict[str, Any] = {
+            "application": page_name,
+            "window": page_name,
+            "screen": page_name,
+            "page_id": page_id or step.page_id,
+            "action_type": desktop_action,
+            "workflow_action_type": step.action_type,
+            "source": "ai_workflow",
+            "confidence": step.confidence,
+            "requires_object_configuration": element is None and desktop_action not in {"LAUNCH_APP", "WAIT"},
+        }
+        if desktop_action == "LAUNCH_APP" and input_value:
+            desktop_binding["app"] = input_value
+            desktop_binding["application_path"] = input_value
+        if element:
+            locator = _resolved_locator(element)
+            hints = element.get("test_data_hints") or {}
+            desktop_binding.update({
+                "page_element_id": element.get("element_id"),
+                "element_name": element.get("name"),
+                "object_name": element.get("name"),
+                "control_type": element.get("element_type"),
+                "input_type": element.get("input_type") or hints.get("input_type") or "",
+                "data_type": hints.get("data_type") or "",
+                "locator_strategy": element.get("locator_strategy") or "accessibility id",
+                "automation_id": locator,
+                "selector": locator,
+                "uia_path": element.get("xpath") or locator,
+                "class_name": element.get("class_name") or "",
+                "locator_quality": element.get("locator_quality") or element.get("confidence_score"),
+                "match_reason": element.get("match_reason"),
+                "alternative_locators": [
+                    dict(locator)
+                    for locator in (element.get("alternative_locators") or [])
+                    if isinstance(locator, dict) and locator.get("locator")
+                ],
+            })
+        if input_value:
+            desktop_binding.update({
+                "value": input_value,
+                "input_value": input_value,
+                "sample_value": input_value,
+            })
+        return {"desktop": desktop_binding}
+
     web_binding: dict[str, Any] = {
         "page": page_name,
         "page_id": page_id or step.page_id,
@@ -1162,6 +1214,109 @@ async def _run_testcase_generation(workflow_id: str) -> None:
                 page_id=page.id,
             )
 
+            if _is_desktop_platform(wf.platform):
+                await _update_state(
+                    db,
+                    workflow_id,
+                    WorkflowState.PAGE_SAVED,
+                    f"Desktop screen '{page_name}' ready for Automation ID configuration",
+                    detail=(
+                        "Desktop workflows use application paths, windows/screens, Automation IDs, "
+                        "control types, class names, and UIA paths instead of browser URL/XPath scraping."
+                    ),
+                    page_id=page.id,
+                    elements_saved=0,
+                    scraped_candidates=[],
+                    selected_elements=[],
+                )
+                bound_cases = [
+                    tc.model_copy(update={
+                        "steps": [
+                            step.model_copy(update={
+                                "page_id": page.id,
+                                "page_element_id": None,
+                                "needs_review": True,
+                                "review_reason": "desktop Automation ID or object repository mapping required",
+                            })
+                            for step in tc.steps
+                        ],
+                    })
+                    for tc in all_test_cases
+                ]
+                total_steps = sum(len(tc.steps) for tc in bound_cases)
+                persisted = 0
+                for tc in bound_cases:
+                    await _persist_test_case(
+                        db,
+                        tc,
+                        module.id,
+                        project.id,
+                        page_name=page_name,
+                        page_url=wf.webpage_url,
+                        element_lookup={},
+                        platform=wf.platform,
+                    )
+                    persisted += 1
+                    await _update_state(
+                        db,
+                        workflow_id,
+                        WorkflowState.PAGE_SAVED,
+                        f"Configured desktop test case {persisted}/{len(bound_cases)}",
+                        detail=(
+                            f"{len(tc.steps)} desktop step(s) stored with application path, "
+                            "screen/window, and pending Automation ID fields."
+                        ),
+                        testcases_created=persisted,
+                        teststeps_created=sum(len(case.steps) for case in bound_cases[:persisted]),
+                        unmapped_steps=sum(
+                            1 for case in bound_cases[:persisted]
+                            for step in case.steps if step.needs_review
+                        ),
+                    )
+
+                reviewer = ReviewAndValidationAgent()
+                review = reviewer.build_review(
+                    workflow_id=workflow_id,
+                    project_id=project.id,
+                    module_id=module.id,
+                    page_id=page.id,
+                    elements_saved=0,
+                    scenarios_generated=len(wf.scenarios or []),
+                    scenarios_selected=len(selected),
+                    test_cases=bound_cases,
+                    page_elements=[],
+                )
+                review_update = {
+                    "testcases_created": len(bound_cases),
+                    "teststeps_created": total_steps,
+                    "unmapped_steps": total_steps,
+                    "low_confidence_locators": 0,
+                    "elements_saved": 0,
+                    "page_id": page.id,
+                    "selected_elements": [],
+                    "scraped_candidates": [],
+                    "review_data": review.model_dump(),
+                }
+                await _update_state(
+                    db,
+                    workflow_id,
+                    WorkflowState.REVIEW_READY,
+                    "Desktop test configuration ready",
+                    detail=(
+                        "Open Test Configuration to replace web locator fields with desktop "
+                        "Automation IDs, UIA paths, class names, and object repository mappings."
+                    ),
+                    **review_update,
+                )
+                await _update_state(
+                    db,
+                    workflow_id,
+                    WorkflowState.COMPLETED,
+                    f"Completed desktop draft: {len(bound_cases)} test cases, {total_steps} steps",
+                    **review_update,
+                )
+                return
+
             discovery_engine = "MCP Playwright server" if settings.mcp_playwright_url else "local Playwright"
             await _update_state(
                 db, workflow_id, WorkflowState.DISCOVERY_RUNNING,
@@ -1267,6 +1422,7 @@ async def _run_testcase_generation(workflow_id: str) -> None:
                     page_name=page_name,
                     page_url=wf.webpage_url,
                     element_lookup=saved_element_lookup,
+                    platform=wf.platform,
                 )
                 persisted += 1
                 await _update_state(
@@ -1358,6 +1514,7 @@ async def _persist_test_case(
     page_name: str = "",
     page_url: str = "",
     element_lookup: dict[str, dict[str, Any]] | None = None,
+    platform: str = "web",
 ) -> None:
     if not module_id:
         return
@@ -1368,6 +1525,7 @@ async def _persist_test_case(
         description=tc.description,
         test_type=tc.test_type,
         priority=tc.priority,
+        platforms=[platform] if platform else [],
     )
     db.add(case_model)
     await db.flush()
@@ -1379,15 +1537,24 @@ async def _persist_test_case(
             else None
         )
         configured_action = _workflow_action_to_test_config(step.action_type, element)
+        if _is_desktop_platform(platform) and configured_action == "NAVIGATE_TO_URL":
+            configured_action = "LAUNCH_APP"
         bindings = _build_step_bindings(
             page_id=step.page_id,
             page_name=page_name,
             step=step,
             element=element,
             page_url=page_url,
+            platform=platform,
         )
-        web_binding = bindings.get("web", {})
-        locator = str(web_binding.get("selector") or web_binding.get("xpath") or "")
+        platform_binding = bindings.get("desktop", {}) if _is_desktop_platform(platform) else bindings.get("web", {})
+        locator = str(
+            platform_binding.get("automation_id")
+            or platform_binding.get("selector")
+            or platform_binding.get("uia_path")
+            or platform_binding.get("xpath")
+            or ""
+        )
         element_name = str(element.get("name") or "") if element else ""
         test_data_hints = (element or {}).get("test_data_hints") or {}
         configured_input_value = _step_configured_input_value(step, element, page_url=page_url)
@@ -1397,21 +1564,29 @@ async def _persist_test_case(
             "value": configured_input_value,
             "action_type": configured_action,
             "workflow_action_type": step.action_type,
+            "platform": platform,
             "page": page_name,
+            "screen": page_name,
+            "window": page_name,
             "page_id": step.page_id,
             "page_element_id": step.page_element_id,
             "element_name": element_name,
-            "input_type": web_binding.get("input_type") or test_data_hints.get("input_type") or "",
+            "input_type": platform_binding.get("input_type") or test_data_hints.get("input_type") or "",
             "data_type": test_data_hints.get("data_type") or "",
             "date_format": test_data_hints.get("date_format") or "",
             "sample_value": test_data_hints.get("sample_value") or "",
             "locator": locator,
-            "xpath": str(web_binding.get("xpath") or locator),
-            "css_selector": str(web_binding.get("css_selector") or ""),
-            "alternative_locators": web_binding.get("alternative_locators") or [],
-            "locator_quality": web_binding.get("locator_quality") or "",
+            "xpath": str(platform_binding.get("xpath") or platform_binding.get("uia_path") or locator),
+            "uia_path": str(platform_binding.get("uia_path") or ""),
+            "automation_id": str(platform_binding.get("automation_id") or locator),
+            "css_selector": str(platform_binding.get("css_selector") or ""),
+            "alternative_locators": platform_binding.get("alternative_locators") or [],
+            "locator_quality": platform_binding.get("locator_quality") or "",
             "binding_confidence": step.confidence,
         }
+        if _is_desktop_platform(platform):
+            test_data["application_path"] = configured_input_value if step.action_type == "navigate" else page_url
+            test_data["object_repository_required"] = bool(platform_binding.get("requires_object_configuration"))
         if step.assertion_type:
             test_data["assertion_type"] = step.assertion_type
 

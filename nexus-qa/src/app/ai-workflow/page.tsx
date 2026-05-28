@@ -19,6 +19,7 @@ import {
   Globe,
   ListChecks,
   Loader2,
+  Monitor,
   MousePointerClick,
   Play,
   Radio,
@@ -57,7 +58,7 @@ import type {
 // ── Constants ──────────────────────────────────────────────────────────────────
 
 const WORKFLOW_STEPS = [
-  { id: 'input', label: 'Input', icon: FileText, desc: 'BRD + URL' },
+  { id: 'input', label: 'Input', icon: FileText, desc: 'BRD + Target' },
   { id: 'model', label: 'Model', icon: Bot, desc: 'Select AI' },
   { id: 'scenarios', label: 'Scenarios', icon: ClipboardList, desc: 'Select tests' },
   { id: 'generation', label: 'Test Gen', icon: Wand2, desc: 'Generate' },
@@ -1227,7 +1228,10 @@ const PLATFORMS = [
   { id: 'web', label: 'Web', icon: Globe },
   { id: 'mobile', label: 'Mobile', icon: Smartphone },
   { id: 'api', label: 'API', icon: Code2 },
+  { id: 'desktop', label: 'Desktop', icon: Monitor },
 ] as const;
+
+type WorkflowPlatform = (typeof PLATFORMS)[number]['id'];
 
 function useFavicon(url: string) {
   const [favicon, setFavicon] = useState<string | null>(null);
@@ -1250,7 +1254,7 @@ function InputStep({ onStart, isPending }: {
   const [projectName, setProjectName] = useState('');
   const [moduleName, setModuleName] = useState('');
   const [pageName, setPageName] = useState('');
-  const [platform, setPlatform] = useState<'web' | 'mobile' | 'api'>('web');
+  const [platform, setPlatform] = useState<WorkflowPlatform>('web');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isDragging, setIsDragging] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
@@ -1260,8 +1264,8 @@ function InputStep({ onStart, isPending }: {
   function validate() {
     const e: Record<string, string> = {};
     if (!brd.trim()) e.brd = 'BRD text is required';
-    if (!url.trim()) e.url = 'URL is required';
-    else if (!/^https?:\/\//i.test(url)) e.url = 'URL must start with http:// or https://';
+    if (!url.trim()) e.url = `${targetLabel} is required`;
+    else if (platform !== 'desktop' && !/^https?:\/\//i.test(url)) e.url = 'URL must start with http:// or https://';
     if (!projectName.trim()) e.projectName = 'Project name is required';
     if (!pageName.trim()) e.pageName = 'Page name is required';
     return e;
@@ -1335,6 +1339,18 @@ function InputStep({ onStart, isPending }: {
 
   const labelCls = 'block text-[11px] font-medium text-(--color-fg-muted) mb-1.5';
   const inputCls = 'w-full bg-(--color-surface-2) border border-(--color-line-default) rounded-lg px-3 py-2 text-sm text-(--color-fg-default) placeholder:text-(--color-fg-subtle)/40 focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all';
+  const targetLabel = platform === 'desktop' ? 'Application Path / ID' : platform === 'api' ? 'API Base URL' : platform === 'mobile' ? 'Mobile App / URL' : 'Webpage URL';
+  const targetPlaceholder = platform === 'desktop'
+    ? 'C:\\Program Files\\MyApp\\MyApp.exe or app id'
+    : platform === 'api'
+      ? 'https://api.example.com'
+      : platform === 'mobile'
+        ? 'myapp://login or https://m.example.com'
+        : 'https://example.com/login';
+  const projectPlaceholder = platform === 'desktop' ? 'My Desktop App' : platform === 'api' ? 'My API Suite' : platform === 'mobile' ? 'My Mobile App' : 'My Web App';
+  const pageLabel = platform === 'desktop' ? 'Screen / Window Name' : platform === 'api' ? 'Endpoint Group Name' : 'Page Name';
+  const pagePlaceholder = platform === 'desktop' ? 'Login Window' : platform === 'api' ? 'Authentication APIs' : 'Flight Search Page';
+  const TargetIcon = platform === 'desktop' ? Monitor : platform === 'api' ? Code2 : platform === 'mobile' ? Smartphone : Globe;
 
   return (
     <div className="max-w-2xl mx-auto space-y-5">
@@ -1401,12 +1417,12 @@ function InputStep({ onStart, isPending }: {
       </div>
 
       <div>
-        <label className={labelCls}>Webpage URL</label>
+        <label className={labelCls}>{targetLabel}</label>
         <div className="relative">
           {favicon
             ? <img src={favicon} alt="" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 rounded-sm" />
-            : <Globe size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-(--color-fg-subtle)" />}
-          <input type="url" className={`${inputCls} pl-8`} placeholder="https://example.com/login"
+            : <TargetIcon size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-(--color-fg-subtle)" />}
+          <input type={platform === 'desktop' ? 'text' : 'url'} className={`${inputCls} pl-8`} placeholder={targetPlaceholder}
             value={url} onChange={(e) => setUrl(e.target.value)} />
         </div>
         {errors.url && <p className="text-[10px] text-red-400 mt-1">{errors.url}</p>}
@@ -1415,7 +1431,7 @@ function InputStep({ onStart, isPending }: {
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className={labelCls}>Project Name</label>
-          <input className={inputCls} placeholder="My Web App" value={projectName} onChange={(e) => setProjectName(e.target.value)} />
+          <input className={inputCls} placeholder={projectPlaceholder} value={projectName} onChange={(e) => setProjectName(e.target.value)} />
           {errors.projectName && <p className="text-[10px] text-red-400 mt-1">{errors.projectName}</p>}
         </div>
         <div>
@@ -1425,8 +1441,8 @@ function InputStep({ onStart, isPending }: {
       </div>
 
       <div>
-        <label className={labelCls}>Page Name</label>
-        <input className={inputCls} placeholder="Flight Search Page" value={pageName} onChange={(e) => setPageName(e.target.value)} />
+        <label className={labelCls}>{pageLabel}</label>
+        <input className={inputCls} placeholder={pagePlaceholder} value={pageName} onChange={(e) => setPageName(e.target.value)} />
         {errors.pageName && <p className="text-[10px] text-red-400 mt-1">{errors.pageName}</p>}
       </div>
 

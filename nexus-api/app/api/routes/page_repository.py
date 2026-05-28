@@ -2,10 +2,10 @@
 from __future__ import annotations
 
 from typing import Any, Optional
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import delete, or_, select, update
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,10 +13,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database.session import get_db
 from app.ai_workflow.models import AIWorkflowModel
 from app.database.models import (
+    DesktopObjectHealingSuggestionModel,
+    DesktopObjectHistoryModel,
     ExecutionStepResultModel,
     PageElementModel,
     PageRepositoryModel,
+    TestCaseModel,
+    TestModuleModel,
+    TestProjectModel,
     TestStepModel,
+    WorkflowModel,
+    WorkflowNodeModel,
 )
 from app.page_discovery.schemas import DiscoveryRequest, DiscoveryResponse
 from app.page_discovery.service import discover_elements
@@ -40,12 +47,135 @@ class PageElementResponse(BaseModel):
     tags: list[str]
     confidence_score: Optional[float] = None
     alternative_locators: Optional[list[dict[str, Any]]] = None
+    discovery_metadata: Optional[dict[str, Any]] = None
     source_url: str = ""
     last_verified_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class DesktopObjectImpactStep(BaseModel):
+    step_id: str
+    step_order: int
+    step_name: str
+    action_type: str = ""
+    target: str = ""
+    is_enabled: bool = True
+    test_case_id: str = ""
+    test_case_name: str = ""
+    module_id: str = ""
+    module_name: str = ""
+    project_id: str = ""
+    project_name: str = ""
+    match_reasons: list[str]
+    risk: str
+    current_locator: str = ""
+
+
+class DesktopObjectImpactWorkflowNode(BaseModel):
+    workflow_id: str
+    workflow_name: str
+    node_key: str
+    node_type: str
+    node_label: str
+    test_step_id: str = ""
+
+
+class DesktopObjectImpactResponse(BaseModel):
+    object_key: str
+    object_name: str
+    application: str
+    page_id: str
+    element_id: str
+    impacted_step_count: int
+    workflow_node_count: int
+    risk_summary: dict[str, int]
+    steps: list[DesktopObjectImpactStep]
+    workflow_nodes: list[DesktopObjectImpactWorkflowNode]
+
+
+class DesktopObjectHistoryResponse(BaseModel):
+    id: str
+    page_id: str = ""
+    element_id: str = ""
+    object_key: str
+    action: str
+    source: str = ""
+    actor: str = ""
+    changed_fields: list[str]
+    before_snapshot: dict[str, Any]
+    after_snapshot: dict[str, Any]
+    impact_summary: dict[str, Any]
+    created_at: datetime
+
+
+class DesktopObjectLocatorCandidateProfile(BaseModel):
+    strategy: str
+    locator: str
+    score: float
+    strength: str
+    reason: str
+    risk_flags: list[str]
+
+
+class DesktopObjectLocatorProfileResponse(BaseModel):
+    object_key: str
+    object_name: str
+    application: str
+    page_id: str
+    element_id: str
+    stability_score: float
+    stale: bool
+    stale_reasons: list[str]
+    suggestions: list[str]
+    primary_locator: str
+    best_strategy: str
+    history_count: int
+    locator_change_count: int
+    last_changed_at: Optional[datetime] = None
+    candidates: list[DesktopObjectLocatorCandidateProfile]
+
+
+class DesktopObjectHealingSuggestionCreateSchema(BaseModel):
+    locator_attempts: list[dict[str, Any]] = Field(default_factory=list)
+    attempts: list[dict[str, Any]] = Field(default_factory=list)
+    successful_strategy: str = ""
+    successful_locator: str = ""
+    confidence: Optional[float] = None
+    source: str = "smart_identification"
+    reason: str = ""
+    actor: str = ""
+    min_confidence: float = 0.65
+
+
+class DesktopObjectHealingSuggestionDecisionSchema(BaseModel):
+    approved: bool = True
+    actor: str = ""
+    note: str = ""
+
+
+class DesktopObjectHealingSuggestionResponse(BaseModel):
+    id: str
+    page_id: str = ""
+    element_id: str = ""
+    object_key: str
+    object_name: str = ""
+    application: str = ""
+    status: str
+    source: str = ""
+    suggested_strategy: str = ""
+    suggested_locator: str = ""
+    suggested_field: str = ""
+    confidence: Optional[float] = None
+    reason: str = ""
+    evidence: list[dict[str, Any]]
+    preview_update: dict[str, Any]
+    created_at: datetime
+    resolved_at: Optional[datetime] = None
+    resolved_by: str = ""
+    resolution_note: str = ""
 
 
 class PageListItem(BaseModel):
@@ -92,6 +222,9 @@ class ElementCreateSchema(BaseModel):
     name_attr: str = ""
     locator_strategy: str = "xpath"
     tags: list[str] = []
+    confidence_score: Optional[float] = None
+    alternative_locators: Optional[list[dict[str, Any]]] = None
+    discovery_metadata: Optional[dict[str, Any]] = None
 
 
 class ElementUpdateSchema(BaseModel):
@@ -104,6 +237,98 @@ class ElementUpdateSchema(BaseModel):
     name_attr: Optional[str] = None
     locator_strategy: Optional[str] = None
     tags: Optional[list[str]] = None
+    confidence_score: Optional[float] = None
+    alternative_locators: Optional[list[dict[str, Any]]] = None
+    discovery_metadata: Optional[dict[str, Any]] = None
+
+
+class DesktopObjectCreateSchema(BaseModel):
+    page_id: Optional[str] = None
+    application: str = ""
+    application_path: str = ""
+    repository_scope: str = "shared"
+    object_key: str
+    name: str
+    control_type: str = "element"
+    automation_id: str = ""
+    name_text: str = ""
+    class_name: str = ""
+    uia_path: str = ""
+    locator_strategy: str = "accessibility id"
+    primary_locator: str = ""
+    alternative_locators: list[dict[str, Any]] = []
+    window: str = ""
+    screen: str = ""
+    ui_framework: str = ""
+    process_name: str = ""
+    hierarchy_path: str = ""
+    bounding_box: Optional[dict[str, Any]] = None
+    screenshot_url: str = ""
+    ocr_text: str = ""
+    ai_label: str = ""
+    confidence_score: Optional[float] = None
+    tags: list[str] = []
+    metadata: dict[str, Any] = {}
+
+
+class DesktopObjectUpdateSchema(BaseModel):
+    application: Optional[str] = None
+    application_path: Optional[str] = None
+    repository_scope: Optional[str] = None
+    object_key: Optional[str] = None
+    name: Optional[str] = None
+    control_type: Optional[str] = None
+    automation_id: Optional[str] = None
+    name_text: Optional[str] = None
+    class_name: Optional[str] = None
+    uia_path: Optional[str] = None
+    locator_strategy: Optional[str] = None
+    primary_locator: Optional[str] = None
+    alternative_locators: Optional[list[dict[str, Any]]] = None
+    window: Optional[str] = None
+    screen: Optional[str] = None
+    ui_framework: Optional[str] = None
+    process_name: Optional[str] = None
+    hierarchy_path: Optional[str] = None
+    bounding_box: Optional[dict[str, Any]] = None
+    screenshot_url: Optional[str] = None
+    ocr_text: Optional[str] = None
+    ai_label: Optional[str] = None
+    confidence_score: Optional[float] = None
+    tags: Optional[list[str]] = None
+    metadata: Optional[dict[str, Any]] = None
+
+
+class DesktopObjectResponse(BaseModel):
+    id: str
+    page_id: str
+    object_key: str
+    name: str
+    application: str
+    application_path: str = ""
+    repository_scope: str = "shared"
+    control_type: str
+    automation_id: str = ""
+    name_text: str = ""
+    class_name: str = ""
+    uia_path: str = ""
+    locator_strategy: str
+    primary_locator: str = ""
+    alternative_locators: list[dict[str, Any]] = []
+    window: str = ""
+    screen: str = ""
+    ui_framework: str = ""
+    process_name: str = ""
+    hierarchy_path: str = ""
+    bounding_box: Optional[dict[str, Any]] = None
+    screenshot_url: str = ""
+    ocr_text: str = ""
+    ai_label: str = ""
+    confidence_score: Optional[float] = None
+    tags: list[str] = []
+    metadata: dict[str, Any] = {}
+    created_at: datetime
+    updated_at: datetime
 
 
 # ── Converters ────────────────────────────────────────────────────────────────
@@ -119,6 +344,7 @@ def _elem(e: PageElementModel) -> PageElementResponse:
         tags=e.tags or [],
         confidence_score=e.confidence_score if e.confidence_score is not None else None,
         alternative_locators=e.alternative_locators if e.alternative_locators is not None else None,
+        discovery_metadata=e.discovery_metadata if e.discovery_metadata is not None else None,
         source_url=e.source_url or "",
         last_verified_at=e.last_verified_at,
         created_at=e.created_at, updated_at=e.updated_at,
@@ -187,6 +413,18 @@ async def _detach_page_references(page_id: str, db: AsyncSession) -> list[str]:
 
     if element_ids:
         await db.execute(
+            update(DesktopObjectHistoryModel)
+            .where(DesktopObjectHistoryModel.element_id.in_(element_ids))
+            .values(element_id=None)
+            .execution_options(synchronize_session=False)
+        )
+        await db.execute(
+            update(DesktopObjectHealingSuggestionModel)
+            .where(DesktopObjectHealingSuggestionModel.element_id.in_(element_ids))
+            .values(element_id=None)
+            .execution_options(synchronize_session=False)
+        )
+        await db.execute(
             update(TestStepModel)
             .where(TestStepModel.page_element_id.in_(element_ids))
             .values(page_element_id=None)
@@ -198,11 +436,63 @@ async def _detach_page_references(page_id: str, db: AsyncSession) -> list[str]:
             .values(page_element_id=None)
             .execution_options(synchronize_session=False)
         )
+    await db.execute(
+        update(DesktopObjectHistoryModel)
+        .where(DesktopObjectHistoryModel.page_id == page_id)
+        .values(page_id=None)
+        .execution_options(synchronize_session=False)
+    )
+    await db.execute(
+        update(DesktopObjectHealingSuggestionModel)
+        .where(DesktopObjectHealingSuggestionModel.page_id == page_id)
+        .values(page_id=None)
+        .execution_options(synchronize_session=False)
+    )
 
     return element_ids
 
 
-def _element_primary_locator(element: PageElementModel) -> str:
+DESKTOP_PLATFORMS = {"desktop", "windows"}
+
+
+def _is_desktop_platform(platform: str | None) -> bool:
+    return str(platform or "").strip().lower() in DESKTOP_PLATFORMS
+
+
+def _is_desktop_page(page: PageRepositoryModel | None) -> bool:
+    return page is not None and _is_desktop_platform(getattr(page, "platform", ""))
+
+
+def _element_metadata(element: PageElementModel) -> dict[str, Any]:
+    metadata = getattr(element, "discovery_metadata", None)
+    return metadata if isinstance(metadata, dict) else {}
+
+
+def _desktop_object_key(element: PageElementModel) -> str:
+    metadata = _element_metadata(element)
+    return str(
+        metadata.get("object_key")
+        or metadata.get("repository_key")
+        or metadata.get("element_key")
+        or getattr(element, "id", "")
+        or getattr(element, "name", "")
+        or ""
+    )
+
+
+def _element_primary_locator(element: PageElementModel, *, desktop: bool = False) -> str:
+    if desktop:
+        strategy = (element.locator_strategy or "").lower().replace("_", " ")
+        if strategy in {"accessibility id", "automation id", "id"} and element.id_attr:
+            return element.id_attr
+        if strategy in {"name", "text"} and (element.name_attr or element.name):
+            return element.name_attr or element.name
+        if strategy in {"xpath", "uia path", "path"} and element.xpath:
+            return element.xpath
+        if strategy in {"class", "class name"} and element.css_selector:
+            return element.css_selector
+        return element.id_attr or element.name_attr or element.xpath or element.css_selector or element.name
+
     strategy = (element.locator_strategy or "").lower()
     if strategy == "css" and element.css_selector:
         return element.css_selector
@@ -219,7 +509,7 @@ def _element_primary_locator(element: PageElementModel) -> str:
     ) or element.name
 
 
-def _element_locator_candidates(element: PageElementModel) -> list[dict[str, Any]]:
+def _element_locator_candidates(element: PageElementModel, *, desktop: bool = False) -> list[dict[str, Any]]:
     candidates: list[dict[str, Any]] = []
     seen: set[tuple[str, str]] = set()
 
@@ -243,13 +533,24 @@ def _element_locator_candidates(element: PageElementModel) -> list[dict[str, Any
             "reason": reason,
         })
 
-    add(element.locator_strategy or "", _element_primary_locator(element), "Current page repository locator")
-    add("xpath", element.xpath or "", "Current page repository XPath")
-    add("css", element.css_selector or "", "Current page repository CSS selector")
-    if element.id_attr:
-        add("css", f"#{element.id_attr}", "Current page repository id selector")
-    if element.name_attr:
-        add("css", f"[name='{element.name_attr}']", "Current page repository name selector")
+    if desktop:
+        add(
+            element.locator_strategy or "accessibility id",
+            _element_primary_locator(element, desktop=True),
+            "Current desktop object repository locator",
+        )
+        add("accessibility id", element.id_attr or "", "Desktop object Automation ID")
+        add("name", element.name_attr or element.name or "", "Desktop object name/text")
+        add("xpath", element.xpath or "", "Desktop object UIA path")
+        add("class name", element.css_selector or "", "Desktop object class name")
+    else:
+        add(element.locator_strategy or "", _element_primary_locator(element), "Current page repository locator")
+        add("xpath", element.xpath or "", "Current page repository XPath")
+        add("css", element.css_selector or "", "Current page repository CSS selector")
+        if element.id_attr:
+            add("css", f"#{element.id_attr}", "Current page repository id selector")
+        if element.name_attr:
+            add("css", f"[name='{element.name_attr}']", "Current page repository name selector")
     for locator in element.alternative_locators or []:
         if isinstance(locator, dict):
             add(
@@ -260,12 +561,550 @@ def _element_locator_candidates(element: PageElementModel) -> list[dict[str, Any
     return candidates
 
 
+def _desktop_object_response(page: PageRepositoryModel, element: PageElementModel) -> DesktopObjectResponse:
+    metadata = _element_metadata(element)
+    return DesktopObjectResponse(
+        id=element.id,
+        page_id=page.id,
+        object_key=_desktop_object_key(element),
+        name=element.name,
+        application=str(metadata.get("application") or page.name or ""),
+        application_path=str(metadata.get("application_path") or page.url_pattern or ""),
+        repository_scope=str(metadata.get("repository_scope") or "shared"),
+        control_type=element.element_type or "element",
+        automation_id=element.id_attr or "",
+        name_text=element.name_attr or "",
+        class_name=element.css_selector or "",
+        uia_path=element.xpath or "",
+        locator_strategy=element.locator_strategy or "accessibility id",
+        primary_locator=str(metadata.get("primary_locator") or _element_primary_locator(element, desktop=True) or ""),
+        alternative_locators=_element_locator_candidates(element, desktop=True),
+        window=str(metadata.get("window") or ""),
+        screen=str(metadata.get("screen") or metadata.get("window") or ""),
+        ui_framework=str(metadata.get("ui_framework") or ""),
+        process_name=str(metadata.get("process_name") or ""),
+        hierarchy_path=str(metadata.get("hierarchy_path") or metadata.get("uia_path") or element.xpath or ""),
+        bounding_box=metadata.get("bounding_box") if isinstance(metadata.get("bounding_box"), dict) else None,
+        screenshot_url=str(metadata.get("screenshot_url") or element.source_url or ""),
+        ocr_text=str(metadata.get("ocr_text") or ""),
+        ai_label=str(metadata.get("ai_label") or ""),
+        confidence_score=element.confidence_score if element.confidence_score is not None else None,
+        tags=element.tags or [],
+        metadata=metadata,
+        created_at=element.created_at,
+        updated_at=element.updated_at,
+    )
+
+
+def _desktop_object_snapshot(page: PageRepositoryModel, element: PageElementModel) -> dict[str, Any]:
+    metadata = _element_metadata(element)
+    return {
+        "object_key": _desktop_object_key(element),
+        "name": element.name or "",
+        "application": str(metadata.get("application") or page.name or ""),
+        "application_path": str(metadata.get("application_path") or page.url_pattern or ""),
+        "repository_scope": str(metadata.get("repository_scope") or "shared"),
+        "control_type": element.element_type or "element",
+        "automation_id": element.id_attr or "",
+        "name_text": element.name_attr or "",
+        "class_name": element.css_selector or "",
+        "uia_path": element.xpath or "",
+        "locator_strategy": element.locator_strategy or "accessibility id",
+        "primary_locator": str(metadata.get("primary_locator") or _element_primary_locator(element, desktop=True) or ""),
+        "alternative_locators": element.alternative_locators or [],
+        "window": str(metadata.get("window") or ""),
+        "screen": str(metadata.get("screen") or metadata.get("window") or ""),
+        "ui_framework": str(metadata.get("ui_framework") or ""),
+        "process_name": str(metadata.get("process_name") or ""),
+        "hierarchy_path": str(metadata.get("hierarchy_path") or metadata.get("uia_path") or element.xpath or ""),
+        "bounding_box": metadata.get("bounding_box") if isinstance(metadata.get("bounding_box"), dict) else None,
+        "screenshot_url": str(metadata.get("screenshot_url") or element.source_url or ""),
+        "ocr_text": str(metadata.get("ocr_text") or ""),
+        "ai_label": str(metadata.get("ai_label") or ""),
+        "confidence_score": element.confidence_score,
+        "tags": element.tags or [],
+        "metadata": metadata,
+    }
+
+
+def _changed_fields(before: dict[str, Any] | None, after: dict[str, Any] | None) -> list[str]:
+    before = before or {}
+    after = after or {}
+    fields = sorted(set(before) | set(after))
+    return [field for field in fields if before.get(field) != after.get(field)]
+
+
+def _history_response(history: DesktopObjectHistoryModel) -> DesktopObjectHistoryResponse:
+    return DesktopObjectHistoryResponse(
+        id=history.id,
+        page_id=history.page_id or "",
+        element_id=history.element_id or "",
+        object_key=history.object_key,
+        action=history.action or "",
+        source=history.source or "",
+        actor=history.actor or "",
+        changed_fields=history.changed_fields or [],
+        before_snapshot=history.before_snapshot or {},
+        after_snapshot=history.after_snapshot or {},
+        impact_summary=history.impact_summary or {},
+        created_at=history.created_at,
+    )
+
+
+def _record_desktop_object_history(
+    db: AsyncSession,
+    page: PageRepositoryModel,
+    element: PageElementModel,
+    *,
+    action: str,
+    source: str,
+    before: dict[str, Any] | None,
+    after: dict[str, Any] | None,
+    impact_summary: dict[str, Any] | None = None,
+    actor: str = "",
+) -> DesktopObjectHistoryModel | None:
+    changed = _changed_fields(before, after)
+    if action == "updated" and not changed:
+        return None
+    history = DesktopObjectHistoryModel(
+        page_id=page.id,
+        element_id=element.id,
+        object_key=str((after or before or {}).get("object_key") or _desktop_object_key(element)),
+        action=action,
+        source=source,
+        actor=actor,
+        changed_fields=changed,
+        before_snapshot=before or {},
+        after_snapshot=after or {},
+        impact_summary=impact_summary or {},
+    )
+    db.add(history)
+    return history
+
+
+def _healing_suggestion_response(
+    suggestion: DesktopObjectHealingSuggestionModel,
+) -> DesktopObjectHealingSuggestionResponse:
+    return DesktopObjectHealingSuggestionResponse(
+        id=suggestion.id,
+        page_id=suggestion.page_id or "",
+        element_id=suggestion.element_id or "",
+        object_key=suggestion.object_key,
+        object_name=suggestion.object_name or "",
+        application=suggestion.application or "",
+        status=suggestion.status or "pending",
+        source=suggestion.source or "",
+        suggested_strategy=suggestion.suggested_strategy or "",
+        suggested_locator=suggestion.suggested_locator or "",
+        suggested_field=suggestion.suggested_field or "",
+        confidence=suggestion.confidence,
+        reason=suggestion.reason or "",
+        evidence=suggestion.evidence or [],
+        preview_update=suggestion.preview_update or {},
+        created_at=suggestion.created_at,
+        resolved_at=suggestion.resolved_at,
+        resolved_by=suggestion.resolved_by or "",
+        resolution_note=suggestion.resolution_note or "",
+    )
+
+
+def _canonical_desktop_strategy(value: Any) -> str:
+    strategy = str(value or "").strip().lower().replace("-", " ").replace("_", " ")
+    aliases = {
+        "accessibility": "accessibility id",
+        "accessibility id": "accessibility id",
+        "automation id": "accessibility id",
+        "id": "accessibility id",
+        "name": "name",
+        "text": "name",
+        "xpath": "xpath",
+        "uia path": "xpath",
+        "path": "xpath",
+        "class": "class name",
+        "class name": "class name",
+        "ocr": "ocr",
+        "visual": "visual",
+        "image": "visual",
+    }
+    return aliases.get(strategy, strategy or "accessibility id")
+
+
+def _locator_identity(strategy: Any, locator: Any) -> tuple[str, str]:
+    return (_canonical_desktop_strategy(strategy), str(locator or "").strip().lower())
+
+
+def _truthy(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value or "").strip().lower() in {"1", "true", "yes", "y", "matched", "success", "successful"}
+
+
+def _attempt_confidence(attempt: dict[str, Any], default: float = 1.0) -> float:
+    for key in ("confidence", "match_confidence", "score"):
+        if attempt.get(key) is None:
+            continue
+        try:
+            return max(0.0, min(float(attempt.get(key)), 1.0))
+        except (TypeError, ValueError):
+            continue
+    return default
+
+
+def _attempt_candidate(attempt: dict[str, Any]) -> tuple[str, str] | None:
+    nested = attempt.get("candidate") if isinstance(attempt.get("candidate"), dict) else {}
+    strategy = (
+        attempt.get("strategy")
+        or attempt.get("locator_strategy")
+        or nested.get("strategy")
+        or nested.get("locator_strategy")
+    )
+    locator = (
+        attempt.get("locator")
+        or attempt.get("selector")
+        or attempt.get("value")
+        or nested.get("locator")
+        or nested.get("selector")
+        or nested.get("value")
+    )
+    locator_value = str(locator or "").strip()
+    if not locator_value:
+        return None
+    return _canonical_desktop_strategy(strategy), locator_value
+
+
+def _attempt_is_successful(attempt: dict[str, Any]) -> bool:
+    success_keys = ("success", "successful", "matched", "used", "selected", "healed")
+    return any(key in attempt and _truthy(attempt.get(key)) for key in success_keys)
+
+
+def _desktop_healing_suggestion_preview(
+    page: PageRepositoryModel,
+    element: PageElementModel,
+    locator_attempts: list[dict[str, Any]],
+    *,
+    successful_strategy: str = "",
+    successful_locator: str = "",
+    confidence: float | None = None,
+    source: str = "smart_identification",
+    reason: str = "",
+    min_confidence: float = 0.65,
+) -> dict[str, Any] | None:
+    evidence = [dict(item) for item in locator_attempts if isinstance(item, dict)]
+    candidates: list[tuple[int, str, str, float, dict[str, Any]]] = []
+
+    if str(successful_locator or "").strip():
+        explicit = {
+            "strategy": successful_strategy or "accessibility id",
+            "locator": successful_locator,
+            "confidence": confidence if confidence is not None else 1.0,
+            "success": True,
+            "source": source,
+        }
+        evidence.insert(0, explicit)
+
+    for index, attempt in enumerate(evidence):
+        if not _attempt_is_successful(attempt):
+            continue
+        parsed = _attempt_candidate(attempt)
+        if parsed is None:
+            continue
+        strategy, locator = parsed
+        score = _attempt_confidence(attempt, default=confidence if confidence is not None else 1.0)
+        candidates.append((index, strategy, locator, score, attempt))
+
+    if not candidates:
+        return None
+
+    existing = {
+        _locator_identity(item.get("strategy"), item.get("locator") or item.get("selector") or item.get("value"))
+        for item in _element_locator_candidates(element, desktop=True)
+    }
+    field_by_strategy = {
+        "accessibility id": "automation_id",
+        "name": "name_text",
+        "xpath": "uia_path",
+        "class name": "class_name",
+    }
+    deterministic = set(field_by_strategy)
+    candidates.sort(key=lambda item: (-item[3], item[0]))
+
+    for _index, strategy, locator, score, attempt in candidates:
+        if score < min_confidence:
+            continue
+        if _locator_identity(strategy, locator) in existing:
+            continue
+
+        alternate_locators = [
+            dict(item)
+            for item in (element.alternative_locators or [])
+            if isinstance(item, dict)
+        ]
+        alternate_locators.append({
+            "strategy": strategy,
+            "locator": locator,
+            "confidence": round(score, 4),
+            "verified": True,
+            "source": source,
+            "reason": reason or "Successful healed desktop match",
+        })
+
+        preview_update: dict[str, Any] = {
+            "alternative_locators": alternate_locators,
+            "confidence_score": max(float(element.confidence_score or 0), round(score, 4)),
+        }
+        suggested_field = "alternative_locators"
+        if strategy in deterministic:
+            suggested_field = field_by_strategy[strategy]
+            preview_update[suggested_field] = locator
+            if score >= 0.85:
+                preview_update["locator_strategy"] = strategy
+                preview_update["primary_locator"] = locator
+
+        metadata = dict(_element_metadata(element))
+        healing_metadata = metadata.get("healing")
+        if not isinstance(healing_metadata, dict):
+            healing_metadata = {}
+        healing_metadata["latest_suggestion"] = {
+            "strategy": strategy,
+            "locator": locator,
+            "confidence": round(score, 4),
+            "source": source,
+            "created_at": datetime.now(UTC).isoformat(),
+        }
+        preview_update["metadata"] = {"healing": healing_metadata}
+
+        return {
+            "object_key": _desktop_object_key(element),
+            "object_name": element.name or "",
+            "application": str(_element_metadata(element).get("application") or page.name or ""),
+            "suggested_strategy": strategy,
+            "suggested_locator": locator,
+            "suggested_field": suggested_field,
+            "confidence": round(score, 4),
+            "reason": reason or str(attempt.get("reason") or "Successful healed desktop match"),
+            "evidence": evidence,
+            "preview_update": preview_update,
+        }
+
+    return None
+
+
+LOCATOR_PROFILE_FIELDS = {
+    "automation_id",
+    "name_text",
+    "class_name",
+    "uia_path",
+    "locator_strategy",
+    "primary_locator",
+    "alternative_locators",
+}
+
+
+def _locator_base_score(strategy: str, locator: str) -> tuple[float, list[str]]:
+    normalized = (strategy or "").strip().lower().replace("_", " ")
+    flags: list[str] = []
+    scores = {
+        "accessibility id": 0.98,
+        "automation id": 0.98,
+        "name": 0.82,
+        "xpath": 0.78,
+        "uia path": 0.78,
+        "class name": 0.52,
+        "ocr": 0.45,
+        "visual": 0.40,
+        "image": 0.40,
+    }
+    score = scores.get(normalized, 0.58)
+    value = str(locator or "").strip()
+    if not value:
+        return 0.0, ["empty_locator"]
+    if len(value) < 3:
+        flags.append("short_locator")
+        score -= 0.12
+    if normalized in {"class name"}:
+        flags.append("class_locator_may_not_be_unique")
+    if normalized in {"ocr", "visual", "image"}:
+        flags.append("ai_or_visual_fallback")
+    if normalized in {"xpath", "uia path"} and len(value.split("/")) > 8:
+        flags.append("deep_hierarchy_locator")
+        score -= 0.08
+    return max(0.0, min(1.0, score)), flags
+
+
+def _locator_strength(score: float) -> str:
+    if score >= 0.85:
+        return "strong"
+    if score >= 0.65:
+        return "moderate"
+    return "weak"
+
+
+def _history_changed_fields(history: Any) -> list[str]:
+    if isinstance(history, dict):
+        value = history.get("changed_fields") or []
+    else:
+        value = getattr(history, "changed_fields", []) or []
+    return [str(item) for item in value]
+
+
+def _history_created_at(history: Any) -> datetime | None:
+    if isinstance(history, dict):
+        value = history.get("created_at")
+    else:
+        value = getattr(history, "created_at", None)
+    return value if isinstance(value, datetime) else None
+
+
+def _desktop_object_locator_profile(
+    page: PageRepositoryModel,
+    element: PageElementModel,
+    history_rows: list[Any] | None = None,
+) -> DesktopObjectLocatorProfileResponse:
+    history_rows = history_rows or []
+    candidates: list[DesktopObjectLocatorCandidateProfile] = []
+    for candidate in _element_locator_candidates(element, desktop=True):
+        strategy = str(candidate.get("strategy") or "")
+        locator = str(candidate.get("locator") or "")
+        score, flags = _locator_base_score(strategy, locator)
+        candidates.append(DesktopObjectLocatorCandidateProfile(
+            strategy=strategy,
+            locator=locator,
+            score=round(score, 2),
+            strength=_locator_strength(score),
+            reason=str(candidate.get("reason") or ""),
+            risk_flags=flags,
+        ))
+
+    candidates.sort(key=lambda item: item.score, reverse=True)
+    locator_change_count = sum(
+        1 for history in history_rows
+        if set(_history_changed_fields(history)) & LOCATOR_PROFILE_FIELDS
+    )
+    last_changed_at = next((_history_created_at(history) for history in history_rows if _history_created_at(history)), None)
+    best = candidates[0] if candidates else None
+    base_score = best.score if best else 0.0
+    confidence = element.confidence_score if element.confidence_score is not None else 1.0
+    score = base_score
+    score -= min(locator_change_count * 0.08, 0.32)
+    if confidence < 0.75:
+        score -= 0.15
+    if not element.id_attr:
+        score -= 0.08
+    if not element.xpath and not element.name_attr:
+        score -= 0.06
+    score = round(max(0.0, min(1.0, score)), 2)
+
+    stale_reasons: list[str] = []
+    suggestions: list[str] = []
+    if not candidates:
+        stale_reasons.append("No locator candidates are stored for this object.")
+        suggestions.append("Capture the object with Desktop Spy or sync a master-sheet row with at least one locator.")
+    if not element.id_attr:
+        stale_reasons.append("Automation ID is missing.")
+        suggestions.append("Prefer a stable Automation ID/accessibility id as the primary desktop locator.")
+    if best and best.strength == "weak":
+        stale_reasons.append(f"Best locator is weak ({best.strategy}).")
+        suggestions.append("Add a deterministic locator such as Automation ID, UIA path, or stable name/text.")
+    if locator_change_count >= 2:
+        stale_reasons.append("Locator fields changed multiple times in object history.")
+        suggestions.append("Review recent locator changes before approving another repository update.")
+    if confidence < 0.75:
+        stale_reasons.append("Object confidence score is below 75%.")
+        suggestions.append("Re-spy the object or add verified locator candidates.")
+    if any("ai_or_visual_fallback" in candidate.risk_flags for candidate in candidates):
+        suggestions.append("Keep OCR/visual locators as fallback only; add deterministic candidates for primary execution.")
+    if not element.name_attr:
+        suggestions.append("Add name/text as a secondary locator candidate for Smart Identification.")
+    if not element.xpath:
+        suggestions.append("Capture UIA path to improve fallback matching when Automation ID changes.")
+
+    stale = score < 0.68 or locator_change_count >= 3 or not candidates
+    metadata = _element_metadata(element)
+    deduped_suggestions = list(dict.fromkeys(suggestions))
+    return DesktopObjectLocatorProfileResponse(
+        object_key=_desktop_object_key(element),
+        object_name=element.name,
+        application=str(metadata.get("application") or page.name or ""),
+        page_id=page.id,
+        element_id=element.id,
+        stability_score=score,
+        stale=stale,
+        stale_reasons=list(dict.fromkeys(stale_reasons)),
+        suggestions=deduped_suggestions,
+        primary_locator=_element_primary_locator(element, desktop=True),
+        best_strategy=best.strategy if best else "",
+        history_count=len(history_rows),
+        locator_change_count=locator_change_count,
+        last_changed_at=last_changed_at,
+        candidates=candidates,
+    )
+
+
 def _apply_element_to_test_step(step: TestStepModel, page: PageRepositoryModel, element: PageElementModel) -> None:
-    locator = _element_primary_locator(element)
-    locators = _element_locator_candidates(element)
+    is_desktop = _is_desktop_page(page)
+    locator = _element_primary_locator(element, desktop=is_desktop)
+    locators = _element_locator_candidates(element, desktop=is_desktop)
     xpath = element.xpath or locator
     test_data = dict(step.test_data or {})
     bindings = dict(step.bindings or {})
+    metadata = _element_metadata(element)
+
+    if is_desktop:
+        desktop = dict(bindings.get("desktop") or {})
+        object_key = _desktop_object_key(element)
+        automation_id = element.id_attr or ""
+        uia_path = element.xpath or ""
+        name_text = element.name_attr or element.name or ""
+
+        test_data.update({
+            "platform": "desktop",
+            "page_id": page.id,
+            "page_name": page.name,
+            "application": metadata.get("application") or page.name,
+            "application_path": metadata.get("application_path") or page.url_pattern or test_data.get("application_path") or "",
+            "page_element_id": element.id,
+            "element_name": element.name,
+            "object_key": object_key,
+            "control_type": element.element_type or "element",
+            "automation_id": automation_id,
+            "uia_path": uia_path,
+            "class_name": element.css_selector or "",
+            "name_text": name_text,
+            "path_location": locator,
+            "locator": locator,
+            "locators": locators,
+            "window": metadata.get("window") or "",
+            "screen": metadata.get("screen") or metadata.get("window") or "",
+        })
+        desktop.update({
+            "page": page.name,
+            "page_id": page.id,
+            "application": metadata.get("application") or page.name,
+            "application_path": metadata.get("application_path") or page.url_pattern or desktop.get("application_path") or "",
+            "object_name": element.name,
+            "object_key": object_key,
+            "page_element_id": element.id,
+            "selector": locator,
+            "strategy": element.locator_strategy or "accessibility id",
+            "automation_id": automation_id,
+            "uia_path": uia_path,
+            "class_name": element.css_selector or "",
+            "name": name_text,
+            "control_type": element.element_type or "element",
+            "locators": locators,
+            "window": metadata.get("window") or "",
+            "screen": metadata.get("screen") or metadata.get("window") or "",
+        })
+        bindings["desktop"] = desktop
+        bindings.pop("web", None)
+
+        step.page_id = page.id
+        step.page_element_id = element.id
+        step.target = element.name
+        step.test_data = test_data
+        step.bindings = bindings
+        return
+
     web = dict(bindings.get("web") or {})
 
     test_data.update({
@@ -324,6 +1163,272 @@ async def _sync_test_steps_for_element(
     for step in steps:
         _apply_element_to_test_step(step, page, element)
     return len(steps)
+
+
+def _dict_value(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _string_set(*values: Any) -> set[str]:
+    return {str(value or "").strip().lower() for value in values if str(value or "").strip()}
+
+
+def _desktop_object_impact_reasons(step: Any, page: PageRepositoryModel, element: PageElementModel) -> list[str]:
+    metadata = _element_metadata(element)
+    object_key = _desktop_object_key(element)
+    primary_locator = _element_primary_locator(element, desktop=True)
+    locator_values = _string_set(
+        primary_locator,
+        element.id_attr,
+        element.name_attr,
+        element.xpath,
+        element.css_selector,
+        element.name,
+        object_key,
+    )
+    reasons: list[str] = []
+
+    def add(reason: str) -> None:
+        if reason not in reasons:
+            reasons.append(reason)
+
+    if getattr(step, "page_element_id", None) == element.id:
+        add("linked_page_element")
+    if getattr(step, "page_id", None) == page.id:
+        add("linked_repository_page")
+    if str(getattr(step, "target", "") or "").strip().lower() in _string_set(element.name, element.name_attr, object_key):
+        add("target_matches_object")
+
+    bindings = _dict_value(getattr(step, "bindings", None))
+    desktop = _dict_value(bindings.get("desktop"))
+    test_data = _dict_value(getattr(step, "test_data", None))
+    for source_name, source in (("desktop_binding", desktop), ("test_data", test_data)):
+        if not source:
+            continue
+        if str(source.get("object_key") or "").strip().lower() == object_key.strip().lower():
+            add(f"{source_name}_object_key")
+        if str(source.get("page_element_id") or "").strip() == str(element.id):
+            add(f"{source_name}_page_element")
+        if str(source.get("page_id") or "").strip() == str(page.id):
+            add(f"{source_name}_page")
+        for key in ("automation_id", "selector", "locator", "path_location", "uia_path", "xpath", "name", "element_name", "object_name", "class_name"):
+            if str(source.get(key) or "").strip().lower() in locator_values:
+                add(f"{source_name}_{key}")
+        for locator in source.get("locators") or source.get("alternative_locators") or []:
+            if not isinstance(locator, dict):
+                continue
+            locator_value = str(locator.get("locator") or locator.get("selector") or locator.get("value") or "").strip().lower()
+            if locator_value in locator_values:
+                add(f"{source_name}_locator_candidate")
+
+    for key in ("automation_id", "object_key", "uia_path", "locator", "path_location"):
+        if str(test_data.get(key) or "").strip().lower() in locator_values:
+            add(f"test_data_{key}")
+
+    if str(metadata.get("source") or "") == "master_sheet_sync" and desktop.get("object_key") == object_key:
+        add("master_sheet_synced_object")
+    return reasons
+
+
+def _impact_risk(reasons: list[str]) -> str:
+    if any(reason in reasons for reason in ("linked_page_element", "desktop_binding_object_key", "test_data_object_key")):
+        return "high"
+    if any("automation_id" in reason or "locator" in reason or "uia_path" in reason for reason in reasons):
+        return "medium"
+    return "low"
+
+
+def _step_current_locator(step: Any, element: PageElementModel) -> str:
+    bindings = _dict_value(getattr(step, "bindings", None))
+    desktop = _dict_value(bindings.get("desktop"))
+    test_data = _dict_value(getattr(step, "test_data", None))
+    for source in (desktop, test_data):
+        for key in ("selector", "locator", "path_location", "automation_id", "uia_path", "xpath"):
+            value = source.get(key)
+            if value not in (None, ""):
+                return str(value)
+    return _element_primary_locator(element, desktop=True)
+
+
+def _impact_step_response(step: TestStepModel, page: PageRepositoryModel, element: PageElementModel) -> DesktopObjectImpactStep:
+    reasons = _desktop_object_impact_reasons(step, page, element)
+    test_case = getattr(step, "test_case", None)
+    module = getattr(test_case, "module", None)
+    project = getattr(module, "project", None)
+    return DesktopObjectImpactStep(
+        step_id=str(getattr(step, "id", "") or ""),
+        step_order=int(getattr(step, "step_order", 0) or 0),
+        step_name=str(getattr(step, "name", "") or ""),
+        action_type=str(getattr(step, "action_type", "") or getattr(step, "intent", "") or ""),
+        target=str(getattr(step, "target", "") or ""),
+        is_enabled=bool(getattr(step, "is_enabled", True)),
+        test_case_id=str(getattr(test_case, "id", "") or getattr(step, "test_case_id", "") or ""),
+        test_case_name=str(getattr(test_case, "name", "") or ""),
+        module_id=str(getattr(module, "id", "") or ""),
+        module_name=str(getattr(module, "name", "") or ""),
+        project_id=str(getattr(project, "id", "") or getattr(test_case, "project_id", "") or ""),
+        project_name=str(getattr(project, "name", "") or ""),
+        match_reasons=reasons,
+        risk=_impact_risk(reasons),
+        current_locator=_step_current_locator(step, element),
+    )
+
+
+def _workflow_node_matches_desktop_object(node: WorkflowNodeModel, step_ids: set[str], element: PageElementModel) -> bool:
+    config = _dict_value(getattr(node, "config", None))
+    if str(config.get("test_step_id") or "") in step_ids:
+        return True
+    object_key = _desktop_object_key(element)
+    primary_locator = _element_primary_locator(element, desktop=True)
+    locator_values = _string_set(object_key, primary_locator, element.id_attr, element.name_attr, element.xpath, element.css_selector)
+    for key in ("object_key", "selector", "locator", "automation_id", "uia_path", "xpath"):
+        if str(config.get(key) or "").strip().lower() in locator_values:
+            return True
+    for locator in config.get("locators") or []:
+        if isinstance(locator, dict):
+            value = str(locator.get("locator") or locator.get("selector") or locator.get("value") or "").strip().lower()
+            if value in locator_values:
+                return True
+    return False
+
+
+async def _load_desktop_object_ref(
+    object_key: str,
+    db: AsyncSession,
+) -> tuple[PageRepositoryModel, PageElementModel] | None:
+    result = await db.execute(
+        select(PageRepositoryModel)
+        .where(PageRepositoryModel.platform.in_(["desktop", "windows"]))
+        .options(selectinload(PageRepositoryModel.elements))
+        .order_by(PageRepositoryModel.name)
+    )
+    needle = str(object_key or "").strip().lower()
+    for page in result.scalars().all():
+        for element in page.elements or []:
+            keys = {
+                str(element.id or "").strip().lower(),
+                str(element.name or "").strip().lower(),
+                _desktop_object_key(element).strip().lower(),
+            }
+            if needle in keys:
+                return page, element
+    return None
+
+
+async def _desktop_page_for_body(
+    body: DesktopObjectCreateSchema,
+    db: AsyncSession,
+) -> PageRepositoryModel:
+    if body.page_id:
+        page = await _load(body.page_id, db)
+        if not _is_desktop_page(page):
+            raise HTTPException(status_code=400, detail="Selected repository page is not a desktop repository")
+        return page
+
+    application = body.application.strip() or "Desktop Application"
+    result = await db.execute(
+        select(PageRepositoryModel)
+        .where(PageRepositoryModel.platform == "desktop")
+        .where(PageRepositoryModel.name == application)
+        .options(selectinload(PageRepositoryModel.elements))
+        .limit(1)
+    )
+    page = result.scalar_one_or_none()
+    if page:
+        if body.application_path and not page.url_pattern:
+            page.url_pattern = body.application_path
+        return page
+
+    page = PageRepositoryModel(
+        name=application,
+        url_pattern=body.application_path,
+        description=f"Desktop object repository for {application}",
+        platform="desktop",
+        tags=sorted(set(["desktop", "object-repository", *body.tags])),
+    )
+    db.add(page)
+    await db.flush()
+    return page
+
+
+def _desktop_object_metadata(
+    page: PageRepositoryModel,
+    values: dict[str, Any],
+    existing: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    metadata = dict(existing or {})
+    nested = values.get("metadata")
+    if isinstance(nested, dict):
+        metadata.update(nested)
+
+    for key in (
+        "object_key",
+        "application",
+        "application_path",
+        "repository_scope",
+        "window",
+        "screen",
+        "ui_framework",
+        "process_name",
+        "hierarchy_path",
+        "bounding_box",
+        "screenshot_url",
+        "ocr_text",
+        "ai_label",
+        "primary_locator",
+    ):
+        if key in values and values.get(key) is not None:
+            metadata[key] = values.get(key)
+
+    metadata.setdefault("platform", "desktop")
+    metadata.setdefault("application", page.name)
+    metadata.setdefault("application_path", page.url_pattern or "")
+    metadata.setdefault("repository_scope", "shared")
+    if not metadata.get("primary_locator"):
+        metadata["primary_locator"] = (
+            values.get("automation_id")
+            or values.get("uia_path")
+            or values.get("name_text")
+            or values.get("class_name")
+            or ""
+        )
+    return metadata
+
+
+def _apply_desktop_object_values(
+    page: PageRepositoryModel,
+    element: PageElementModel,
+    values: dict[str, Any],
+) -> None:
+    metadata = _desktop_object_metadata(page, values, _element_metadata(element))
+    if values.get("application") is not None:
+        page.name = str(values.get("application") or page.name)
+    if values.get("application_path") is not None:
+        page.url_pattern = str(values.get("application_path") or page.url_pattern or "")
+
+    if values.get("name") is not None:
+        element.name = str(values.get("name") or element.name)
+    if values.get("control_type") is not None:
+        element.element_type = str(values.get("control_type") or "element")
+    if values.get("automation_id") is not None:
+        element.id_attr = str(values.get("automation_id") or "")
+    if values.get("name_text") is not None:
+        element.name_attr = str(values.get("name_text") or "")
+    if values.get("class_name") is not None:
+        element.css_selector = str(values.get("class_name") or "")
+    if values.get("uia_path") is not None:
+        element.xpath = str(values.get("uia_path") or "")
+    if values.get("locator_strategy") is not None:
+        element.locator_strategy = str(values.get("locator_strategy") or "accessibility id")
+    if values.get("alternative_locators") is not None:
+        element.alternative_locators = values.get("alternative_locators") or []
+    if values.get("confidence_score") is not None:
+        element.confidence_score = values.get("confidence_score")
+    if values.get("tags") is not None:
+        element.tags = values.get("tags") or []
+    if values.get("screenshot_url") is not None:
+        element.source_url = str(values.get("screenshot_url") or "")
+    element.discovery_metadata = metadata
 
 
 # ── Page routes ───────────────────────────────────────────────────────────────
@@ -392,6 +1497,9 @@ async def create_element(page_id: str, body: ElementCreateSchema, db: AsyncSessi
         description=body.description, xpath=body.xpath, css_selector=body.css_selector,
         id_attr=body.id_attr, name_attr=body.name_attr,
         locator_strategy=body.locator_strategy, tags=body.tags,
+        confidence_score=body.confidence_score,
+        alternative_locators=body.alternative_locators,
+        discovery_metadata=body.discovery_metadata,
     )
     db.add(elem)
     await db.commit()
@@ -442,6 +1550,427 @@ async def delete_element(element_id: str, db: AsyncSession = Depends(get_db)):
 
 
 # ── All-in-one for autocomplete ───────────────────────────────────────────────
+
+@router.get("/desktop/objects", response_model=list[DesktopObjectResponse])
+async def list_desktop_objects(
+    application: Optional[str] = None,
+    window: Optional[str] = None,
+    search: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(PageRepositoryModel)
+        .where(PageRepositoryModel.platform.in_(["desktop", "windows"]))
+        .options(selectinload(PageRepositoryModel.elements))
+        .order_by(PageRepositoryModel.name)
+    )
+    app_filter = str(application or "").strip().lower()
+    window_filter = str(window or "").strip().lower()
+    search_filter = str(search or "").strip().lower()
+    objects: list[DesktopObjectResponse] = []
+
+    for page in result.scalars().all():
+        if app_filter and app_filter not in page.name.lower():
+            continue
+        for element in page.elements or []:
+            metadata = _element_metadata(element)
+            if window_filter and window_filter not in str(metadata.get("window") or "").lower():
+                continue
+            haystack = " ".join(
+                str(value or "")
+                for value in (
+                    element.name,
+                    _desktop_object_key(element),
+                    element.id_attr,
+                    element.name_attr,
+                    element.xpath,
+                    element.css_selector,
+                    metadata.get("ai_label"),
+                    metadata.get("ocr_text"),
+                )
+            ).lower()
+            if search_filter and search_filter not in haystack:
+                continue
+            objects.append(_desktop_object_response(page, element))
+    return sorted(objects, key=lambda item: (item.application.lower(), item.name.lower()))
+
+
+@router.post("/desktop/objects", response_model=DesktopObjectResponse, status_code=status.HTTP_201_CREATED)
+async def create_desktop_object(body: DesktopObjectCreateSchema, db: AsyncSession = Depends(get_db)):
+    page = await _desktop_page_for_body(body, db)
+    values = body.model_dump()
+    metadata = _desktop_object_metadata(page, values)
+    elem = PageElementModel(
+        page_id=page.id,
+        name=body.name,
+        element_type=body.control_type or "element",
+        description=body.metadata.get("description", "") if isinstance(body.metadata, dict) else "",
+        xpath=body.uia_path,
+        css_selector=body.class_name,
+        id_attr=body.automation_id,
+        name_attr=body.name_text,
+        locator_strategy=body.locator_strategy or "accessibility id",
+        tags=body.tags,
+        confidence_score=body.confidence_score,
+        alternative_locators=body.alternative_locators,
+        source_url=body.screenshot_url,
+        discovery_metadata=metadata,
+    )
+    db.add(elem)
+    await db.flush()
+    _record_desktop_object_history(
+        db,
+        page,
+        elem,
+        action="created",
+        source="desktop_repository_api",
+        before=None,
+        after=_desktop_object_snapshot(page, elem),
+    )
+    await db.commit()
+    await db.refresh(page)
+    await db.refresh(elem)
+    return _desktop_object_response(page, elem)
+
+
+@router.get("/desktop/objects/{object_key}", response_model=DesktopObjectResponse)
+async def get_desktop_object(object_key: str, db: AsyncSession = Depends(get_db)):
+    ref = await _load_desktop_object_ref(object_key, db)
+    if ref is None:
+        raise HTTPException(status_code=404, detail="Desktop object not found")
+    page, element = ref
+    return _desktop_object_response(page, element)
+
+
+@router.get("/desktop/objects/{object_key}/impact", response_model=DesktopObjectImpactResponse)
+async def analyze_desktop_object_impact(object_key: str, db: AsyncSession = Depends(get_db)):
+    ref = await _load_desktop_object_ref(object_key, db)
+    if ref is None:
+        raise HTTPException(status_code=404, detail="Desktop object not found")
+    page, element = ref
+
+    step_result = await db.execute(
+        select(TestStepModel)
+        .options(
+            selectinload(TestStepModel.test_case)
+            .selectinload(TestCaseModel.module)
+            .selectinload(TestModuleModel.project)
+        )
+        .order_by(TestStepModel.step_order)
+    )
+    steps: list[DesktopObjectImpactStep] = []
+    for step in step_result.scalars().all():
+        reasons = _desktop_object_impact_reasons(step, page, element)
+        if reasons:
+            steps.append(_impact_step_response(step, page, element))
+
+    step_ids = {step.step_id for step in steps if step.step_id}
+    workflow_result = await db.execute(
+        select(WorkflowNodeModel)
+        .options(selectinload(WorkflowNodeModel.workflow))
+        .order_by(WorkflowNodeModel.node_key)
+    )
+    workflow_nodes: list[DesktopObjectImpactWorkflowNode] = []
+    seen_nodes: set[str] = set()
+    for node in workflow_result.scalars().all():
+        if not _workflow_node_matches_desktop_object(node, step_ids, element):
+            continue
+        node_id = str(getattr(node, "id", "") or "")
+        if node_id and node_id in seen_nodes:
+            continue
+        seen_nodes.add(node_id)
+        workflow = getattr(node, "workflow", None)
+        config = _dict_value(getattr(node, "config", None))
+        workflow_nodes.append(DesktopObjectImpactWorkflowNode(
+            workflow_id=str(getattr(workflow, "id", "") or getattr(node, "workflow_id", "") or ""),
+            workflow_name=str(getattr(workflow, "name", "") or ""),
+            node_key=str(getattr(node, "node_key", "") or ""),
+            node_type=str(getattr(node, "type", "") or ""),
+            node_label=str(getattr(node, "label", "") or ""),
+            test_step_id=str(config.get("test_step_id") or ""),
+        ))
+
+    risk_summary = {"high": 0, "medium": 0, "low": 0}
+    for step in steps:
+        risk_summary[step.risk] = risk_summary.get(step.risk, 0) + 1
+
+    return DesktopObjectImpactResponse(
+        object_key=_desktop_object_key(element),
+        object_name=element.name,
+        application=str(_element_metadata(element).get("application") or page.name or ""),
+        page_id=page.id,
+        element_id=element.id,
+        impacted_step_count=len(steps),
+        workflow_node_count=len(workflow_nodes),
+        risk_summary=risk_summary,
+        steps=steps,
+        workflow_nodes=workflow_nodes,
+    )
+
+
+@router.get("/desktop/objects/{object_key}/history", response_model=list[DesktopObjectHistoryResponse])
+async def get_desktop_object_history(
+    object_key: str,
+    limit: int = 25,
+    db: AsyncSession = Depends(get_db),
+):
+    ref = await _load_desktop_object_ref(object_key, db)
+    element_id = ref[1].id if ref else ""
+    needle = str(object_key or "").strip()
+    query = select(DesktopObjectHistoryModel)
+    if element_id:
+        query = query.where(
+            or_(
+                DesktopObjectHistoryModel.object_key == needle,
+                DesktopObjectHistoryModel.element_id == element_id,
+            )
+        )
+    else:
+        query = query.where(DesktopObjectHistoryModel.object_key == needle)
+    query = query.order_by(DesktopObjectHistoryModel.created_at.desc()).limit(max(1, min(int(limit or 25), 100)))
+    rows = (await db.execute(query)).scalars().all()
+    return [_history_response(row) for row in rows]
+
+
+@router.get("/desktop/objects/{object_key}/locator-profile", response_model=DesktopObjectLocatorProfileResponse)
+async def get_desktop_object_locator_profile(
+    object_key: str,
+    db: AsyncSession = Depends(get_db),
+):
+    ref = await _load_desktop_object_ref(object_key, db)
+    if ref is None:
+        raise HTTPException(status_code=404, detail="Desktop object not found")
+    page, element = ref
+    rows = (
+        await db.execute(
+            select(DesktopObjectHistoryModel)
+            .where(
+                or_(
+                    DesktopObjectHistoryModel.object_key == _desktop_object_key(element),
+                    DesktopObjectHistoryModel.element_id == element.id,
+                )
+            )
+            .order_by(DesktopObjectHistoryModel.created_at.desc())
+            .limit(50)
+        )
+    ).scalars().all()
+    return _desktop_object_locator_profile(page, element, list(rows))
+
+
+@router.get("/desktop/objects/{object_key}/healing-suggestions", response_model=list[DesktopObjectHealingSuggestionResponse])
+async def list_desktop_object_healing_suggestions(
+    object_key: str,
+    status_filter: Optional[str] = None,
+    limit: int = 25,
+    db: AsyncSession = Depends(get_db),
+):
+    ref = await _load_desktop_object_ref(object_key, db)
+    element_id = ref[1].id if ref else ""
+    needle = str(object_key or "").strip()
+    query = select(DesktopObjectHealingSuggestionModel)
+    if element_id:
+        query = query.where(
+            or_(
+                DesktopObjectHealingSuggestionModel.object_key == needle,
+                DesktopObjectHealingSuggestionModel.element_id == element_id,
+            )
+        )
+    else:
+        query = query.where(DesktopObjectHealingSuggestionModel.object_key == needle)
+    if status_filter:
+        query = query.where(DesktopObjectHealingSuggestionModel.status == status_filter)
+    query = query.order_by(DesktopObjectHealingSuggestionModel.created_at.desc()).limit(max(1, min(int(limit or 25), 100)))
+    rows = (await db.execute(query)).scalars().all()
+    return [_healing_suggestion_response(row) for row in rows]
+
+
+@router.post(
+    "/desktop/objects/{object_key}/healing-suggestions",
+    response_model=DesktopObjectHealingSuggestionResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_desktop_object_healing_suggestion(
+    object_key: str,
+    body: DesktopObjectHealingSuggestionCreateSchema,
+    db: AsyncSession = Depends(get_db),
+):
+    ref = await _load_desktop_object_ref(object_key, db)
+    if ref is None:
+        raise HTTPException(status_code=404, detail="Desktop object not found")
+    page, element = ref
+    attempts = body.locator_attempts or body.attempts or []
+    preview = _desktop_healing_suggestion_preview(
+        page,
+        element,
+        attempts,
+        successful_strategy=body.successful_strategy,
+        successful_locator=body.successful_locator,
+        confidence=body.confidence,
+        source=body.source or "smart_identification",
+        reason=body.reason,
+        min_confidence=body.min_confidence,
+    )
+    if preview is None:
+        raise HTTPException(
+            status_code=400,
+            detail="No new successful healing locator candidate was found for this object",
+        )
+
+    duplicate = (
+        await db.execute(
+            select(DesktopObjectHealingSuggestionModel)
+            .where(DesktopObjectHealingSuggestionModel.object_key == _desktop_object_key(element))
+            .where(DesktopObjectHealingSuggestionModel.status == "pending")
+            .where(DesktopObjectHealingSuggestionModel.suggested_strategy == preview["suggested_strategy"])
+            .where(DesktopObjectHealingSuggestionModel.suggested_locator == preview["suggested_locator"])
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if duplicate:
+        return _healing_suggestion_response(duplicate)
+
+    suggestion = DesktopObjectHealingSuggestionModel(
+        page_id=page.id,
+        element_id=element.id,
+        object_key=_desktop_object_key(element),
+        object_name=element.name or "",
+        application=str(_element_metadata(element).get("application") or page.name or ""),
+        status="pending",
+        source=body.source or "smart_identification",
+        suggested_strategy=preview["suggested_strategy"],
+        suggested_locator=preview["suggested_locator"],
+        suggested_field=preview["suggested_field"],
+        confidence=preview["confidence"],
+        reason=preview["reason"],
+        evidence=preview["evidence"],
+        preview_update=preview["preview_update"],
+    )
+    db.add(suggestion)
+    await db.commit()
+    await db.refresh(suggestion)
+    return _healing_suggestion_response(suggestion)
+
+
+@router.post("/desktop/healing-suggestions/{suggestion_id}/resolve", response_model=DesktopObjectHealingSuggestionResponse)
+async def resolve_desktop_object_healing_suggestion(
+    suggestion_id: str,
+    body: DesktopObjectHealingSuggestionDecisionSchema,
+    db: AsyncSession = Depends(get_db),
+):
+    suggestion = await db.get(DesktopObjectHealingSuggestionModel, suggestion_id)
+    if suggestion is None:
+        raise HTTPException(status_code=404, detail="Healing suggestion not found")
+    if suggestion.status != "pending":
+        raise HTTPException(status_code=409, detail="Healing suggestion is already resolved")
+
+    suggestion.resolved_at = datetime.now(UTC).replace(tzinfo=None)
+    suggestion.resolved_by = body.actor or ""
+    suggestion.resolution_note = body.note or ""
+
+    if not body.approved:
+        suggestion.status = "rejected"
+        await db.commit()
+        await db.refresh(suggestion)
+        return _healing_suggestion_response(suggestion)
+
+    ref = await _load_desktop_object_ref(suggestion.object_key, db)
+    if ref is None:
+        raise HTTPException(status_code=404, detail="Desktop object not found")
+    page, element = ref
+    before = _desktop_object_snapshot(page, element)
+    values = dict(suggestion.preview_update or {})
+    if not values:
+        raise HTTPException(status_code=400, detail="Healing suggestion has no preview update")
+
+    _apply_desktop_object_values(page, element, values)
+    await db.flush()
+    synced_steps = await _sync_test_steps_for_element(element, db, previous_name=None)
+    after = _desktop_object_snapshot(page, element)
+    _record_desktop_object_history(
+        db,
+        page,
+        element,
+        action="updated",
+        source="healing_suggestion",
+        actor=body.actor or "",
+        before=before,
+        after=after,
+        impact_summary={
+            "suggestion_id": suggestion.id,
+            "suggested_strategy": suggestion.suggested_strategy,
+            "suggested_field": suggestion.suggested_field,
+            "synced_test_steps": synced_steps,
+        },
+    )
+    suggestion.status = "approved"
+    await db.commit()
+    await db.refresh(suggestion)
+    return _healing_suggestion_response(suggestion)
+
+
+@router.put("/desktop/objects/{object_key}", response_model=DesktopObjectResponse)
+async def update_desktop_object(
+    object_key: str,
+    body: DesktopObjectUpdateSchema,
+    db: AsyncSession = Depends(get_db),
+):
+    ref = await _load_desktop_object_ref(object_key, db)
+    if ref is None:
+        raise HTTPException(status_code=404, detail="Desktop object not found")
+    page, element = ref
+    before = _desktop_object_snapshot(page, element)
+    values = body.model_dump(exclude_unset=True)
+    _apply_desktop_object_values(page, element, values)
+    await db.flush()
+    synced_steps = await _sync_test_steps_for_element(element, db, previous_name=None)
+    after = _desktop_object_snapshot(page, element)
+    _record_desktop_object_history(
+        db,
+        page,
+        element,
+        action="updated",
+        source="desktop_repository_api",
+        before=before,
+        after=after,
+        impact_summary={"synced_test_steps": synced_steps},
+    )
+    await db.commit()
+    await db.refresh(page)
+    await db.refresh(element)
+    return _desktop_object_response(page, element)
+
+
+@router.delete("/desktop/objects/{object_key}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_desktop_object(object_key: str, db: AsyncSession = Depends(get_db)):
+    ref = await _load_desktop_object_ref(object_key, db)
+    if ref is None:
+        raise HTTPException(status_code=404, detail="Desktop object not found")
+    _page, element = ref
+    await db.execute(
+        update(DesktopObjectHistoryModel)
+        .where(DesktopObjectHistoryModel.element_id == element.id)
+        .values(element_id=None)
+        .execution_options(synchronize_session=False)
+    )
+    await db.execute(
+        update(DesktopObjectHealingSuggestionModel)
+        .where(DesktopObjectHealingSuggestionModel.element_id == element.id)
+        .values(element_id=None)
+        .execution_options(synchronize_session=False)
+    )
+    await db.execute(
+        update(TestStepModel)
+        .where(TestStepModel.page_element_id == element.id)
+        .values(page_element_id=None)
+        .execution_options(synchronize_session=False)
+    )
+    await db.execute(
+        delete(PageElementModel)
+        .where(PageElementModel.id == element.id)
+        .execution_options(synchronize_session=False)
+    )
+    await db.commit()
+
 
 @router.get("/all", response_model=list[PageDetailResponse])
 async def get_all(db: AsyncSession = Depends(get_db)):

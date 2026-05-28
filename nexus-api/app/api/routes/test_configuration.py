@@ -34,19 +34,41 @@ router = APIRouter(prefix="/test-configuration", tags=["test-configuration"])
 def _step_path_location(step) -> tuple[str, str]:
     bindings = step.bindings or {}
     web = bindings.get("web") or {}
+    desktop = bindings.get("desktop") or {}
     test_data = step.test_data or {}
     page_element = step.__dict__.get("page_element")
+    page = step.__dict__.get("page")
+    page_platform = str(getattr(page, "platform", "") or "").strip().lower()
+    is_desktop = (
+        isinstance(bindings.get("desktop"), dict)
+        or str(test_data.get("platform") or "").strip().lower() in {"desktop", "windows"}
+        or page_platform in {"desktop", "windows"}
+    )
     element_xpath = getattr(page_element, "xpath", "") if page_element is not None else ""
     element_css = getattr(page_element, "css_selector", "") if page_element is not None else ""
+    element_id = getattr(page_element, "id_attr", "") if page_element is not None else ""
+    element_name = getattr(page_element, "name_attr", "") if page_element is not None else ""
+    automation_id = desktop.get("automation_id") or test_data.get("automation_id") or ""
+    uia_path = desktop.get("uia_path") or test_data.get("uia_path") or ""
+    if is_desktop:
+        automation_id = automation_id or element_id
+        uia_path = uia_path or element_xpath
     xpath = (
-        element_xpath
+        automation_id
+        or uia_path
+        or element_xpath
         or web.get("xpath")
         or test_data.get("xpath")
         or ""
     )
     location = (
-        xpath
+        automation_id
+        or uia_path
+        or xpath
         or element_css
+        or element_name
+        or desktop.get("selector")
+        or desktop.get("locator")
         or web.get("selector")
         or test_data.get("locator")
         or ""

@@ -34,4 +34,4 @@ export const api = {
   delete: <T = void>(path: string) => request<T>(path, { method: 'DELETE' }),
 };
 
-export { ApiError };
+export { ApiError, BASE_URL as API_BASE_URL };

@@ -11,10 +11,11 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import {
+  useCreateDesktopObject,
   useAllPages, useCreateElement, useCreatePage, useDeleteElement,
-  useDeletePage, useDiscoverElements, useUpdateElement, useUpdatePage,
+  useDeletePage, useDesktopSpySnapshot, useDiscoverElements, useUpdateElement, useUpdatePage,
 } from '@/lib/api/pageRepository';
-import type { DiscoveredElement, PageDetail, PageElement } from '@/lib/api/types';
+import type { DesktopSpyCandidate, DiscoveredElement, PageDetail, PageElement } from '@/lib/api/types';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -23,7 +24,13 @@ const ELEMENT_TYPES = [
   'textarea','table','label','image','div','span','element',
 ];
 
-const LOCATOR_STRATEGIES = ['xpath','css','id','name','text','role','testid'];
+const DESKTOP_ELEMENT_TYPES = [
+  'button','edit','text','combobox','checkbox','radio',
+  'table','tree','menu','window','pane','tab','element',
+];
+
+const WEB_LOCATOR_STRATEGIES = ['xpath','css','id','name','text','role','testid'];
+const DESKTOP_LOCATOR_STRATEGIES = ['accessibility id','name','xpath','class name','ocr','visual'];
 
 const PLATFORMS = ['web','android','ios','desktop','api'];
 
@@ -32,11 +39,14 @@ const ELEMENT_TYPE_COLOR: Record<string, string> = {
   checkbox: '#f0b558', radio: '#f0b558', textarea: '#45c08a',
   table: '#8b8c97', label: '#8b8c97', image: '#f06262',
   div: '#8b8c97', span: '#8b8c97', element: '#8b8c97',
+  edit: '#45c08a', text: '#8b8c97', combobox: '#a195ff',
+  tree: '#4dd1e1', menu: '#f0b558', window: '#5b8cff', pane: '#8b8c97', tab: '#e879f9',
 };
 
 const STRATEGY_COLOR: Record<string, string> = {
   xpath: '#a195ff', css: '#45c08a', id: '#5b8cff', name: '#4dd1e1', text: '#f0b558',
-  role: '#f06262', testid: '#e879f9',
+  role: '#f06262', testid: '#e879f9', 'accessibility id': '#5b8cff',
+  'automation id': '#5b8cff', 'class name': '#45c08a', ocr: '#f0b558', visual: '#e879f9',
 };
 
 const PLATFORM_ICON: Record<string, React.ElementType> = {
@@ -46,6 +56,24 @@ const PLATFORM_ICON: Record<string, React.ElementType> = {
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 function getLocator(el: PageElement): string {
+  const desktopMeta = el.discovery_metadata?.platform === 'desktop';
+  if (desktopMeta || ['accessibility id', 'automation id', 'class name', 'ocr', 'visual'].includes(String(el.locator_strategy))) {
+    switch (el.locator_strategy) {
+      case 'accessibility id':
+      case 'automation id':
+      case 'id':
+        return el.id_attr;
+      case 'name':
+      case 'text':
+        return el.name_attr || el.name;
+      case 'class name':
+        return el.css_selector;
+      case 'xpath':
+        return el.xpath;
+      default:
+        return el.id_attr || el.name_attr || el.xpath || el.css_selector || el.name;
+    }
+  }
   switch (el.locator_strategy) {
     case 'css':    return el.css_selector;
     case 'id':     return el.css_selector || (el.id_attr ? `#${el.id_attr}` : '');
@@ -55,6 +83,10 @@ function getLocator(el: PageElement): string {
     case 'testid': return el.css_selector ? el.css_selector : el.id_attr ? `[data-testid="${el.id_attr}"]` : '';
     default:       return el.xpath;
   }
+}
+
+function isDesktopPlatform(platform?: string) {
+  return platform === 'desktop' || platform === 'windows';
 }
 
 function tagsToCSV(tags: string[]) { return tags.join(', '); }
@@ -69,9 +101,10 @@ type ElemUpdates = {
 
 function ElementRow({
   el, index, isFirst, isLast,
-  onDelete, onUpdate, onMoveUp, onMoveDown,
+  isDesktop, onDelete, onUpdate, onMoveUp, onMoveDown,
 }: {
   el: PageElement; index: number; isFirst: boolean; isLast: boolean;
+  isDesktop: boolean;
   onDelete: () => void; onUpdate: (u: ElemUpdates) => void;
   onMoveUp: () => void; onMoveDown: () => void;
 }) {
@@ -100,6 +133,8 @@ function ElementRow({
   const bd = 'border-r border-[var(--color-line-subtle)] px-2 py-2';
   const typeColor = ELEMENT_TYPE_COLOR[type] ?? '#8b8c97';
   const stratColor = STRATEGY_COLOR[strategy] ?? '#8b8c97';
+  const typeOptions = isDesktop ? DESKTOP_ELEMENT_TYPES : ELEMENT_TYPES;
+  const strategyOptions = isDesktop ? DESKTOP_LOCATOR_STRATEGIES : WEB_LOCATOR_STRATEGIES;
   const confidence = typeof el.confidence_score === 'number' ? Math.round(el.confidence_score * 100) : null;
   const needsReview = (el.tags ?? []).includes('needs-review') || (confidence !== null && confidence < 75);
 
@@ -134,7 +169,7 @@ function ElementRow({
       <td className={`${bd} w-32`}>
         <select value={type} onChange={(e) => { const v = e.target.value; setType(v); save({ element_type: v }); }}
           className={`${ic} cursor-pointer`} style={{ color: typeColor }}>
-          {ELEMENT_TYPES.map((t) => (
+          {typeOptions.map((t) => (
             <option key={t} value={t} style={{ background: '#0d0d18', color: ELEMENT_TYPE_COLOR[t] ?? '#8b8c97' }}>{t}</option>
           ))}
         </select>
@@ -149,26 +184,26 @@ function ElementRow({
       {/* CSS Selector */}
       <td className={`${bd} min-w-[140px]`}>
         <input value={css} onChange={(e) => setCss(e.target.value)} onBlur={() => save()}
-          className={`${ic} text-[10px]`} placeholder="#id .class" />
+          className={`${ic} text-[10px]`} placeholder={isDesktop ? 'ClassName' : '#id .class'} />
       </td>
 
       {/* ID */}
       <td className={`${bd} w-28`}>
         <input value={idAttr} onChange={(e) => setIdAttr(e.target.value)} onBlur={() => save()}
-          className={`${ic} text-[10px]`} placeholder="html-id" />
+          className={`${ic} text-[10px]`} placeholder={isDesktop ? 'Automation ID' : 'html-id'} />
       </td>
 
       {/* Name attr */}
       <td className={`${bd} w-28`}>
         <input value={nameAttr} onChange={(e) => setNameAttr(e.target.value)} onBlur={() => save()}
-          className={`${ic} text-[10px]`} placeholder="input-name" />
+          className={`${ic} text-[10px]`} placeholder={isDesktop ? 'Name/Text' : 'input-name'} />
       </td>
 
       {/* Strategy */}
       <td className={`${bd} w-24`}>
         <select value={strategy} onChange={(e) => { const v = e.target.value; setStrategy(v); save({ locator_strategy: v }); }}
           className={`${ic} cursor-pointer text-[10px]`} style={{ color: stratColor }}>
-          {LOCATOR_STRATEGIES.map((s) => (
+          {strategyOptions.map((s) => (
             <option key={s} value={s} style={{ background: '#0d0d18', color: STRATEGY_COLOR[s] ?? '#8b8c97' }}>{s}</option>
           ))}
         </select>
@@ -242,11 +277,15 @@ export default function PageRepositoryPage() {
   const [search,      setSearch]      = useState('');
   const [showEditor,  setShowEditor]  = useState(true);
   const [discoverUrl, setDiscoverUrl] = useState('');
+  const [spyWindow, setSpyWindow] = useState('');
+  const [spyProcess, setSpyProcess] = useState('');
+  const [spyCandidates, setSpyCandidates] = useState<DesktopSpyCandidate[]>([]);
   const [discoverSummary, setDiscoverSummary] = useState<{
     found: number; saved: number; lowConf: number; durationMs: number; error?: string;
   } | null>(null);
 
   const selPage = allPages.find((p) => p.id === selPageId) ?? null;
+  const isDesktopPage = isDesktopPlatform(selPage?.platform);
 
   // Page draft
   const [pd, setPd] = useState({ name: '', url_pattern: '', description: '', platform: 'web', tags: '' });
@@ -256,6 +295,8 @@ export default function PageRepositoryPage() {
   const updatePage   = useUpdatePage(selPageId ?? '');
   const deletePage   = useDeletePage();
   const createElement = useCreateElement(selPageId ?? '');
+  const createDesktopObject = useCreateDesktopObject();
+  const desktopSpy = useDesktopSpySnapshot();
   const updateElem   = useUpdateElement();
   const deleteElem   = useDeleteElement();
   const discoverElem = useDiscoverElements();
@@ -299,6 +340,74 @@ export default function PageRepositoryPage() {
     );
   }
 
+  function doDesktopSpy() {
+    if (!selPage || !isDesktopPage) return;
+    setDiscoverSummary(null);
+    setSpyCandidates([]);
+    desktopSpy.mutate(
+      {
+        driver_type: 'uia3',
+        app: spyWindow || spyProcess ? '' : selPage.url_pattern,
+        window_title: spyWindow,
+        process_name: spyProcess,
+        close_after: !spyWindow && !spyProcess,
+        include_screenshot: false,
+        max_objects: 80,
+      },
+      {
+        onSuccess: (res) => {
+          setSpyCandidates(res.candidates);
+          setDiscoverSummary({
+            found: res.candidates.length,
+            saved: 0,
+            lowConf: res.candidates.filter((candidate) => candidate.confidence_score < 0.75).length,
+            durationMs: 0,
+          });
+        },
+        onError: () => {
+          setDiscoverSummary({ found: 0, saved: 0, lowConf: 0, durationMs: 0, error: 'Desktop spy request failed' });
+        },
+      },
+    );
+  }
+
+  function promoteSpyCandidate(candidate: DesktopSpyCandidate) {
+    if (!selPage) return;
+    createDesktopObject.mutate(
+      {
+        page_id: selPage.id,
+        application: selPage.name,
+        application_path: selPage.url_pattern,
+        object_key: candidate.object_key,
+        name: candidate.name,
+        control_type: candidate.control_type,
+        automation_id: candidate.automation_id,
+        name_text: candidate.name_text,
+        class_name: candidate.class_name,
+        uia_path: candidate.uia_path,
+        locator_strategy: candidate.locator_strategy,
+        primary_locator: candidate.primary_locator,
+        alternative_locators: candidate.alternative_locators,
+        bounding_box: candidate.bounding_box,
+        ocr_text: candidate.ocr_text,
+        confidence_score: candidate.confidence_score,
+        tags: ['desktop-object', 'spy-captured'],
+        metadata: {
+          ...candidate.metadata,
+          platform: 'desktop',
+          object_key: candidate.object_key,
+          application: selPage.name,
+          application_path: selPage.url_pattern,
+        },
+      },
+      {
+        onSuccess: () => {
+          setDiscoverSummary((prev) => prev ? { ...prev, saved: prev.saved + 1 } : prev);
+        },
+      },
+    );
+  }
+
   // Auto-select first page
   useEffect(() => {
     if (!selPageId && allPages.length > 0) setSelPageId(allPages[0].id);
@@ -316,10 +425,25 @@ export default function PageRepositoryPage() {
 
   function addElement() {
     if (!selPageId) return;
+    const nextIndex = (selPage?.elements.length ?? 0) + 1;
     createElement.mutate({
-      name: `Element ${(selPage?.elements.length ?? 0) + 1}`,
-      element_type: 'element', xpath: '', css_selector: '', id_attr: '',
-      name_attr: '', locator_strategy: 'xpath', tags: [],
+      name: `${isDesktopPage ? 'Object' : 'Element'} ${nextIndex}`,
+      element_type: isDesktopPage ? 'button' : 'element',
+      xpath: '',
+      css_selector: '',
+      id_attr: '',
+      name_attr: '',
+      locator_strategy: isDesktopPage ? 'accessibility id' : 'xpath',
+      tags: isDesktopPage ? ['desktop-object'] : [],
+      discovery_metadata: isDesktopPage
+        ? {
+            platform: 'desktop',
+            object_key: `object_${nextIndex}`,
+            application: selPage?.name ?? '',
+            application_path: selPage?.url_pattern ?? '',
+            repository_scope: 'shared',
+          }
+        : undefined,
     });
   }
 
@@ -385,6 +509,13 @@ export default function PageRepositoryPage() {
                   { onSuccess: (p) => setSelPageId(p.id) },
                 )}>
                 <Plus size={11} /> New Page
+              </Button>
+              <Button variant="glass" size="sm"
+                onClick={() => createPage.mutate(
+                  { name: `Desktop App ${allPages.length + 1}`, url_pattern: '', platform: 'desktop', description: '', tags: ['desktop'] },
+                  { onSuccess: (p) => setSelPageId(p.id) },
+                )}>
+                <Monitor size={11} /> Desktop
               </Button>
               <Button variant="glass" size="sm" disabled={!selPage} onClick={addElement}>
                 <Plus size={11} /> Add Element
@@ -482,6 +613,69 @@ export default function PageRepositoryPage() {
       </div>
 
       {/* ── 3-column layout ─────────────────────────────────────────────────── */}
+      {isDesktopPage && (
+        <div className="shrink-0 border-b border-[var(--color-line-subtle)] bg-[var(--color-surface-1)] px-6 py-2.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <Monitor size={13} className="shrink-0 text-[#5b8cff]" />
+            <span className="shrink-0 text-[10px] font-mono uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]">Desktop Object Spy</span>
+            <input
+              value={spyWindow}
+              onChange={(e) => setSpyWindow(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') doDesktopSpy(); }}
+              placeholder="Window title"
+              className="min-w-[160px] flex-1 rounded-md border border-[var(--color-line-default)] bg-[var(--color-surface-2)] px-3 py-1.5 text-[11px] font-mono text-[var(--color-fg-default)] outline-none transition-colors focus:border-[#5b8cff]/50 placeholder:text-[var(--color-fg-subtle)]/40"
+            />
+            <input
+              value={spyProcess}
+              onChange={(e) => setSpyProcess(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') doDesktopSpy(); }}
+              placeholder="Process name"
+              className="min-w-[140px] flex-1 rounded-md border border-[var(--color-line-default)] bg-[var(--color-surface-2)] px-3 py-1.5 text-[11px] font-mono text-[var(--color-fg-default)] outline-none transition-colors focus:border-[#5b8cff]/50 placeholder:text-[var(--color-fg-subtle)]/40"
+            />
+            <Button
+              variant="glass"
+              size="sm"
+              onClick={doDesktopSpy}
+              disabled={desktopSpy.isPending || (!spyWindow.trim() && !spyProcess.trim() && !selPage?.url_pattern)}
+              className="shrink-0"
+            >
+              {desktopSpy.isPending ? (
+                <span className="flex items-center gap-1.5">
+                  <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-[var(--color-fg-subtle)] border-t-transparent" />
+                  Spying...
+                </span>
+              ) : (
+                <><Scan size={11} /> Spy</>
+              )}
+            </Button>
+          </div>
+          {spyCandidates.length > 0 && (
+            <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
+              {spyCandidates.slice(0, 12).map((candidate) => {
+                const confidence = Math.round(candidate.confidence_score * 100);
+                return (
+                  <div key={`${candidate.object_key}-${candidate.primary_locator}`} className="flex min-w-[220px] items-center justify-between gap-2 rounded-md border border-[var(--color-line-default)] bg-[var(--color-surface-2)] px-2.5 py-1.5">
+                    <div className="min-w-0">
+                      <p className="truncate text-[11px] font-medium text-[var(--color-fg-default)]">{candidate.name}</p>
+                      <p className="truncate text-[9px] font-mono text-[var(--color-fg-subtle)]">{candidate.locator_strategy}: {candidate.primary_locator}</p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <span className={confidence < 75 ? 'text-[9px] font-mono text-yellow-400' : 'text-[9px] font-mono text-emerald-400'}>{confidence}%</span>
+                      <button
+                        onClick={() => promoteSpyCandidate(candidate)}
+                        className="rounded border border-[#5b8cff]/30 px-2 py-0.5 text-[9px] font-mono text-[#5b8cff] transition-colors hover:bg-[#5b8cff]/10"
+                      >
+                        Promote
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="flex min-h-0 flex-1 overflow-hidden">
 
         {/* Col 1 — Page List */}
@@ -555,7 +749,10 @@ export default function PageRepositoryPage() {
                   <table className="w-full border-collapse" style={{ minWidth: 900 }}>
                     <thead className="sticky top-0 z-10" style={{ background: 'var(--color-surface-1)' }}>
                       <tr className="border-b border-[var(--color-line-default)]">
-                        {['#','Name','Type','XPath','CSS Selector','ID Attr','Name Attr','Strategy',''].map((h, i) => (
+                        {(isDesktopPage
+                          ? ['#','Object','Control','UIA Path','Class','Automation ID','Name/Text','Strategy','']
+                          : ['#','Name','Type','XPath','CSS Selector','ID Attr','Name Attr','Strategy','']
+                        ).map((h, i) => (
                           <th key={i} className="px-2 py-2 text-left font-mono text-[9px] uppercase tracking-[0.14em] text-[var(--color-fg-subtle)] border-r border-[var(--color-line-subtle)] last:border-r-0">
                             {h}
                           </th>
@@ -567,6 +764,7 @@ export default function PageRepositoryPage() {
                         <ElementRow
                           key={el.id} el={el} index={i}
                           isFirst={i === 0} isLast={i === sortedElems.length - 1}
+                          isDesktop={isDesktopPage}
                           onDelete={() => doDeleteElem(el)}
                           onUpdate={(u) => doUpdateElem(el, u)}
                           onMoveUp={() => {}}
@@ -629,12 +827,12 @@ export default function PageRepositoryPage() {
               : (
                 <div className="space-y-3">
                   <div>
-                    <label className={LBL}>Page Name</label>
-                    <input value={pd.name} onChange={(e) => setPd((d) => ({ ...d, name: e.target.value }))} className={INP} placeholder="Login Page" />
+                    <label className={LBL}>{isDesktopPage ? 'Application Name' : 'Page Name'}</label>
+                    <input value={pd.name} onChange={(e) => setPd((d) => ({ ...d, name: e.target.value }))} className={INP} placeholder={isDesktopPage ? 'Invoice Desktop App' : 'Login Page'} />
                   </div>
 
                   <div>
-                    <label className={LBL}>URL / Path Pattern</label>
+                    <label className={LBL}>{isDesktopPage ? 'Application Path' : 'URL / Path Pattern'}</label>
                     <div className="relative">
                       <Link2 size={11} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-fg-subtle)]" />
                       <input value={pd.url_pattern} onChange={(e) => setPd((d) => ({ ...d, url_pattern: e.target.value }))} className={`${INP} pl-8`} placeholder="/login or https://…" />
@@ -684,7 +882,7 @@ export default function PageRepositoryPage() {
                   <div>
                     <p className={LBL}>Locator Strategies</p>
                     <div className="flex flex-wrap gap-1">
-                      {LOCATOR_STRATEGIES.map((s) => (
+                      {(isDesktopPage ? DESKTOP_LOCATOR_STRATEGIES : WEB_LOCATOR_STRATEGIES).map((s) => (
                         <span key={s} className="rounded-full border px-2 py-0.5 text-[9px] font-mono"
                           style={{ color: STRATEGY_COLOR[s], borderColor: `${STRATEGY_COLOR[s]}30`, background: `${STRATEGY_COLOR[s]}10` }}>
                           {s}

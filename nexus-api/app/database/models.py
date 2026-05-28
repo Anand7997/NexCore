@@ -274,7 +274,216 @@ class PageElementModel(Base):
     page: Mapped["PageRepositoryModel"] = relationship("PageRepositoryModel", back_populates="elements")
 
 
+class DesktopObjectHistoryModel(Base):
+    """Version/audit history for desktop repository objects."""
+    __tablename__ = "desktop_object_history"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    page_id: Mapped[str | None] = mapped_column(ForeignKey("page_repository.id"), index=True)
+    element_id: Mapped[str | None] = mapped_column(ForeignKey("page_elements.id"), index=True)
+    object_key: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    action: Mapped[str] = mapped_column(String(50), default="updated")
+    source: Mapped[str] = mapped_column(String(120), default="")
+    actor: Mapped[str] = mapped_column(String(255), default="")
+    changed_fields: Mapped[list[str]] = mapped_column(JSON, default=list)
+    before_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    after_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    impact_summary: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    page: Mapped["PageRepositoryModel | None"] = relationship("PageRepositoryModel")
+    element: Mapped["PageElementModel | None"] = relationship("PageElementModel")
+
+
+class DesktopLocatorSuccessModel(Base):
+    """Persisted record of every locator that successfully resolved an element.
+
+    Used by the smart-identification historical-success scorer to boost
+    confidence for locators proven to work in past executions.
+    """
+    __tablename__ = "desktop_locator_successes"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    object_key: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    element_id: Mapped[str | None] = mapped_column(ForeignKey("page_elements.id"), index=True, nullable=True)
+    execution_id: Mapped[str] = mapped_column(String(36), default="")
+    strategy: Mapped[str] = mapped_column(String(80), nullable=False)
+    locator_value: Mapped[str] = mapped_column(Text, nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, default=1.0)
+    healed: Mapped[bool] = mapped_column(Boolean, default=False)
+    application: Mapped[str] = mapped_column(String(255), default="")
+    node_type: Mapped[str] = mapped_column(String(120), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    element: Mapped["PageElementModel | None"] = relationship("PageElementModel")
+
+
+class DesktopMasterSheetApprovalModel(Base):
+    """Approval record for a pending master-sheet sync change."""
+    __tablename__ = "desktop_master_sheet_approvals"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    object_key: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    application_key: Mapped[str] = mapped_column(String(255), default="")
+    status: Mapped[str] = mapped_column(String(30), default="pending", index=True)
+    change_type: Mapped[str] = mapped_column(String(50), default="update")  # create|update|delete
+    before_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    proposed_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    source: Mapped[str] = mapped_column(String(120), default="master_sheet_sync")
+    requester: Mapped[str] = mapped_column(String(255), default="")
+    reviewer: Mapped[str] = mapped_column(String(255), default="")
+    review_note: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class DesktopObjectHealingSuggestionModel(Base):
+    """Reviewable locator update suggested after a healed desktop match."""
+    __tablename__ = "desktop_object_healing_suggestions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    page_id: Mapped[str | None] = mapped_column(ForeignKey("page_repository.id"), index=True)
+    element_id: Mapped[str | None] = mapped_column(ForeignKey("page_elements.id"), index=True)
+    object_key: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    object_name: Mapped[str] = mapped_column(String(255), default="")
+    application: Mapped[str] = mapped_column(String(255), default="")
+    status: Mapped[str] = mapped_column(String(30), default="pending", index=True)
+    source: Mapped[str] = mapped_column(String(120), default="smart_identification")
+    suggested_strategy: Mapped[str] = mapped_column(String(80), default="")
+    suggested_locator: Mapped[str] = mapped_column(Text, default="")
+    suggested_field: Mapped[str] = mapped_column(String(80), default="alternative_locators")
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    reason: Mapped[str] = mapped_column(Text, default="")
+    evidence: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    preview_update: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    resolved_by: Mapped[str] = mapped_column(String(255), default="")
+    resolution_note: Mapped[str] = mapped_column(Text, default="")
+
+    page: Mapped["PageRepositoryModel | None"] = relationship("PageRepositoryModel")
+    element: Mapped["PageElementModel | None"] = relationship("PageElementModel")
+
+
+class DesktopRecoveryRuleModel(Base):
+    """Configurable per-application/workflow/node-type desktop recovery rules.
+
+    When the desktop plugin encounters a failure, it loads rules scoped to the
+    application and node_type, merging them with the built-in defaults. This
+    table persists operator-customised rules that override the defaults.
+    """
+    __tablename__ = "desktop_recovery_rules"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    category: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    application: Mapped[str] = mapped_column(String(255), default="", index=True)
+    node_type: Mapped[str] = mapped_column(String(120), default="", index=True)
+    retryable: Mapped[bool] = mapped_column(Boolean, default=False)
+    failure_outcome: Mapped[str] = mapped_column(String(20), default="fail")
+    actions: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    node_chain: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    reason: Mapped[str] = mapped_column(Text, default="")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class DesktopAgentModel(Base):
+    """Registered desktop execution agents available for workflow execution routing.
+
+    Each agent self-registers, sends periodic heartbeats, and declares its
+    capabilities so the platform can route executions to the best-matched agent.
+    """
+    __tablename__ = "desktop_agents"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    hostname: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    agent_version: Mapped[str] = mapped_column(String(50), default="")
+    os_version: Mapped[str] = mapped_column(String(255), default="")
+    status: Mapped[str] = mapped_column(String(30), default="active", index=True)  # active | idle | offline | maintenance
+    capabilities: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    """
+    capabilities example:
+    {
+        "driver_types": ["winappdriver", "uia3", "computer_vision"],
+        "applications": ["MyApp", "AnotherApp"],
+        "os": "Windows 11",
+        "extension_packs": ["ocr", "sap"],
+        "max_parallel": 2,
+        "tags": ["high-memory", "gpu"]
+    }
+    """
+    registered_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    last_heartbeat: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    agent_metadata: Mapped[dict[str, Any]] = mapped_column("metadata", JSON, default=dict)
+
+
 # ── Workflow Architecture ─────────────────────────────────────────────────────
+
+class DesktopRecordingSessionModel(Base):
+    """A desktop recorder session that receives raw actions from a local agent."""
+    __tablename__ = "desktop_recording_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="recording", index=True)
+    application: Mapped[str] = mapped_column(String(255), default="")
+    application_path: Mapped[str] = mapped_column(Text, default="")
+    window_title: Mapped[str] = mapped_column(String(255), default="")
+    process_name: Mapped[str] = mapped_column(String(255), default="")
+    driver_type: Mapped[str] = mapped_column(String(50), default="uia3")
+    repository_page_id: Mapped[str | None] = mapped_column(ForeignKey("page_repository.id"), index=True)
+    metadata_: Mapped[dict[str, Any]] = mapped_column("metadata", JSON, default=dict)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime)
+    stopped_at: Mapped[datetime | None] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    repository_page: Mapped["PageRepositoryModel | None"] = relationship("PageRepositoryModel")
+    actions: Mapped[list["DesktopRecordedActionModel"]] = relationship(
+        "DesktopRecordedActionModel",
+        back_populates="session",
+        cascade="all, delete-orphan",
+        order_by="DesktopRecordedActionModel.action_order",
+    )
+
+
+class DesktopRecordedActionModel(Base):
+    """One raw/normalized desktop interaction captured by the recorder agent."""
+    __tablename__ = "desktop_recorded_actions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    session_id: Mapped[str] = mapped_column(ForeignKey("desktop_recording_sessions.id"), nullable=False, index=True)
+    action_order: Mapped[int] = mapped_column(Integer, default=1)
+    action_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    object_key: Mapped[str] = mapped_column(String(255), default="")
+    object_name: Mapped[str] = mapped_column(String(255), default="")
+    control_type: Mapped[str] = mapped_column(String(80), default="")
+    automation_id: Mapped[str] = mapped_column(String(255), default="")
+    name_text: Mapped[str] = mapped_column(String(255), default="")
+    class_name: Mapped[str] = mapped_column(String(255), default="")
+    uia_path: Mapped[str] = mapped_column(Text, default="")
+    locator_strategy: Mapped[str] = mapped_column(String(50), default="")
+    value: Mapped[str] = mapped_column(Text, default="")
+    expected: Mapped[str] = mapped_column(Text, default="")
+    property_name: Mapped[str] = mapped_column(String(120), default="")
+    variable: Mapped[str] = mapped_column(String(120), default="")
+    window_title: Mapped[str] = mapped_column(String(255), default="")
+    screen: Mapped[str] = mapped_column(String(255), default="")
+    x: Mapped[float | None] = mapped_column(Float)
+    y: Mapped[float | None] = mapped_column(Float)
+    duration_ms: Mapped[int | None] = mapped_column(Integer)
+    locators: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    screenshot_artifact_id: Mapped[str] = mapped_column(String(36), default="")
+    ui_tree_artifact_id: Mapped[str] = mapped_column(String(36), default="")
+    action_metadata: Mapped[dict[str, Any]] = mapped_column("metadata", JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    session: Mapped["DesktopRecordingSessionModel"] = relationship(
+        "DesktopRecordingSessionModel",
+        back_populates="actions",
+    )
+
 
 class WorkflowModel(Base):
     __tablename__ = "workflows"

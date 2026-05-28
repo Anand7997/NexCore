@@ -111,6 +111,7 @@ const MODULE_LIBRARY: RouteTile[] = [
   { href: '/architecture',       name: 'Architecture',       icon: Globe,           color: '#5b8cff' },
   { href: '/intent-studio',      name: 'Intent Studio',      icon: Target,          color: '#a195ff' },
   { href: '/page-repository',    name: 'Page Repository',    icon: Boxes,           color: '#f0b558' },
+  { href: '/master-sheet',       name: 'Master Sheet',       icon: Database,        color: '#45c08a' },
   { href: '/test-designer',      name: 'Test Designer',      icon: Code2,           color: '#a195ff' },
   { href: '/test-configuration', name: 'Test Config',        icon: FlaskConical,    color: '#45c08a' },
   { href: '/testcases',          name: 'Test Cases',         icon: BookOpen,        color: '#4dd1e1' },
