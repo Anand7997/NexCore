@@ -25,6 +25,9 @@ def _mock_driver():
     driver.double_click = AsyncMock(return_value=DriverResult(success=True, metadata={"strategy": "accessibility_id"}))
     driver.right_click = AsyncMock(return_value=DriverResult(success=True, metadata={"strategy": "accessibility_id"}))
     driver.hover = AsyncMock(return_value=DriverResult(success=True, metadata={"strategy": "accessibility_id"}))
+    driver.click_coordinates = AsyncMock(return_value=DriverResult(success=True, metadata={"strategy": "coordinates", "x": 100, "y": 200}))
+    driver.double_click_coordinates = AsyncMock(return_value=DriverResult(success=True, metadata={"strategy": "coordinates", "x": 100, "y": 200}))
+    driver.hover_coordinates = AsyncMock(return_value=DriverResult(success=True, metadata={"strategy": "coordinates", "x": 100, "y": 200}))
     driver.type_text = AsyncMock(return_value=DriverResult(success=True, metadata={"chars": 5}))
     driver.set_text = AsyncMock(return_value=DriverResult(success=True, metadata={"chars": 5}))
     driver.clear_text = AsyncMock(return_value=DriverResult(success=True, metadata={}))
@@ -80,6 +83,8 @@ def test_node_specs_expose_driver_selection_and_locator_candidates():
     assert launch_schema["driver_type"]["enum"] == ["winappdriver", "uia3", "computer_vision", "auto"]
     assert "server_url" in launch_schema
     assert "locators" in click_schema
+    assert "x" in click_schema
+    assert "y" in click_schema
     assert "min_confidence" in click_schema
     assert "review_confidence" in click_schema
     assert "window_title" in click_schema
@@ -143,6 +148,46 @@ async def test_validate_rejects_missing_locator():
 
 
 @pytest.mark.asyncio
+async def test_validate_accepts_recorded_coordinates_without_locator():
+    plugin = DesktopExecutionPlugin()
+    envelope = _envelope("desktop.click", {"x": 104, "y": 56})
+
+    await plugin.validate(envelope)
+
+
+@pytest.mark.asyncio
+async def test_validate_rejects_display_name_as_launch_app():
+    plugin = DesktopExecutionPlugin()
+    envelope = _envelope("desktop.launch", {"app": "Desktop App", "driver_type": "uia3"})
+
+    with pytest.raises(PluginValidationError, match="executable path"):
+        await plugin.validate(envelope)
+
+
+@pytest.mark.asyncio
+async def test_legacy_placeholder_launch_attaches_without_create_process_when_scoped():
+    driver = _mock_driver()
+    envelope = _envelope(
+        "desktop.launch",
+        {
+            "app": "Desktop App",
+            "driver_type": "uia3",
+            "window_title": "Invoice",
+            "attach_if_running": True,
+        },
+    )
+
+    with patch("app.execution.plugins.desktop.plugin.get_driver", return_value=driver):
+        plugin = DesktopExecutionPlugin()
+        result = await plugin.execute(envelope)
+
+    assert result.success is True
+    driver.attach.assert_awaited_once_with(window_title="Invoice", process_name=None)
+    driver.launch.assert_not_awaited()
+    assert plugin._sessions["exec1"] is driver
+
+
+@pytest.mark.asyncio
 async def test_launch_uses_selected_driver_and_stores_session():
     driver = _mock_driver()
     envelope = _envelope(
@@ -158,6 +203,59 @@ async def test_launch_uses_selected_driver_and_stores_session():
     factory.assert_called_once()
     assert factory.call_args.args[0] == "uia3"
     driver.launch.assert_awaited_once_with("calc.exe", args=["/safe"], capabilities={})
+    assert plugin._sessions["exec1"] is driver
+
+
+@pytest.mark.asyncio
+async def test_launch_attaches_to_existing_scoped_window_before_starting_new_process():
+    driver = _mock_driver()
+    envelope = _envelope(
+        "desktop.launch",
+        {
+            "app": r"C:\Users\VAnand\AppData\Local\Programs\Microsoft VS Code\Code.exe",
+            "driver_type": "uia3",
+            "window_title": "Visual Studio Code",
+            "process_name": "17880",
+            "attach_if_running": True,
+        },
+    )
+
+    with patch("app.execution.plugins.desktop.plugin.get_driver", return_value=driver):
+        plugin = DesktopExecutionPlugin()
+        result = await plugin.execute(envelope)
+
+    assert result.success is True
+    driver.attach.assert_awaited_once_with(window_title="Visual Studio Code", process_name=None)
+    driver.launch.assert_not_awaited()
+    assert plugin._sessions["exec1"] is driver
+
+
+@pytest.mark.asyncio
+async def test_launch_attaches_by_title_after_delegating_app_starts_without_window():
+    driver = _mock_driver()
+    driver.attach = AsyncMock(side_effect=[
+        DriverResult(success=False, error="Window not found: Visual Studio Code"),
+        DriverResult(success=True, metadata={"window_title": "settings.json - Visual Studio Code"}),
+    ])
+    driver.launch = AsyncMock(return_value=DriverResult(success=False, error="No windows for that process could be found"))
+    envelope = _envelope(
+        "desktop.launch",
+        {
+            "app": r"C:\Users\VAnand\AppData\Local\Programs\Microsoft VS Code\Code.exe",
+            "driver_type": "uia3",
+            "window_title": "Visual Studio Code",
+            "attach_if_running": True,
+            "timeout_ms": 3000,
+        },
+    )
+
+    with patch("app.execution.plugins.desktop.plugin.get_driver", return_value=driver):
+        plugin = DesktopExecutionPlugin()
+        result = await plugin.execute(envelope)
+
+    assert result.success is True
+    driver.launch.assert_awaited_once()
+    assert driver.attach.await_count == 2
     assert plugin._sessions["exec1"] is driver
 
 
@@ -221,6 +319,32 @@ async def test_click_marks_successful_fallback_for_healing_review():
     assert result.output["successful_locator"]["healed"] is True
     assert result.output["healing_suggestion_candidate"]["successful_locator"] == "Submit"
     assert result.output["locator_attempts"][1]["success"] is True
+
+
+@pytest.mark.asyncio
+async def test_click_falls_back_to_recorded_coordinates_when_locator_fails():
+    driver = _mock_driver()
+    driver.click = AsyncMock(return_value=DriverResult(success=False, error="Element not found for click"))
+    plugin = DesktopExecutionPlugin()
+    plugin._sessions["exec1"] = driver
+    envelope = _envelope(
+        "desktop.click",
+        {
+            "selector": "untitled2",
+            "strategy": "name",
+            "x": 104,
+            "y": 56,
+            "coordinate_fallback": True,
+        },
+    )
+
+    result = await plugin.execute(envelope)
+
+    assert result.success is True
+    driver.click.assert_awaited_once()
+    driver.click_coordinates.assert_awaited_once_with(104.0, 56.0, button="left")
+    assert result.output["coordinate_fallback"] is True
+    assert result.output["strategy"] == "coordinates"
 
 
 @pytest.mark.asyncio

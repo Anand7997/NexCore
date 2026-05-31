@@ -1,5 +1,46 @@
 from __future__ import annotations
 import logging
+import os
+import platform
+import sys
+
+if sys.platform == "win32":
+    os.environ.setdefault("DISABLE_SQLALCHEMY_CEXT_RUNTIME", "1")
+
+    def _safe_windows_uname() -> platform.uname_result:
+        machine = os.environ.get("PROCESSOR_ARCHITECTURE") or ""
+        processor = os.environ.get("PROCESSOR_IDENTIFIER") or machine
+
+        try:
+            node = platform.node()
+        except Exception:
+            node = ""
+
+        try:
+            winver = sys.getwindowsversion()
+            release = str(winver.major)
+            version = f"{winver.major}.{winver.minor}.{winver.build}"
+        except Exception:
+            release = ""
+            version = ""
+
+        return platform.uname_result(
+            "Windows",
+            node,
+            release,
+            version,
+            machine,
+        )
+
+    def _safe_platform_machine() -> str:
+        return _safe_windows_uname().machine
+
+    def _safe_platform_processor() -> str:
+        return _safe_windows_uname().processor
+
+    platform.uname = _safe_windows_uname
+    platform.machine = _safe_platform_machine
+    platform.processor = _safe_platform_processor
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker

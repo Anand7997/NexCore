@@ -16,12 +16,12 @@ import { useWebSocket } from '@/hooks/useWebSocket';
 import { useUIStore } from '@/lib/stores/uiStore';
 import { useRealtimeStore } from '@/lib/stores/realtimeStore';
 import { useExecutions, useExecution, useCancelExecution, useDeleteExecution, useTriggerExecution, useTriggerTestCaseExecution } from '@/lib/api/executions';
-import { useFixSuggestions, useImplementFixSuggestion } from '@/lib/api/intelligence';
+import { useFixSuggestions } from '@/lib/api/intelligence';
 import { useTestConfigurationTree } from '@/lib/api/testConfiguration';
 import { useWorkflows } from '@/lib/api/workflows';
 import { formatDuration, timeAgo } from '@/lib/utils';
 import type { ExecutionStatus, WorkflowNode } from '@/types';
-import type { ExecutionListItem, ExecutionDetail } from '@/lib/api/types';
+import type { ExecutionListItem, ExecutionDetail, WorkflowListItem, TestCase } from '@/lib/api/types';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -61,7 +61,118 @@ const TRIGGER_LABEL: Record<string, string> = {
   manual: 'Manual', scheduled: 'Scheduled', webhook: 'Webhook', api: 'API',
 };
 
+function isLaunchableWorkflow(workflow: WorkflowListItem): boolean {
+  const tags = new Set((workflow.tags ?? []).map((tag) => tag.toLowerCase()));
+  return (
+    workflow.status === 'active' &&
+    !tags.has('auto-execution') &&
+    !workflow.name.trim().toLowerCase().startsWith('execution -')
+  );
+}
+
+function latestByName(workflows: WorkflowListItem[]): WorkflowListItem[] {
+  const byName = new Map<string, WorkflowListItem>();
+  for (const workflow of workflows) {
+    const key = workflow.name.trim().toLowerCase();
+    const current = byName.get(key);
+    const currentTime = current ? new Date(current.updated_at || current.created_at).getTime() : 0;
+    const nextTime = new Date(workflow.updated_at || workflow.created_at).getTime();
+    if (!current || nextTime >= currentTime) {
+      byName.set(key, workflow);
+    }
+  }
+  return Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function normalizePlatform(value: unknown): string {
+  const text = String(value ?? '').trim().toLowerCase();
+  if (['desktop', 'windows', 'win32'].includes(text)) return 'desktop';
+  if (['web', 'browser'].includes(text)) return 'web';
+  if (['android', 'ios', 'api'].includes(text)) return text;
+  return '';
+}
+
+function inferPlatformFromValues(values: unknown[] | undefined): string {
+  for (const value of values ?? []) {
+    const platform = normalizePlatform(value);
+    if (platform) return platform;
+  }
+  return '';
+}
+
 // ── Stat Card ─────────────────────────────────────────────────────────────────
+
+function asText(...values: unknown[]): string {
+  for (const value of values) {
+    if (value !== undefined && value !== null && String(value).trim()) {
+      return String(value).trim();
+    }
+  }
+  return '';
+}
+
+function stripWrappingQuotes(value: string): string {
+  const text = value.trim();
+  if (text.length >= 2 && ((text.startsWith('"') && text.endsWith('"')) || (text.startsWith("'") && text.endsWith("'")))) {
+    return text.slice(1, -1).trim();
+  }
+  return text;
+}
+
+function withDesktopLaunchVariables(
+  baseVariables: Record<string, unknown>,
+  applicationPath: string,
+  windowTitle: string,
+): Record<string, unknown> {
+  const variables = { ...baseVariables };
+  const appPath = stripWrappingQuotes(applicationPath);
+  if (appPath) {
+    variables.application_path = appPath;
+    variables.app_path = appPath;
+    variables.app = appPath;
+  }
+  if (windowTitle.trim()) {
+    variables.window_title = windowTitle.trim();
+  }
+  return variables;
+}
+
+function hasDesktopVariables(variables: Record<string, unknown> | undefined): boolean {
+  if (!variables) return false;
+  return Boolean(asText(
+    variables.application_path,
+    variables.app_path,
+    variables.executable_path,
+    variables.desktop_window_title,
+    variables.window_title,
+  ));
+}
+
+function inferWorkflowPlatform(workflow: WorkflowListItem | null | undefined): string {
+  if (!workflow) return '';
+  return inferPlatformFromValues(workflow.platforms) || inferPlatformFromValues(workflow.tags);
+}
+
+function inferTestCasePlatform(testCase: TestCase | null | undefined): string {
+  if (!testCase) return '';
+  const variables = testCase.default_variables ?? {};
+  const casePlatform = (
+    inferPlatformFromValues(testCase.platforms) ||
+    normalizePlatform(variables.platform) ||
+    normalizePlatform(variables.target_platform) ||
+    normalizePlatform(variables.app_platform) ||
+    inferPlatformFromValues(testCase.tags)
+  );
+  if (casePlatform) return casePlatform;
+  if (hasDesktopVariables(variables)) return 'desktop';
+  for (const step of testCase.test_steps ?? []) {
+    const data = step.test_data ?? {};
+    const stepPlatform = normalizePlatform(data.platform) || normalizePlatform(data.target_platform);
+    if (stepPlatform) return stepPlatform;
+    if (hasDesktopVariables(data)) return 'desktop';
+  }
+  return '';
+}
 
 function StatCard({ label, value, icon: Icon, color }: { label: string; value: number; icon: React.ElementType; color: string }) {
   return (
@@ -147,8 +258,7 @@ function ExecutionRow({
 function DetailPanel({ execId, workflowName, onDeleted }: { execId: string; workflowName: string; onDeleted: () => void }) {
   useWebSocket(execId);
   const { data: exec, isLoading } = useExecution(execId);
-  const { data: fixSuggestions = [] } = useFixSuggestions(execId);
-  const implementFix = useImplementFixSuggestion();
+  const { data: fixSuggestions = [], isLoading: fixesLoading } = useFixSuggestions(execId);
   const { openInspectorFor } = useUIStore();
   const activeNodeMap = useRealtimeStore((s) => s.activeNodeMap);
   const activeNode    = activeNodeMap[execId];
@@ -164,9 +274,12 @@ function DetailPanel({ execId, workflowName, onDeleted }: { execId: string; work
   }
 
   const status   = mapStatus(exec.status);
-  const progress = exec.node_count > 0 ? exec.completed_nodes / exec.node_count : 0;
+  const nodeCount = exec.node_count ?? exec.nodes.length;
+  const completedNodes = exec.completed_nodes ?? exec.nodes.filter((node) => node.status === 'completed').length;
+  const progress = nodeCount > 0 ? completedNodes / nodeCount : 0;
   const failedNode = exec.nodes.find((n) => n.status === 'failed');
   const failedFix = failedNode ? fixSuggestions.find((fix) => fix.node_key === failedNode.node_key) : undefined;
+  const fixCount = failedFix ? 1 : fixSuggestions.length;
   const liveNode = activeNode ? exec.nodes.find((n) => n.node_key === activeNode) : undefined;
 
   const tlExec = {
@@ -175,8 +288,8 @@ function DetailPanel({ execId, workflowName, onDeleted }: { execId: string; work
     status, startedAt: exec.started_at ?? exec.created_at,
     duration: durationMs(exec), platform: exec.platform as 'web',
     environment: exec.environment, triggeredBy: exec.trigger,
-    correlationId: exec.id, nodeCount: exec.node_count,
-    completedNodes: exec.completed_nodes,
+    correlationId: exec.id, nodeCount,
+    completedNodes,
     failedNode: failedNode?.node_label, tags: [],
   };
   const tlNodes: WorkflowNode[] = exec.nodes.map((n) => ({
@@ -207,7 +320,7 @@ function DetailPanel({ execId, workflowName, onDeleted }: { execId: string; work
               { label: 'Environment', value: exec.environment },
               { label: 'Trigger',     value: exec.trigger },
               { label: 'Duration',    value: formatDuration(durationMs(exec)) },
-              { label: 'Nodes',       value: `${exec.completed_nodes}/${exec.node_count}` },
+              { label: 'Nodes',       value: `${completedNodes}/${nodeCount}` },
               { label: 'Started',     value: exec.started_at ? timeAgo(exec.started_at) : '—' },
             ].map(({ label, value }) => (
               <div key={label}>
@@ -243,7 +356,7 @@ function DetailPanel({ execId, workflowName, onDeleted }: { execId: string; work
               <span className="h-1.5 w-1.5 rounded-full bg-blue-300 animate-pulse" />
               Live execution
             </span>
-            <span className="font-mono text-[10px] text-blue-300/70">{exec.completed_nodes}/{exec.node_count}</span>
+            <span className="font-mono text-[10px] text-blue-300/70">{completedNodes}/{nodeCount}</span>
           </div>
           <p className="truncate text-[11px] text-blue-100/80">
             {liveNode?.node_label ?? activeNode ?? 'Waiting for next runtime event...'}
@@ -251,46 +364,33 @@ function DetailPanel({ execId, workflowName, onDeleted }: { execId: string; work
         </div>
       )}
 
-      {failedFix && (
-        <div className="mx-4 mt-3 shrink-0 rounded-lg border border-emerald-500/25 bg-emerald-500/8 p-3">
-          <div className="mb-2 flex items-center justify-between gap-3">
+      {failedNode && failedFix && (
+        <div className="mx-4 mt-3 shrink-0 rounded-lg border border-emerald-500/20 bg-emerald-500/6 p-3">
+          <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2">
               <Wrench size={12} className="shrink-0 text-emerald-400" />
               <div className="min-w-0">
-                <p className="text-xs font-semibold text-emerald-300">{failedFix.title}</p>
+                <p className="text-xs font-semibold text-emerald-300">
+                  {fixesLoading ? 'Scanning for safe fixes...' : `${fixCount} ${fixCount === 1 ? 'AI fix' : 'AI fixes'} available`}
+                </p>
                 <p className="truncate text-[10px] text-[var(--color-fg-subtle)]">
-                  {failedFix.target_type === 'page_element' ? 'Page Repository' : 'Test Configuration'} · {failedFix.field} · {Math.round(failedFix.confidence * 100)}%
+                  {failedFix.target_type === 'page_element' ? 'Page Repository' : 'Test Configuration'} / {failedFix.field} / {Math.round(failedFix.confidence * 100)}%
                 </p>
               </div>
             </div>
             <Button
               variant="neon"
               size="xs"
-              disabled={!failedFix.can_implement || implementFix.isPending}
-              onClick={() => implementFix.mutate({ executionId: exec.id, nodeKey: failedFix.node_key })}
-              title={failedFix.blocked_reason ?? 'Apply this fix to configuration'}
+              disabled={fixesLoading}
+              onClick={() => {
+                window.location.href = `/ai-analysis?executionId=${encodeURIComponent(exec.id)}`;
+              }}
+              title="Open AI Inspect to review and apply fixes"
             >
-              <CheckCircle2 size={10} />
-              {implementFix.isPending ? 'Implementing...' : 'Implement'}
+              <Brain size={10} />
+              Review
             </Button>
           </div>
-          <p className="mb-2 text-[10px] leading-relaxed text-[var(--color-fg-muted)]">{failedFix.rationale}</p>
-          <div className="grid gap-1.5 font-mono text-[10px]">
-            <div className="min-w-0 rounded border border-red-500/15 bg-red-500/8 px-2 py-1">
-              <span className="text-red-300/70">Old: </span>
-              <span className="break-all text-red-200">{failedFix.old_value || 'not set'}</span>
-            </div>
-            <div className="min-w-0 rounded border border-emerald-500/15 bg-emerald-500/8 px-2 py-1">
-              <span className="text-emerald-300/70">New: </span>
-              <span className="break-all text-emerald-200">{failedFix.new_value || failedFix.blocked_reason || 'pending discovery'}</span>
-            </div>
-          </div>
-          {implementFix.isSuccess && (
-            <p className="mt-2 text-[10px] text-emerald-300">Fix implemented. Re-run the execution to verify.</p>
-          )}
-          {implementFix.isError && (
-            <p className="mt-2 text-[10px] text-red-300">Could not implement this suggestion. Refresh and review the latest analysis.</p>
-          )}
         </div>
       )}
 
@@ -342,14 +442,30 @@ function DetailPanel({ execId, workflowName, onDeleted }: { execId: string; work
 // ── Trigger Panel ─────────────────────────────────────────────────────────────
 
 function TriggerPanel({ onClose }: { onClose: () => void }) {
-  const { data: workflows = [] } = useWorkflows();
+  const { data: workflows = [] } = useWorkflows('active');
+  const launchableWorkflows = useMemo(() => latestByName(workflows.filter(isLaunchableWorkflow)), [workflows]);
   const { mutate: trigger, isPending } = useTriggerExecution();
-  const [wfId, setWfId]   = useState(workflows[0]?.id ?? '');
+  const [wfId, setWfId]   = useState('');
   const [env,  setEnv]    = useState('staging');
   const [plat, setPlat]   = useState('web');
+  const selectedWorkflow = launchableWorkflows.find((workflow) => workflow.id === wfId) ?? null;
+  const selectedWorkflowAvailable = Boolean(selectedWorkflow);
+  const selectedWorkflowPlatform = useMemo(() => inferWorkflowPlatform(selectedWorkflow), [selectedWorkflow]);
+
+  useEffect(() => {
+    if (!selectedWorkflowAvailable) {
+      setWfId(launchableWorkflows[0]?.id ?? '');
+    }
+  }, [launchableWorkflows, selectedWorkflowAvailable]);
+
+  useEffect(() => {
+    if (selectedWorkflow) {
+      setPlat(selectedWorkflowPlatform || 'web');
+    }
+  }, [selectedWorkflow?.id, selectedWorkflowPlatform]);
 
   function fire() {
-    if (!wfId) return;
+    if (!selectedWorkflowAvailable) return;
     trigger({ workflow_id: wfId, trigger: 'manual', environment: env, platform: plat }, {
       onSuccess: () => onClose(),
     });
@@ -369,9 +485,9 @@ function TriggerPanel({ onClose }: { onClose: () => void }) {
         <div>
           <label className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]">Workflow</label>
           <select value={wfId} onChange={(e) => setWfId(e.target.value)} className={INP}>
-            {workflows.length === 0
-              ? <option value="">No workflows available</option>
-              : workflows.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)
+            {launchableWorkflows.length === 0
+              ? <option value="">No active workflows available</option>
+              : launchableWorkflows.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)
             }
           </select>
         </div>
@@ -391,7 +507,7 @@ function TriggerPanel({ onClose }: { onClose: () => void }) {
         </div>
         <div className="flex gap-2 pt-1">
           <Button variant="ghost" size="sm" className="flex-1 justify-center" onClick={onClose}>Cancel</Button>
-          <Button variant="neon" size="sm" className="flex-1 justify-center" onClick={fire} disabled={isPending || !wfId}>
+          <Button variant="neon" size="sm" className="flex-1 justify-center" onClick={fire} disabled={isPending || !selectedWorkflowAvailable}>
             <Play size={11} />{isPending ? 'Launching…' : 'Run'}
           </Button>
         </div>
@@ -403,18 +519,21 @@ function TriggerPanel({ onClose }: { onClose: () => void }) {
 // ── Main Page ──────────────────────────────────────────────────────────────────
 
 function ExecutionLaunchPanel({ onClose, onLaunched }: { onClose: () => void; onLaunched: (executionId: string) => void }) {
-  const { data: workflows = [] } = useWorkflows();
+  const { data: workflows = [] } = useWorkflows('active');
+  const launchableWorkflows = useMemo(() => latestByName(workflows.filter(isLaunchableWorkflow)), [workflows]);
   const { data: testTree, isLoading: loadingCatalog } = useTestConfigurationTree();
   const { mutate: trigger, isPending } = useTriggerExecution();
   const { mutate: triggerTestCase, isPending: isLaunchingTestCase } = useTriggerTestCaseExecution();
   const projects = testTree?.projects ?? [];
   const [mode, setMode] = useState<'testcase' | 'workflow'>('testcase');
-  const [wfId, setWfId] = useState(workflows[0]?.id ?? '');
+  const [wfId, setWfId] = useState('');
   const [projectId, setProjectId] = useState('');
   const [moduleId, setModuleId] = useState('');
   const [caseId, setCaseId] = useState('');
   const [env, setEnv] = useState('staging');
   const [plat, setPlat] = useState('web');
+  const [desktopAppPath, setDesktopAppPath] = useState('');
+  const [desktopWindowTitle, setDesktopWindowTitle] = useState('');
 
   const selectedProject = projects.find((p) => p.id === projectId) ?? projects[0] ?? null;
   const modules = selectedProject?.modules ?? [];
@@ -422,10 +541,16 @@ function ExecutionLaunchPanel({ onClose, onLaunched }: { onClose: () => void; on
   const cases = selectedModule?.test_cases ?? [];
   const selectedCase = cases.find((c) => c.id === caseId) ?? cases[0] ?? null;
   const totalCases = projects.reduce((sum, p) => sum + p.modules.reduce((moduleSum, m) => moduleSum + m.test_cases.length, 0), 0);
+  const selectedWorkflow = launchableWorkflows.find((workflow) => workflow.id === wfId) ?? null;
+  const selectedWorkflowAvailable = Boolean(selectedWorkflow);
+  const selectedWorkflowPlatform = useMemo(() => inferWorkflowPlatform(selectedWorkflow), [selectedWorkflow]);
+  const selectedCasePlatform = useMemo(() => inferTestCasePlatform(selectedCase), [selectedCase]);
 
   useEffect(() => {
-    if (!wfId && workflows[0]?.id) setWfId(workflows[0].id);
-  }, [wfId, workflows]);
+    if (!selectedWorkflowAvailable) {
+      setWfId(launchableWorkflows[0]?.id ?? '');
+    }
+  }, [launchableWorkflows, selectedWorkflowAvailable]);
 
   useEffect(() => {
     if (!selectedProject) return;
@@ -436,10 +561,27 @@ function ExecutionLaunchPanel({ onClose, onLaunched }: { onClose: () => void; on
     if (nextCase && caseId !== nextCase.id) setCaseId(nextCase.id);
   }, [caseId, moduleId, projectId, selectedProject]);
 
+  useEffect(() => {
+    const variables = selectedCase?.default_variables ?? {};
+    setDesktopAppPath(asText(variables.application_path, variables.app_path, variables.app));
+    setDesktopWindowTitle(asText(variables.window_title, variables.desktop_window_title, variables.window, variables.screen));
+  }, [selectedCase?.id]);
+
+  useEffect(() => {
+    const inferredPlatform = mode === 'workflow' ? selectedWorkflowPlatform : selectedCasePlatform;
+    const hasSelection = mode === 'workflow' ? Boolean(selectedWorkflow) : Boolean(selectedCase);
+    if (hasSelection) {
+      setPlat(inferredPlatform || 'web');
+    }
+  }, [mode, selectedCase?.id, selectedCasePlatform, selectedWorkflow?.id, selectedWorkflowPlatform]);
+
   function fire() {
     if (mode === 'workflow') {
-      if (!wfId) return;
-      trigger({ workflow_id: wfId, trigger: 'manual', environment: env, platform: plat }, {
+      if (!selectedWorkflowAvailable) return;
+      const variables = plat === 'desktop'
+        ? withDesktopLaunchVariables({}, desktopAppPath, desktopWindowTitle)
+        : {};
+      trigger({ workflow_id: wfId, trigger: 'manual', environment: env, platform: plat, variables }, {
         onSuccess: (res) => {
           onLaunched(res.execution_id);
           onClose();
@@ -448,6 +590,9 @@ function ExecutionLaunchPanel({ onClose, onLaunched }: { onClose: () => void; on
       return;
     }
     if (!selectedCase || !selectedProject || !selectedModule) return;
+    const variables = plat === 'desktop'
+      ? withDesktopLaunchVariables(selectedCase.default_variables ?? {}, desktopAppPath, desktopWindowTitle)
+      : selectedCase.default_variables ?? {};
     triggerTestCase({
       test_case_ids: [selectedCase.id],
       project_id: selectedProject.id,
@@ -455,7 +600,7 @@ function ExecutionLaunchPanel({ onClose, onLaunched }: { onClose: () => void; on
       trigger: 'manual',
       environment: env,
       platform: plat,
-      variables: selectedCase.default_variables ?? {},
+      variables,
     }, {
       onSuccess: (res) => {
         onLaunched(res.execution_id);
@@ -465,7 +610,7 @@ function ExecutionLaunchPanel({ onClose, onLaunched }: { onClose: () => void; on
   }
 
   const INP = 'w-full rounded-lg border border-[var(--color-line-default)] bg-[var(--color-surface-2)] px-3 py-2 text-sm text-[var(--color-fg-default)] outline-none transition-colors focus:border-[var(--color-accent-default)] disabled:opacity-50';
-  const launchDisabled = mode === 'workflow' ? !wfId || isPending : !selectedCase || isLaunchingTestCase;
+  const launchDisabled = mode === 'workflow' ? !selectedWorkflowAvailable || isPending : !selectedCase || isLaunchingTestCase;
 
   return (
     <motion.div
@@ -532,9 +677,9 @@ function ExecutionLaunchPanel({ onClose, onLaunched }: { onClose: () => void; on
           <div>
             <label className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]">Workflow</label>
             <select value={wfId} onChange={(e) => setWfId(e.target.value)} className={INP}>
-              {workflows.length === 0
-                ? <option value="">No workflows available</option>
-                : workflows.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)
+              {launchableWorkflows.length === 0
+                ? <option value="">No active workflows available</option>
+                : launchableWorkflows.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)
               }
             </select>
           </div>
@@ -554,6 +699,28 @@ function ExecutionLaunchPanel({ onClose, onLaunched }: { onClose: () => void; on
             </select>
           </div>
         </div>
+        {plat === 'desktop' && (
+          <div className="grid gap-2 rounded-lg border border-[var(--color-line-default)] bg-black/15 p-2.5">
+            <div>
+              <label className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]">Application Path</label>
+              <input
+                value={desktopAppPath}
+                onChange={(e) => setDesktopAppPath(e.target.value)}
+                className={INP}
+                placeholder="C:\Program Files\App\App.exe"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]">Window Title</label>
+              <input
+                value={desktopWindowTitle}
+                onChange={(e) => setDesktopWindowTitle(e.target.value)}
+                className={INP}
+                placeholder="Application window title"
+              />
+            </div>
+          </div>
+        )}
         <div className="flex gap-2 pt-1">
           <Button variant="ghost" size="sm" className="flex-1 justify-center" onClick={onClose}>Cancel</Button>
           <Button variant="neon" size="sm" className="flex-1 justify-center" onClick={fire} disabled={launchDisabled}>

@@ -508,10 +508,22 @@ class ExecutionEngine:
 
     async def _build_dag(self, db: AsyncSession, workflow_id: str) -> DAGGraph:
         nodes_result = await db.execute(
-            select(WorkflowNodeModel).where(WorkflowNodeModel.workflow_id == workflow_id)
+            select(WorkflowNodeModel)
+            .where(WorkflowNodeModel.workflow_id == workflow_id)
+            .order_by(
+                WorkflowNodeModel.position_x.asc(),
+                WorkflowNodeModel.position_y.asc(),
+                WorkflowNodeModel.node_key.asc(),
+            )
         )
         edges_result = await db.execute(
-            select(WorkflowEdgeModel).where(WorkflowEdgeModel.workflow_id == workflow_id)
+            select(WorkflowEdgeModel)
+            .where(WorkflowEdgeModel.workflow_id == workflow_id)
+            .order_by(
+                WorkflowEdgeModel.execution_order.asc(),
+                WorkflowEdgeModel.source_key.asc(),
+                WorkflowEdgeModel.target_key.asc(),
+            )
         )
         wf_nodes = nodes_result.scalars().all()
         wf_edges = edges_result.scalars().all()

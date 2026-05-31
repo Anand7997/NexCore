@@ -2,9 +2,11 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { API_BASE_URL, ApiError, api } from './client';
+import { workflowKeys } from './workflows';
 import type {
   DesktopRecordedAction,
   DesktopRecordedActionCreate,
+  DesktopRecordedActionUpdate,
   DesktopMcpCommandInput,
   DesktopMcpCommandResponse,
   DesktopRecorderAgentCommandInput,
@@ -61,11 +63,51 @@ export function useStopDesktopRecorderSession() {
   });
 }
 
+export function useDeleteDesktopRecorderSession() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (sessionId: string) =>
+      api.delete(`/desktop-recorder/sessions/${sessionId}`),
+    onSuccess: async (_result, sessionId) => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: keys.sessions }),
+        qc.invalidateQueries({ queryKey: workflowKeys.all }),
+        qc.removeQueries({ queryKey: keys.detail(sessionId) }),
+        qc.removeQueries({ queryKey: keys.compile(sessionId) }),
+      ]);
+    },
+  });
+}
+
 export function useAddDesktopRecordedAction(sessionId: string | null) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: DesktopRecordedActionCreate) =>
       api.post<DesktopRecordedAction>(`/desktop-recorder/sessions/${sessionId}/actions`, input),
+    onSuccess: () => {
+      if (sessionId) qc.invalidateQueries({ queryKey: keys.detail(sessionId) });
+      qc.invalidateQueries({ queryKey: keys.sessions });
+    },
+  });
+}
+
+export function useUpdateDesktopRecordedAction(sessionId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ actionId, input }: { actionId: string; input: DesktopRecordedActionUpdate }) =>
+      api.patch<DesktopRecordedAction>(`/desktop-recorder/sessions/${sessionId}/actions/${actionId}`, input),
+    onSuccess: () => {
+      if (sessionId) qc.invalidateQueries({ queryKey: keys.detail(sessionId) });
+      qc.invalidateQueries({ queryKey: keys.sessions });
+    },
+  });
+}
+
+export function useDeleteDesktopRecordedAction(sessionId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (actionId: string) =>
+      api.delete(`/desktop-recorder/sessions/${sessionId}/actions/${actionId}`),
     onSuccess: () => {
       if (sessionId) qc.invalidateQueries({ queryKey: keys.detail(sessionId) });
       qc.invalidateQueries({ queryKey: keys.sessions });

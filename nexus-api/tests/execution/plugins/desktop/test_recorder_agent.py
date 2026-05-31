@@ -70,3 +70,27 @@ def test_recorder_agent_redacts_sensitive_type_values():
 
     assert payload["value"] == "[REDACTED]"
     assert payload["metadata"]["redacted"] is True
+
+
+def test_recorder_agent_stops_when_session_status_is_stopped(monkeypatch):
+    agent = _load_agent_module()
+    recorder = agent.LiveDesktopRecorderAgent(
+        agent.AgentOptions(api_url="http://nexcore.local/api", session_id="session-123"),
+    )
+
+    monkeypatch.setattr(agent, "_get_json", lambda *_args: {"status": "stopped"})
+    recorder._stop_if_session_closed()
+
+    assert recorder.stop_event.is_set()
+
+
+def test_recorder_agent_ignores_active_session_status(monkeypatch):
+    agent = _load_agent_module()
+    recorder = agent.LiveDesktopRecorderAgent(
+        agent.AgentOptions(api_url="http://nexcore.local/api", session_id="session-123"),
+    )
+
+    monkeypatch.setattr(agent, "_get_json", lambda *_args: {"status": "recording"})
+    recorder._stop_if_session_closed()
+
+    assert not recorder.stop_event.is_set()

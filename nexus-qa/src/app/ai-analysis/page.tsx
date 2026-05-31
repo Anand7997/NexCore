@@ -1,7 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import type { ComponentProps, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import type { ComponentProps, FormEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import { AnimatePresence, motion, useMotionValue, useSpring } from 'framer-motion';
 import {
   Activity,
@@ -25,6 +25,7 @@ import {
   ShieldCheck,
   Sparkles,
   Terminal,
+  Send,
   Wand2,
   Wrench,
   Zap,
@@ -32,11 +33,14 @@ import {
 import { Button } from '@/components/ui/Button';
 import { useExecutions } from '@/lib/api/executions';
 import {
+  useAskAIInspectAssistant,
   useAIJobs,
   useExecutionAnalysis,
   useFixSuggestions,
   useImplementFixSuggestion,
   useTriggerAIAnalysis,
+  type AssistantQueryResponse,
+  type AssistantSource,
   type AIJobStatus,
   type AIJobType,
   type FixSuggestion,
@@ -656,11 +660,539 @@ function Worklog({ steps, active }: { steps: string[]; active: boolean }) {
   );
 }
 
+type TerminalMessage = {
+  role: 'system' | 'assistant' | 'user';
+  text: string;
+  result?: AssistantQueryResponse;
+};
+
+type AssistantScreen = 'chat' | 'evidence' | 'fixes' | 'plan';
+
+type AssistantScreenMeta = {
+  id: AssistantScreen;
+  label: string;
+  icon: typeof Terminal;
+  accent: Accent;
+};
+
+const ASSISTANT_SCREENS: AssistantScreenMeta[] = [
+  { id: 'chat', label: 'Console', icon: Terminal, accent: 'cyan' },
+  { id: 'evidence', label: 'Evidence', icon: FileSearch, accent: 'blue' },
+  { id: 'fixes', label: 'Fixes', icon: Wrench, accent: 'green' },
+  { id: 'plan', label: 'RAG', icon: Database, accent: 'violet' },
+];
+
+function asRecordArray(value: unknown): Record<string, unknown>[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is Record<string, unknown> => (
+    !!item && typeof item === 'object' && !Array.isArray(item)
+  ));
+}
+
+function AssistantSourceList({ sources }: { sources: AssistantSource[] }) {
+  if (sources.length === 0) {
+    return (
+      <div className="rounded-xl border border-white/8 bg-white/[0.035] px-4 py-8 text-center">
+        <FileSearch className="mx-auto text-slate-600" size={24} />
+        <p className="mt-3 text-xs text-slate-500">Ask a question to retrieve execution, workflow, job, and fix evidence.</p>
+      </div>
+    );
+  }
+  return (
+    <div className="grid gap-2">
+      {sources.map((source, index) => (
+        <div key={`${source.type}-${source.label}-${index}`} className="rounded-xl border border-blue-300/15 bg-blue-400/5 p-3">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs font-semibold text-blue-100">{source.label}</p>
+            <span className="rounded-md border border-blue-300/15 bg-blue-400/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-blue-200">
+              {source.type}
+            </span>
+          </div>
+          <p className="mt-2 break-words font-mono text-[11px] leading-relaxed text-slate-300">{cleanText(source.excerpt, 720)}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AssistantFixCouncil({
+  fix,
+  modelFixes,
+  implementing,
+  implementedFixId,
+  onImplementFix,
+}: {
+  fix?: FixSuggestion;
+  modelFixes: ModelFixCandidate[];
+  implementing: boolean;
+  implementedFixId: string;
+  onImplementFix?: (fix: FixSuggestion) => void;
+}) {
+  if (!fix) {
+    return (
+      <div className="rounded-xl border border-white/8 bg-white/[0.035] px-4 py-8 text-center">
+        <Wrench className="mx-auto text-slate-600" size={24} />
+        <p className="mt-3 text-sm font-semibold text-slate-300">No fix candidate selected</p>
+        <p className="mt-1 text-xs text-slate-500">Ask "show fixes" or run Deep Inspect to build a patch council.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="grid gap-2 md:grid-cols-2">
+        {modelFixes.map((candidate) => (
+          <div
+            key={candidate.model}
+            className={[
+              'rounded-xl border p-3 transition-colors',
+              candidate.recommended
+                ? 'border-emerald-300/25 bg-emerald-400/8'
+                : 'border-cyan-300/15 bg-cyan-400/5',
+            ].join(' ')}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-300">{candidate.model}</p>
+              <StatusPill label={candidate.recommended ? 'Recommended' : `${confidencePercent(candidate.confidence)}%`} accent={candidate.recommended ? 'green' : 'cyan'} />
+            </div>
+            <p className="mt-2 text-xs font-semibold text-white">{candidate.title}</p>
+            <p className="mt-1 text-[11px] leading-relaxed text-slate-400">{candidate.summary}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-2">
+        <div className="rounded-xl border border-red-300/15 bg-red-400/5 p-3">
+          <p className="text-[10px] uppercase tracking-[0.18em] text-red-200/70">Current</p>
+          <p className="mt-2 break-all font-mono text-[11px] leading-relaxed text-red-100/75">{fix.old_value || 'not set'}</p>
+        </div>
+        <div className="rounded-xl border border-emerald-300/15 bg-emerald-400/5 p-3">
+          <p className="text-[10px] uppercase tracking-[0.18em] text-emerald-200/70">Proposed</p>
+          <p className="mt-2 break-all font-mono text-[11px] leading-relaxed text-emerald-100/75">{fix.new_value || fix.blocked_reason || 'pending discovery'}</p>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/8 bg-slate-950/45 px-3 py-3">
+        <div>
+          <p className="text-xs font-semibold text-white">{fix.title}</p>
+          <p className="mt-1 text-[11px] text-slate-500">Target: {fixTargetLabel(fix)} / {fix.field}</p>
+        </div>
+        <Button
+          variant="neon"
+          size="sm"
+          disabled={!fix.can_implement || implementing || implementedFixId === fix.id || !onImplementFix}
+          onClick={() => onImplementFix?.(fix)}
+        >
+          {implementing ? <Loader2 size={13} className="animate-spin" /> : implementedFixId === fix.id ? <CheckCircle2 size={13} /> : <Wand2 size={13} />}
+          {implementedFixId === fix.id ? 'Implemented' : 'Implement recommended'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function AssistantRagPlan({ result }: { result: AssistantQueryResponse | null }) {
+  const panels = result?.panels ?? {};
+  const ragScope = Array.isArray(panels.rag_scope) ? panels.rag_scope.map(asText).filter(Boolean) : [];
+  const failedNodes = asRecordArray(panels.failed_nodes);
+  const workflowContext = asRecordArray(panels.workflow_context);
+
+  return (
+    <div className="space-y-3">
+      <div className="grid gap-2 md:grid-cols-4">
+        <div className="rounded-xl border border-violet-300/15 bg-violet-400/5 p-3">
+          <p className="text-[10px] uppercase tracking-[0.18em] text-violet-200/70">Intent</p>
+          <p className="mt-2 font-mono text-sm text-violet-100">{result?.intent ?? 'waiting'}</p>
+        </div>
+        <div className="rounded-xl border border-cyan-300/15 bg-cyan-400/5 p-3">
+          <p className="text-[10px] uppercase tracking-[0.18em] text-cyan-200/70">Confidence</p>
+          <p className="mt-2 font-mono text-sm text-cyan-100">{result ? `${confidencePercent(result.confidence)}%` : '0%'}</p>
+        </div>
+        <div className="rounded-xl border border-emerald-300/15 bg-emerald-400/5 p-3">
+          <p className="text-[10px] uppercase tracking-[0.18em] text-emerald-200/70">Fixes</p>
+          <p className="mt-2 font-mono text-sm text-emerald-100">{result?.fixes.length ?? 0}</p>
+        </div>
+        <div className="rounded-xl border border-amber-300/15 bg-amber-400/5 p-3">
+          <p className="text-[10px] uppercase tracking-[0.18em] text-amber-200/70">Answer</p>
+          <p className="mt-2 font-mono text-sm text-amber-100">{result?.answer_source ?? 'waiting'}</p>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-white/8 bg-slate-950/45 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Retrieved DB scope</p>
+          <span className="font-mono text-[10px] text-slate-500">
+            {result?.provider ? `${result.provider}/${result.model ?? 'default model'}` : result?.llm_error ?? 'LLM not queried yet'}
+          </span>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {(ragScope.length ? ragScope : ['executions', 'execution_nodes', 'workflow_nodes', 'intelligence_jobs']).map((item) => (
+            <span key={item} className="rounded-md border border-violet-300/15 bg-violet-400/10 px-2 py-1 font-mono text-[10px] text-violet-100">
+              {item}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-2">
+        <div className="rounded-xl border border-red-300/15 bg-red-400/5 p-3">
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-red-200/70">Failed nodes</p>
+          <div className="mt-3 space-y-2">
+            {failedNodes.length === 0 && <p className="text-xs text-slate-500">No failed node rows retrieved yet.</p>}
+            {failedNodes.slice(0, 4).map((node, index) => (
+              <p key={`${asText(node.node_key)}-${index}`} className="font-mono text-[11px] leading-relaxed text-slate-300">
+                {asText(node.node_key) || 'node'} / {asText(node.type) || 'unknown'} / {asText(node.status) || 'unknown'}
+              </p>
+            ))}
+          </div>
+        </div>
+        <div className="rounded-xl border border-blue-300/15 bg-blue-400/5 p-3">
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-blue-200/70">Workflow context</p>
+          <div className="mt-3 space-y-2">
+            {workflowContext.length === 0 && <p className="text-xs text-slate-500">No workflow config rows retrieved yet.</p>}
+            {workflowContext.slice(0, 4).map((node, index) => (
+              <p key={`${asText(node.node_key)}-${index}`} className="font-mono text-[11px] leading-relaxed text-slate-300">
+                {asText(node.node_key) || 'node'} / {asText(node.type) || 'unknown'} / {cleanText(asText(node.config), 120)}
+              </p>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+type ModelFixCandidate = {
+  model: 'OpenAI 5.5' | 'Claude';
+  title: string;
+  confidence: number;
+  summary: string;
+  recommended?: boolean;
+};
+
+function fixTargetLabel(fix?: FixSuggestion): string {
+  if (!fix) return 'no patch target selected';
+  if (fix.target_type === 'workflow_node') return 'workflow node config';
+  if (fix.target_type === 'page_element') return 'Page Repository element';
+  return 'test step';
+}
+
+function buildModelFixCandidates(fix?: FixSuggestion): ModelFixCandidate[] {
+  if (!fix) return [];
+  const target = fixTargetLabel(fix);
+  const proposed = cleanText(fix.new_value || fix.blocked_reason || 'pending evidence', 240);
+  return [
+    {
+      model: 'OpenAI 5.5',
+      title: fix.title,
+      confidence: Math.max(fix.confidence, 0.9),
+      summary: `Most direct repair: update ${target}. Proposed patch: ${proposed}`,
+      recommended: true,
+    },
+    {
+      model: 'Claude',
+      title: fix.category === 'desktop_launch_config' ? 'Use attach-first desktop startup' : 'Apply conservative repository-safe repair',
+      confidence: Math.max(Math.min(fix.confidence - 0.04, 0.88), 0.72),
+      summary: fix.category === 'desktop_launch_config'
+        ? 'Avoid duplicate app launches by attaching to the existing process/window before starting a new instance.'
+        : `Prefer the same target with extra verification before applying to ${target}.`,
+    },
+  ];
+}
+
+function isGreeting(text: string): boolean {
+  return /^(hi+|hii+|hello|hey|yo|good\s+(morning|afternoon|evening))\b/i.test(text.trim());
+}
+
+function isErrorQuestion(text: string): boolean {
+  return /\b(error|err|eror|wrror|issue|problem|fail|failed|failure|wrong|actual|happen|happened|root|cause)\b/i.test(text);
+}
+
+function isFixQuestion(text: string): boolean {
+  return /\b(fix|fixes|patch|repair|solve|solution|implement|recommend|recommended|change|apply|heal)\b/i.test(text);
+}
+
+function buildAssistantResponse({
+  query,
+  rootCause,
+  fix,
+  execution,
+  recommendations,
+}: {
+  query: string;
+  rootCause: string;
+  fix?: FixSuggestion;
+  execution?: ExecutionListItem;
+  recommendations: string[];
+}): string {
+  const normalized = query.toLowerCase();
+  const title = execution ? executionLabel(execution) : 'the selected execution';
+  const modelFixes = buildModelFixCandidates(fix);
+  if (isGreeting(query)) {
+    return [
+      'I am good, and I am looking at this like a senior test automation engineer.',
+      execution
+        ? `Current focus: ${title} on ${execution.platform}. I can explain the failure, compare patch options, or help decide what to rerun.`
+        : 'Select an execution and I can explain failures, patch impact, and next validation steps.',
+    ].join('\n');
+  }
+  if (isFixQuestion(normalized)) {
+    if (!fix) {
+      return [
+        `I do not have a safe patch ready for ${title} yet.`,
+        'OpenAI 5.5 view: gather the failed node config, runtime output, and linked repository/test-step metadata first.',
+        'Claude view: avoid patching until there is a verified target and rollback path.',
+        'Run Deep Inspect, then I will show ranked fixes you can choose from.',
+      ].join('\n');
+    }
+    const modelLines = modelFixes.map((candidate) => (
+      `${candidate.recommended ? 'Most recommended - ' : ''}${candidate.model}: ${candidate.title} (${confidencePercent(candidate.confidence)}%). ${candidate.summary}`
+    ));
+    return [
+      'Fix recommendations:',
+      ...modelLines,
+      '',
+      `Patch target: ${fixTargetLabel(fix)}.`,
+      `Why: ${cleanText(fix.rationale, 420)}`,
+      `Current: ${cleanText(fix.old_value || 'not set', 260)}`,
+      `Proposed: ${cleanText(fix.new_value || fix.blocked_reason || 'pending evidence', 320)}`,
+      fix.can_implement
+        ? 'Pick the recommended fix or click Apply with audit. After patching, rerun the same execution to verify.'
+        : `Blocked: ${fix.blocked_reason || 'not enough evidence for an automatic patch.'}`,
+    ].join('\n');
+  }
+  if (isErrorQuestion(normalized)) {
+    if (fix?.category === 'desktop_launch_config') {
+      return [
+        `Actual error in ${title}: the test failed before recorded VS Code actions ran.`,
+        'The prerequisite desktop.launch step was cancelled/retried, so downstream steps were skipped.',
+        'The suspicious config is launch-oriented instead of attach-oriented: it can open duplicate app windows, and values like "Snap Assist" or a numeric PID are unstable.',
+        `Best current fix: ${fix.title} (${confidencePercent(fix.confidence)}% confidence).`,
+      ].join('\n');
+    }
+    return rootCause
+      ? `Root cause readout for ${title}: ${cleanText(rootCause, 620)}`
+      : `I need a completed inspection job before I can explain the root cause for ${title}. Click Run Deep Inspect and I will stream the evidence path here.`;
+  }
+  if (normalized.includes('next') || normalized.includes('rerun') || normalized.includes('validate')) {
+    const moves = recommendations.length
+      ? recommendations.slice(0, 3).map((item, index) => `${index + 1}. ${cleanText(item, 180)}`).join('\n')
+      : fix
+        ? `1. Review the recommended ${fixTargetLabel(fix)} patch.\n2. Apply with audit.\n3. Rerun the same testcase and confirm desktop.launch completes before interaction steps.`
+        : '1. Run Deep Inspect.\n2. Review Suggested Fixes.\n3. Apply only implementable patches, then rerun.';
+    return `Recommended next moves:\n${moves}`;
+  }
+  return [
+    `As a test engineer, I would read ${title} from three angles: failed node behavior, workflow/test-step config, and runtime evidence.`,
+    rootCause ? `Current root-cause summary: ${cleanText(rootCause, 360)}` : 'There is not enough root-cause text yet, so I would run Deep Inspect before making a risky change.',
+    fix ? `Current best patch candidate: ${fix.title} (${confidencePercent(fix.confidence)}% confidence). Ask "show fixes" to compare OpenAI 5.5 and Claude recommendations.` : 'No implementable patch is selected yet.',
+  ].join('\n');
+}
+
+function ClopAgentConsole({
+  rootCause,
+  fix,
+  execution,
+  recommendations,
+  executionId,
+  onImplementFix,
+  implementing = false,
+  implementedFixId = '',
+}: {
+  rootCause: string;
+  fix?: FixSuggestion;
+  execution?: ExecutionListItem;
+  recommendations: string[];
+  executionId: string | null;
+  onImplementFix?: (fix: FixSuggestion) => void;
+  implementing?: boolean;
+  implementedFixId?: string;
+}) {
+  const askAssistant = useAskAIInspectAssistant();
+  const [query, setQuery] = useState('');
+  const [activeScreen, setActiveScreen] = useState<AssistantScreen>('chat');
+  const [lastResult, setLastResult] = useState<AssistantQueryResponse | null>(null);
+  const [messages, setMessages] = useState<TerminalMessage[]>([
+    {
+      role: 'system',
+      text: 'clop-agent attached: DB retrieval, execution evidence, workflow config, test configuration, repository bindings, model fix council.',
+    },
+    {
+      role: 'assistant',
+      text: 'Ask anything. I will answer general testing questions like a senior test engineer, and fix questions will return ranked OpenAI 5.5 and Claude repair candidates.',
+    },
+  ]);
+  const recommendedFix = lastResult?.fixes.find((item) => item.id === lastResult.recommended_fix_id)
+    ?? lastResult?.fixes[0]
+    ?? fix;
+  const modelFixes = buildModelFixCandidates(recommendedFix);
+  const latestSources = lastResult?.sources ?? [];
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const trimmed = query.trim();
+    if (!trimmed) return;
+    setQuery('');
+    setMessages((items) => [...items, { role: 'user', text: trimmed }]);
+
+    if (executionId) {
+      try {
+        const result = await askAssistant.mutateAsync({ executionId, question: trimmed });
+        setLastResult(result);
+        if (result.intent === 'fix') setActiveScreen('fixes');
+        setMessages((items) => [...items, { role: 'assistant', text: result.answer, result }]);
+        return;
+      } catch {
+        const answer = buildAssistantResponse({ query: trimmed, rootCause, fix: recommendedFix, execution, recommendations });
+        setMessages((items) => [
+          ...items,
+          {
+            role: 'assistant',
+            text: `${answer}\n\nDB assistant was not reachable, so I answered from the visible inspection context.`,
+          },
+        ]);
+        return;
+      }
+    }
+
+    const answer = buildAssistantResponse({ query: trimmed, rootCause, fix: recommendedFix, execution, recommendations });
+    setMessages((items) => [...items, { role: 'assistant', text: answer }]);
+  };
+
+  return (
+    <div className="mt-5 overflow-hidden rounded-2xl border border-cyan-300/20 bg-slate-950/85 shadow-[0_22px_70px_rgba(0,0,0,0.28)]">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/8 px-4 py-3">
+        <div className="flex items-center gap-2">
+          <Terminal size={14} className="text-emerald-200" />
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-200">CLOP Agent</p>
+            <p className="text-[10px] text-slate-500">Query, retrieve, explain, compare, implement.</p>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusPill label={executionId ? 'DB attached' : 'No execution'} accent={executionId ? 'green' : 'slate'} />
+          <StatusPill
+            label={lastResult?.answer_source === 'llm' ? 'LLM live' : lastResult?.answer_source === 'fallback' ? 'Fallback' : 'Ready'}
+            accent={lastResult?.answer_source === 'llm' ? 'green' : lastResult?.answer_source === 'fallback' ? 'amber' : 'cyan'}
+          />
+          <StatusPill label={recommendedFix?.can_implement ? 'Patch ready' : 'Inspect'} accent={recommendedFix?.can_implement ? 'green' : 'cyan'} />
+        </div>
+      </div>
+
+      <div className="grid min-h-[480px] lg:grid-cols-[210px_minmax(0,1fr)]">
+        <div className="border-b border-white/8 bg-black/20 p-3 lg:border-b-0 lg:border-r">
+          <div className="grid grid-cols-2 gap-2 lg:grid-cols-1">
+            {ASSISTANT_SCREENS.map((screen) => {
+              const Icon = screen.icon;
+              const accent = ACCENTS[screen.accent];
+              const active = activeScreen === screen.id;
+              return (
+                <button
+                  key={screen.id}
+                  type="button"
+                  onClick={() => setActiveScreen(screen.id)}
+                  className={[
+                    'flex h-10 items-center gap-2 rounded-lg border px-3 text-left transition-colors',
+                    active ? `${accent.border} ${accent.bg} ${accent.text}` : 'border-white/8 bg-white/[0.025] text-slate-500 hover:text-slate-200',
+                  ].join(' ')}
+                >
+                  <Icon size={14} />
+                  <span className="text-[10px] font-bold uppercase tracking-[0.16em]">{screen.label}</span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="mt-3 rounded-xl border border-white/8 bg-slate-950/55 p-3">
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Runtime</p>
+            <div className="mt-3 space-y-2 font-mono text-[11px] text-slate-400">
+              <p>intent: {lastResult?.intent ?? 'idle'}</p>
+              <p>sources: {latestSources.length}</p>
+              <p>fixes: {lastResult?.fixes.length ?? (fix ? 1 : 0)}</p>
+              <p>answer: {lastResult?.answer_source ?? 'waiting'}</p>
+              <p>model: {lastResult?.provider ? `${lastResult.provider}/${lastResult.model ?? 'default'}` : 'OpenAI 5.5 + Claude'}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex min-w-0 flex-col">
+          <div className="min-h-0 flex-1 overflow-y-auto p-3">
+            {activeScreen === 'chat' && (
+              <div className="max-h-[390px] space-y-2 overflow-y-auto pr-1 font-mono text-[11px] leading-relaxed">
+                {messages.map((message, index) => (
+                  <div
+                    key={`${message.role}-${index}`}
+                    className={[
+                      'rounded-xl border px-3 py-2 whitespace-pre-wrap',
+                      message.role === 'user'
+                        ? 'ml-8 border-cyan-300/20 bg-cyan-400/8 text-cyan-100'
+                        : message.role === 'system'
+                          ? 'border-emerald-300/15 bg-emerald-400/5 text-emerald-100/80'
+                          : 'mr-8 border-white/8 bg-white/[0.035] text-slate-200',
+                    ].join(' ')}
+                  >
+                    <span className="mr-2 text-slate-500">{message.role === 'user' ? 'you >' : message.role === 'system' ? 'sys >' : 'clop >'}</span>
+                    {message.text}
+                    {message.result?.sources?.length ? (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {message.result.sources.slice(0, 4).map((source) => (
+                          <span key={`${source.type}-${source.label}`} className="rounded-md border border-cyan-300/15 bg-cyan-400/10 px-2 py-0.5 text-[10px] text-cyan-100">
+                            {source.label}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+                {askAssistant.isPending && (
+                  <div className="mr-8 rounded-xl border border-emerald-300/15 bg-emerald-400/5 px-3 py-2 text-emerald-100/80">
+                    <span className="mr-2 text-slate-500">clop &gt;</span>
+                    retrieving DB context...
+                  </div>
+                )}
+              </div>
+            )}
+            {activeScreen === 'evidence' && <AssistantSourceList sources={latestSources} />}
+            {activeScreen === 'fixes' && (
+              <AssistantFixCouncil
+                fix={recommendedFix}
+                modelFixes={modelFixes}
+                implementing={implementing}
+                implementedFixId={implementedFixId}
+                onImplementFix={onImplementFix}
+              />
+            )}
+            {activeScreen === 'plan' && <AssistantRagPlan result={lastResult} />}
+          </div>
+
+          <form onSubmit={submit} className="flex items-center gap-2 border-t border-white/8 p-3">
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              className="h-10 min-w-0 flex-1 rounded-lg border border-white/10 bg-black/35 px-3 font-mono text-xs text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-cyan-300/45"
+              placeholder="Ask: what was the error, show fixes, why is this safe..."
+              disabled={askAssistant.isPending}
+            />
+            <Button variant="neon" size="sm" className="h-10 rounded-lg px-4" disabled={askAssistant.isPending}>
+              {askAssistant.isPending ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+              Ask
+            </Button>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AIAnalysisPage() {
   const { data: executions = [] } = useExecutions();
   const [selectedExecution, setSelectedExecution] = useState<string | null>(null);
   const [jobType, setJobType] = useState<AIJobType>('root_cause_analysis');
   const [implementedFixId, setImplementedFixId] = useState('');
+
+  useEffect(() => {
+    const requestedExecution = new URLSearchParams(window.location.search).get('executionId');
+    if (requestedExecution) setSelectedExecution(requestedExecution);
+  }, []);
 
   const defaultExecution = executions.find((execution) => execution.status === 'failed') ?? executions[0];
   const selectedExecutionId = executions.some((execution) => execution.id === selectedExecution)
@@ -689,6 +1221,7 @@ export default function AIAnalysisPage() {
     if (a.can_implement !== b.can_implement) return a.can_implement ? -1 : 1;
     return b.confidence - a.confidence;
   });
+  const primaryFix = recommendedFixes[0];
 
   const worklogSteps = analysisSteps.length
     ? analysisSteps
@@ -848,7 +1381,6 @@ export default function AIAnalysisPage() {
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-500">Patch Plans</p>
-                  <h2 className="mt-1 text-lg font-bold text-white">Clean preview before anything changes</h2>
                 </div>
                 <StatusPill label={`${recommendedFixes.length} found`} accent={recommendedFixes.length ? 'green' : 'slate'} />
               </div>
@@ -878,6 +1410,16 @@ export default function AIAnalysisPage() {
                 <h2 className="mt-1 text-lg font-bold text-white">What this dashboard is allowed to inspect</h2>
               </div>
               <CapabilityGrid />
+              <ClopAgentConsole
+                rootCause={rootCause}
+                fix={primaryFix}
+                execution={selectedExecutionItem}
+                recommendations={recommendations}
+                executionId={selectedExecutionId}
+                onImplementFix={implementSelectedFix}
+                implementing={implementFix.isPending}
+                implementedFixId={implementedFixId}
+              />
             </Panel>
           </div>
 

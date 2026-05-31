@@ -26,6 +26,7 @@ from app.execution.plugin import (
 from app.execution.plugins.desktop.drivers import DesktopDriver, DriverResult, LocatorCandidate, get_driver
 from app.execution.plugins.desktop.extension_packs import EXTENSION_PACKS, extension_pack_specs
 from app.execution.plugins.desktop.perception import DesktopPerceptionService
+from app.execution.plugins.desktop.recorder import _is_bad_window_title, _is_launchable_app
 from app.execution.plugins.desktop.recovery import recovery_plan_for_error
 from app.execution.plugins.desktop.smart_identification import locator_attempt_evidence, rank_locator_candidates, record_locator_success
 
@@ -95,6 +96,9 @@ class DesktopExecutionPlugin(ExecutionPlugin):
                 "default": "accessibility id",
             },
             "locators": {"type": "array"},
+            "x": {"type": "number", "supports_template": True},
+            "y": {"type": "number", "supports_template": True},
+            "coordinate_fallback": {"type": "boolean", "default": True},
             "min_confidence": {"type": "number", "default": 0.55},
             "review_confidence": {"type": "number", "default": 0.8},
             "timeout_ms": {"type": "number", "default": 15000},
@@ -804,6 +808,20 @@ class DesktopExecutionPlugin(ExecutionPlugin):
         nt = envelope.node_type
         if nt in {"desktop.launch", "desktop.restart"} and cfg.get("app") in (None, ""):
             raise PluginValidationError("`app` is required")
+        if nt in {"desktop.launch", "desktop.restart"} and not _is_launchable_app(cfg.get("app")):
+            window_title = str(cfg.get("window_title") or "").strip()
+            process_name = str(cfg.get("process_name") or "").strip()
+            can_attach = (window_title and not _is_bad_window_title(window_title)) or (
+                process_name and not process_name.isdigit()
+            )
+            if not can_attach:
+                raise PluginValidationError(
+                    "`app` must be an executable path or launchable command, not an application display name"
+                )
+        if nt == "desktop.restart" and not _is_launchable_app(cfg.get("app")):
+            raise PluginValidationError(
+                "`app` must be an executable path or launchable command, not an application display name"
+            )
         locator_nodes = {
             "desktop.click", "desktop.double_click", "desktop.right_click", "desktop.hover",
             "desktop.type_text", "desktop.clear", "desktop.select", "desktop.check", "desktop.uncheck",
@@ -812,8 +830,8 @@ class DesktopExecutionPlugin(ExecutionPlugin):
             "desktop.set_text", "desktop.table_cell_action", "desktop.tree_action",
             "desktop.assert_table", "desktop.assert_image", "desktop.extract_table", "desktop.upload_file",
         }
-        if nt in locator_nodes and not self._locator_candidates(cfg):
-            raise PluginValidationError("`selector`, `automation_id`, or `locators` is required")
+        if nt in locator_nodes and not self._locator_candidates(cfg) and self._coordinate_pair(cfg) is None:
+            raise PluginValidationError("`selector`, `automation_id`, `locators`, or `x`/`y` is required")
         if nt in {"desktop.type_text", "desktop.select", "desktop.set_text"} and cfg.get("value") in (None, ""):
             raise PluginValidationError("`value` is required")
         if nt == "desktop.clipboard_set" and cfg.get("value") in (None, ""):
@@ -1021,15 +1039,71 @@ class DesktopExecutionPlugin(ExecutionPlugin):
                 return existing
 
             driver = self._create_driver(cfg)
+            window_title = str(cfg.get("window_title") or "").strip()
+            if _is_bad_window_title(window_title):
+                window_title = ""
+            process_name = str(cfg.get("process_name") or "").strip()
+            stable_process_name = "" if process_name.isdigit() else process_name
+            if cfg.get("attach_if_running", True) and (window_title or stable_process_name):
+                attach_result = await driver.attach(
+                    window_title=window_title or None,
+                    process_name=stable_process_name or None,
+                )
+                if attach_result.success:
+                    self._sessions[envelope.execution_id] = driver
+                    await envelope.log("success", "Attached to running desktop session", source="desktop")
+                    return driver
+            if not _is_launchable_app(cfg.get("app")):
+                self._raise_if_failed(
+                    "attach",
+                    DriverResult(
+                        success=False,
+                        error=(
+                            "Could not attach to a running desktop session. "
+                            "`app` is an application display name, so launch was skipped; "
+                            "provide a real application_path or a valid window_title/process_name."
+                        ),
+                    ),
+                )
             result = await driver.launch(
                 str(cfg["app"]),
                 args=_coerce_args(cfg.get("args") or cfg.get("appArguments")),
                 capabilities=dict(cfg.get("capabilities") or {}),
             )
+            if not result.success and (window_title or stable_process_name):
+                attach_result = await self._wait_for_scoped_attach(
+                    driver,
+                    window_title=window_title or None,
+                    process_name=stable_process_name or None,
+                    timeout=min(max(self._timeout(cfg, 30000), 3.0), 30.0),
+                )
+                if attach_result.success:
+                    self._sessions[envelope.execution_id] = driver
+                    await envelope.log("success", "Attached to desktop session after launch", source="desktop")
+                    return driver
+                if attach_result.error:
+                    result.error = f"{result.error}; attach after launch failed: {attach_result.error}"
             self._raise_if_failed("launch", result)
             self._sessions[envelope.execution_id] = driver
             await envelope.log("success", "Desktop session started", source="desktop")
             return driver
+
+    async def _wait_for_scoped_attach(
+        self,
+        driver: DesktopDriver,
+        *,
+        window_title: str | None = None,
+        process_name: str | None = None,
+        timeout: float = 10.0,
+    ) -> DriverResult:
+        deadline = time.monotonic() + max(0.5, timeout)
+        last_result = DriverResult(success=False, error="Window not found")
+        while time.monotonic() <= deadline:
+            last_result = await driver.attach(window_title=window_title, process_name=process_name)
+            if last_result.success:
+                return last_result
+            await asyncio.sleep(0.5)
+        return last_result
 
     async def _require_session(self, envelope: ExecutionEnvelope, cfg: dict[str, Any], *, apply_scope: bool = True) -> DesktopDriver:
         async with self._lock:
@@ -1107,6 +1181,65 @@ class DesktopExecutionPlugin(ExecutionPlugin):
             anchor_automation_id=str(cfg.get("anchor_automation_id") or ""),
             anchor_name=str(cfg.get("anchor_name") or ""),
         )
+
+    @staticmethod
+    def _coordinate_pair(cfg: dict[str, Any]) -> tuple[float, float] | None:
+        x = cfg.get("x")
+        y = cfg.get("y")
+        if x in (None, "") or y in (None, ""):
+            return None
+        try:
+            return float(x), float(y)
+        except (TypeError, ValueError):
+            return None
+
+    async def _coordinate_action(
+        self,
+        driver: DesktopDriver,
+        cfg: dict[str, Any],
+        method_name: str,
+        *,
+        button: str = "left",
+    ) -> DriverResult | None:
+        if cfg.get("coordinate_fallback") is False:
+            return None
+        coords = self._coordinate_pair(cfg)
+        if coords is None:
+            return None
+        x, y = coords
+        if method_name == "click_coordinates":
+            return await driver.click_coordinates(x, y, button=button)
+        method = getattr(driver, method_name)
+        return await method(x, y)
+
+    async def _locator_or_coordinate_action(
+        self,
+        envelope: ExecutionEnvelope,
+        cfg: dict[str, Any],
+        action: str,
+        locator_method_name: str,
+        coordinate_method_name: str,
+        *,
+        button: str = "left",
+    ) -> dict[str, Any]:
+        driver = await self._require_session(envelope, cfg)
+        candidates = self._locator_candidates(cfg)
+        result: DriverResult | None = None
+        if candidates:
+            method = getattr(driver, locator_method_name)
+            result = await method(candidates, timeout=self._timeout(cfg))
+            if result.success:
+                return self._locator_payload(cfg, candidates, result)
+        coordinate_result = await self._coordinate_action(driver, cfg, coordinate_method_name, button=button)
+        if coordinate_result is not None:
+            if not coordinate_result.success and result is not None and result.error:
+                coordinate_result.error = f"{result.error}; coordinate fallback failed: {coordinate_result.error}"
+            self._raise_if_failed(action, coordinate_result)
+            return self._locator_payload(cfg, candidates, coordinate_result, coordinate_fallback=True)
+        if result is not None:
+            self._raise_if_failed(action, result)
+        self._raise_if_failed(action, DriverResult(success=False, error=f"No locator or coordinate target configured for {action}"))
+        return {}
 
     def _prefixed_locator_candidates(self, cfg: dict[str, Any], prefix: str) -> list[LocatorCandidate]:
         nested = {
@@ -1466,32 +1599,41 @@ class DesktopExecutionPlugin(ExecutionPlugin):
         return {"window_title": title, **result.metadata}
 
     async def _do_click(self, envelope: ExecutionEnvelope, cfg: dict[str, Any]) -> dict[str, Any]:
-        driver = await self._require_session(envelope, cfg)
-        candidates = self._locator_candidates(cfg)
-        result = await driver.click(candidates, timeout=self._timeout(cfg))
-        self._raise_if_failed("click", result)
-        return self._locator_payload(cfg, candidates, result)
+        return await self._locator_or_coordinate_action(
+            envelope,
+            cfg,
+            "click",
+            "click",
+            "click_coordinates",
+        )
 
     async def _do_double_click(self, envelope: ExecutionEnvelope, cfg: dict[str, Any]) -> dict[str, Any]:
-        driver = await self._require_session(envelope, cfg)
-        candidates = self._locator_candidates(cfg)
-        result = await driver.double_click(candidates, timeout=self._timeout(cfg))
-        self._raise_if_failed("double_click", result)
-        return self._locator_payload(cfg, candidates, result)
+        return await self._locator_or_coordinate_action(
+            envelope,
+            cfg,
+            "double_click",
+            "double_click",
+            "double_click_coordinates",
+        )
 
     async def _do_right_click(self, envelope: ExecutionEnvelope, cfg: dict[str, Any]) -> dict[str, Any]:
-        driver = await self._require_session(envelope, cfg)
-        candidates = self._locator_candidates(cfg)
-        result = await driver.right_click(candidates, timeout=self._timeout(cfg))
-        self._raise_if_failed("right_click", result)
-        return self._locator_payload(cfg, candidates, result)
+        return await self._locator_or_coordinate_action(
+            envelope,
+            cfg,
+            "right_click",
+            "right_click",
+            "click_coordinates",
+            button="right",
+        )
 
     async def _do_hover(self, envelope: ExecutionEnvelope, cfg: dict[str, Any]) -> dict[str, Any]:
-        driver = await self._require_session(envelope, cfg)
-        candidates = self._locator_candidates(cfg)
-        result = await driver.hover(candidates, timeout=self._timeout(cfg))
-        self._raise_if_failed("hover", result)
-        return self._locator_payload(cfg, candidates, result)
+        return await self._locator_or_coordinate_action(
+            envelope,
+            cfg,
+            "hover",
+            "hover",
+            "hover_coordinates",
+        )
 
     async def _do_type_text(self, envelope: ExecutionEnvelope, cfg: dict[str, Any]) -> dict[str, Any]:
         driver = await self._require_session(envelope, cfg)

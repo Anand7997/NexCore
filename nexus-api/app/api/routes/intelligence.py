@@ -10,8 +10,13 @@ DELETE /intelligence/jobs/{job_id}          — cancel a queued job
 """
 from __future__ import annotations
 
+import asyncio
 import re
+import json
+import os
 import uuid
+import importlib.util
+import logging
 from typing import Any, Literal
 
 from fastapi import APIRouter, Body, Depends, HTTPException
@@ -30,9 +35,13 @@ from app.database.models import (
 )
 from app.database.session import get_db
 from app.api.routes.page_repository import _sync_test_steps_for_element
+from app.config import settings
 from app.intelligence.analyzer import ExecutionIntelligenceAnalyzer
+from app.ai_workflow.providers.claude_provider import ClaudeProvider
+from app.ai_workflow.providers.openai_provider import OpenAIProvider
 
 router = APIRouter(prefix="/intelligence", tags=["intelligence"])
+logger = logging.getLogger(__name__)
 
 
 # ── Request / response schemas ─────────────────────────────────────────────────
@@ -67,10 +76,10 @@ class FixSuggestionResponse(BaseModel):
     node_key: str
     node_label: str
     scope: Literal["execution_quick_heal"] = "execution_quick_heal"
-    category: Literal["minor_locator", "minor_element"] = "minor_locator"
+    category: Literal["minor_locator", "minor_element", "desktop_launch_config"] = "minor_locator"
     title: str
     rationale: str
-    target_type: Literal["page_element", "test_step"]
+    target_type: Literal["page_element", "test_step", "workflow_node"]
     target_id: str
     field: str
     old_value: str
@@ -86,6 +95,36 @@ class ImplementFixResponse(BaseModel):
     changed: dict[str, Any]
 
 
+class AssistantQueryRequest(BaseModel):
+    question: str
+
+
+class AssistantSource(BaseModel):
+    type: str
+    label: str
+    excerpt: str
+
+
+class AssistantQueryResponse(BaseModel):
+    answer: str
+    intent: str
+    confidence: float
+    sources: list[AssistantSource]
+    fixes: list[FixSuggestionResponse]
+    recommended_fix_id: str | None = None
+    panels: dict[str, Any]
+    answer_source: Literal["llm", "fallback"] = "fallback"
+    provider: str | None = None
+    model: str | None = None
+    llm_error: str | None = None
+
+
+class AssistantLLMAnswer(BaseModel):
+    answer: str
+    confidence: float
+    recommended_fix_id: str | None
+
+
 _QUICK_HEAL_NODE_TYPES = {
     "web.click",
     "web.double_click",
@@ -98,6 +137,12 @@ _QUICK_HEAL_NODE_TYPES = {
     "web.wait",
     "web.extract_text",
     "web.drag_and_drop",
+}
+
+_DESKTOP_LAUNCH_BAD_WINDOW_TITLES = {
+    "snap assist",
+    "task switching",
+    "program manager",
 }
 
 _MINOR_LOCATOR_FAILURE_MARKERS = (
@@ -339,6 +384,356 @@ def _is_quick_heal_scope(
     return "timeout" in text and "web." in node_type
 
 
+def _display_json(value: dict[str, Any]) -> str:
+    return json.dumps(value, indent=2, sort_keys=True)
+
+
+def _infer_process_name_from_app(app: str) -> str:
+    name = os.path.basename(str(app or "").strip().strip('"'))
+    return name if name.lower().endswith(".exe") else ""
+
+
+def _infer_window_title_from_app(app: str, current: str = "") -> str:
+    app_name = os.path.basename(str(app or "").strip().strip('"')).lower()
+    current_clean = str(current or "").strip()
+    if current_clean and current_clean.lower() not in _DESKTOP_LAUNCH_BAD_WINDOW_TITLES:
+        return current_clean
+    if app_name == "code.exe":
+        return "Visual Studio Code"
+    if app_name:
+        return os.path.splitext(os.path.basename(app_name))[0].replace("_", " ").replace("-", " ").title()
+    return current_clean
+
+
+def _append_launch_arg(config: dict[str, Any], arg: str) -> None:
+    raw_args = config.get("args") or config.get("appArguments")
+    if isinstance(raw_args, list):
+        args = [str(item) for item in raw_args if str(item).strip()]
+    elif isinstance(raw_args, str) and raw_args.strip():
+        args = [part for part in raw_args.split() if part]
+    else:
+        args = []
+    if arg not in args:
+        args.append(arg)
+    config["args"] = args
+
+
+def _desktop_launch_config_suggestion(
+    execution_id: str,
+    execution_node: ExecutionNodeModel,
+    workflow_node: WorkflowNodeModel,
+) -> FixSuggestionResponse | None:
+    if execution_node.node_type != "desktop.launch" or workflow_node.type != "desktop.launch":
+        return None
+    config = dict(workflow_node.config or {})
+    app = str(config.get("app") or "").strip()
+    if not app:
+        return None
+    current_window = str(config.get("window_title") or "").strip()
+    current_process = str(config.get("process_name") or "").strip()
+    inferred_process = _infer_process_name_from_app(app)
+    inferred_window = _infer_window_title_from_app(app, current_window)
+    error_text = f"{execution_node.status} {execution_node.error or ''}".lower()
+    next_config = dict(config)
+    next_config["attach_if_running"] = True
+    if inferred_window:
+        next_config["window_title"] = inferred_window
+    if inferred_process and (not current_process or current_process.isdigit()):
+        next_config["process_name"] = inferred_process
+    try:
+        current_timeout_ms = int(float(config.get("timeout_ms") or 0))
+    except (TypeError, ValueError):
+        current_timeout_ms = 0
+    needs_timeout_buffer = (
+        ("cancel" in error_text or "timed out" in error_text or "timeout" in error_text)
+        and current_timeout_ms < 90000
+    )
+    if needs_timeout_buffer:
+        next_config["timeout_ms"] = 90000
+    no_windows_for_process = "no windows for that process" in error_text
+    is_vs_code = os.path.basename(app.strip().strip('"')).lower() == "code.exe"
+    if no_windows_for_process and is_vs_code:
+        if current_process and current_window:
+            next_config.pop("process_name", None)
+        _append_launch_arg(next_config, "--new-window")
+
+    changed = next_config != config
+    if not changed:
+        return None
+    reason_bits = [
+        "The failure happened at the prerequisite desktop.launch node, before any recorded interaction ran.",
+        "For desktop applications that may already be open, AI Inspect can make launch attach-first instead of starting duplicate processes on every retry.",
+    ]
+    title = "Make desktop launch attach to the running app first"
+    confidence = 0.9
+    if current_window.lower() in _DESKTOP_LAUNCH_BAD_WINDOW_TITLES:
+        reason_bits.append(f"The recorded window title {current_window!r} looks like a Windows shell overlay, not the app window.")
+    if current_process.isdigit() and inferred_process:
+        reason_bits.append(f"The recorded process value {current_process!r} is a volatile PID; {inferred_process!r} is stable across runs.")
+    if needs_timeout_buffer:
+        title = "Extend desktop launch timeout and keep attach-first scope"
+        confidence = 0.72 if config.get("attach_if_running") else 0.84
+        reason_bits.append(
+            "The launch scope is already stable, but the node is still returning Cancelled with no artifact evidence. "
+            "This raises the desktop driver timeout to 90 seconds; implementation also expands the workflow node hard timeout so the plugin is not cancelled first."
+        )
+    if no_windows_for_process and is_vs_code:
+        title = "Attach VS Code by window title and force a visible new window"
+        confidence = 0.86
+        reason_bits.append(
+            "The runner found a Code.exe process but pywinauto could not find a top-level window for that process. "
+            "VS Code can delegate startup to an existing process, so the process-only fallback is unstable. "
+            "This patch keeps the Visual Studio Code window-title scope, removes the process-only fallback, and launches VS Code with --new-window if attach still needs to start it."
+        )
+    return FixSuggestionResponse(
+        id=f"{execution_id}:{workflow_node.node_key}:desktop_launch_config",
+        execution_id=execution_id,
+        node_key=workflow_node.node_key,
+        node_label=execution_node.node_label,
+        category="desktop_launch_config",
+        title=title,
+        rationale=" ".join(reason_bits),
+        target_type="workflow_node",
+        target_id=workflow_node.id,
+        field="config",
+        old_value=_display_json(config),
+        new_value=_display_json(next_config),
+        confidence=confidence,
+        can_implement=True,
+    )
+
+
+def _assistant_intent(question: str) -> str:
+    text = str(question or "").lower()
+    if re.search(r"^(hi+|hii+|hello|hey|yo|good\s+(morning|afternoon|evening))\b", text.strip()):
+        return "general"
+    if re.search(r"\b(fix|fixes|patch|repair|solve|solution|implement|recommend|recommended|change|apply|heal)\b", text):
+        return "fix"
+    if re.search(r"\b(error|err|eror|wrror|issue|problem|fail|failed|failure|wrong|actual|happen|happened|root|cause|bug)\b", text):
+        return "root_cause"
+    if re.search(r"\b(next|rerun|validate|verify|test again)\b", text):
+        return "next_steps"
+    return "general"
+
+
+def _assistant_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (int, float, bool)):
+        return str(value)
+    try:
+        return json.dumps(value, default=str, sort_keys=True)
+    except TypeError:
+        return str(value)
+
+
+def _source(label: str, type_: str, value: Any, limit: int = 420) -> AssistantSource:
+    text = _assistant_text(value)
+    text = re.sub(r"\s+", " ", text).strip()
+    if len(text) > limit:
+        text = f"{text[:limit].rstrip()}..."
+    return AssistantSource(type=type_, label=label, excerpt=text or "No data")
+
+
+def _assistant_fix_answer(question: str, fixes: list[FixSuggestionResponse], execution: ExecutionModel) -> tuple[str, float]:
+    if not fixes:
+        return (
+            "I do not have an implementable fix from the retrieved DB context yet. "
+            "I checked the execution and workflow metadata, but there is no safe patch candidate. "
+            "Run Deep Inspect or capture more desktop evidence, then ask again.",
+            0.58,
+        )
+    best = fixes[0]
+    lines = [
+        "I found fix candidates from the DB-backed inspection context.",
+        f"Most recommended: OpenAI 5.5 -> {best.title} ({round(best.confidence * 100)}%).",
+        f"Why: {best.rationale}",
+        f"Target: {best.target_type.replace('_', ' ')} / {best.field}.",
+        f"Current: {best.old_value or 'not set'}",
+        f"Proposed: {best.new_value or best.blocked_reason or 'pending evidence'}",
+    ]
+    if len(fixes) > 1:
+        lines.append(f"Claude alternative: {fixes[1].title} ({round(fixes[1].confidence * 100)}%).")
+    lines.append(
+        "Tell me which candidate to implement, or use the patch button. I will keep the mutation audited."
+        if best.can_implement else f"Blocked: {best.blocked_reason or 'not enough evidence to patch automatically.'}"
+    )
+    return "\n".join(lines), max(best.confidence, 0.72)
+
+
+def _assistant_root_answer(
+    execution: ExecutionModel,
+    nodes: list[ExecutionNodeModel],
+    fixes: list[FixSuggestionResponse],
+    latest_job: IntelligenceJobModel | None,
+) -> tuple[str, float]:
+    failed = [node for node in nodes if node.status in {"failed", "cancelled"}]
+    first = failed[0] if failed else (nodes[0] if nodes else None)
+    if fixes and fixes[0].category == "desktop_launch_config":
+        return (
+            "The failure happened before the recorded desktop interactions ran. "
+            "The prerequisite desktop.launch node was cancelled or retried, which caused downstream nodes to skip. "
+            "The DB context shows a patchable launch-config issue: use attach_if_running, replace shell-overlay window titles like Snap Assist with the real app window, and prefer a stable process name over a volatile PID.",
+            0.9,
+        )
+    job_result = latest_job.result if latest_job and isinstance(latest_job.result, dict) else {}
+    root_cause = job_result.get("root_cause") or job_result.get("summary") if isinstance(job_result, dict) else ""
+    if root_cause:
+        return str(root_cause), 0.82
+    if first:
+        detail = first.error or first.output or "No detailed node output was stored."
+        return (
+            f"The failing node is {first.node_key} ({first.node_type}) with status {first.status}. "
+            f"Stored evidence says: {detail}. I would treat this as an execution/config failure until node output proves it is a UI assertion or locator issue.",
+            0.7,
+        )
+    return (
+        "I can see the execution record, but there are no failed node details stored yet. "
+        "Run or refresh the execution so AI Inspect can retrieve node-level evidence.",
+        0.48,
+    )
+
+
+def _assistant_next_answer(fixes: list[FixSuggestionResponse]) -> tuple[str, float]:
+    if fixes and fixes[0].can_implement:
+        return (
+            "Next I would apply the most recommended patch with audit, rerun the same testcase, and confirm the previous failing node completes before checking downstream steps. "
+            "If it still fails, inspect the next failed node rather than changing several things at once.",
+            0.84,
+        )
+    return (
+        "Next I would run Deep Inspect, review the latest failed node output, confirm whether the failure is config, locator, assertion, or infrastructure, then apply only one safe patch and rerun.",
+        0.68,
+    )
+
+
+def _assistant_general_answer(execution: ExecutionModel, fixes: list[FixSuggestionResponse]) -> tuple[str, float]:
+    best = fixes[0] if fixes else None
+    return (
+        "I am online as your test-engineering copilot. I can answer general testing questions, inspect this execution through DB-backed context, explain failures, compare OpenAI 5.5 and Claude-style fix candidates, and hand off implementable patches to the audited fix pipeline. "
+        + (f"Current best candidate: {best.title}." if best else "No safe patch is selected yet."),
+        0.74,
+    )
+
+
+def _clamp_confidence(value: float) -> float:
+    try:
+        return max(0.0, min(1.0, float(value)))
+    except (TypeError, ValueError):
+        return 0.7
+
+
+def _build_assistant_provider() -> tuple[Any, str, str] | None:
+    provider = (settings.default_ai_provider or "openai").strip().lower()
+    model = (settings.default_ai_model or "gpt-5.5").strip()
+    has_openai = importlib.util.find_spec("openai") is not None
+    has_anthropic = importlib.util.find_spec("anthropic") is not None
+
+    if provider == "openai" and settings.openai_api_key and has_openai:
+        return OpenAIProvider(api_key=settings.openai_api_key, model=model), "openai", model
+    if provider in {"claude", "anthropic"} and settings.anthropic_api_key and has_anthropic:
+        return ClaudeProvider(api_key=settings.anthropic_api_key, model=model), "anthropic", model
+
+    if settings.openai_api_key and has_openai:
+        fallback_model = model if model.lower().startswith("gpt") else "gpt-5.5"
+        return OpenAIProvider(api_key=settings.openai_api_key, model=fallback_model), "openai", fallback_model
+    if settings.anthropic_api_key and has_anthropic:
+        fallback_model = model if "claude" in model.lower() else "claude-3-5-sonnet-latest"
+        return ClaudeProvider(api_key=settings.anthropic_api_key, model=fallback_model), "anthropic", fallback_model
+    return None
+
+
+def _assistant_prompt(
+    *,
+    question: str,
+    intent: str,
+    execution: ExecutionModel,
+    sources: list[AssistantSource],
+    fixes: list[FixSuggestionResponse],
+    panels: dict[str, Any],
+    fallback_answer: str,
+) -> str:
+    source_payload = [source.model_dump() for source in sources]
+    fix_payload = [fix.model_dump() for fix in fixes[:4]]
+    return "\n\n".join([
+        "You are CLOP Agent inside the NexCore AI Inspect dashboard.",
+        (
+            "Act like a senior test automation engineer with full DB context. "
+            "Answer naturally and specifically. Use the retrieved context only; if evidence is missing, say what is missing. "
+            "Do not repeat a canned help message."
+        ),
+        (
+            "For general questions or greetings, answer like a helpful expert and keep it human. "
+            "For root-cause questions, identify the failing node, why it failed, and what evidence supports that. "
+            "For fix questions, compare an OpenAI 5.5 recommendation and a Claude alternative, then identify the most recommended fix. "
+            "Mention that implementable fixes must use the audited patch action, not direct silent mutation."
+        ),
+        f"User question:\n{question}",
+        f"Detected intent:\n{intent}",
+        f"Execution:\n{json.dumps({'id': execution.id, 'status': execution.status, 'platform': execution.platform, 'environment': execution.environment, 'error': execution.error}, default=str, indent=2)}",
+        f"Retrieved sources:\n{json.dumps(source_payload, default=str, indent=2)}",
+        f"Fix candidates:\n{json.dumps(fix_payload, default=str, indent=2)}",
+        f"Panel context:\n{json.dumps(panels, default=str, indent=2)[:12000]}",
+        f"Deterministic fallback summary to improve or correct:\n{fallback_answer}",
+        (
+            "Return JSON only. The answer field may contain short paragraphs or bullets, but no markdown table. "
+            "Set recommended_fix_id to the selected fix id, or null if no fix should be selected."
+        ),
+    ])
+
+
+async def _assistant_llm_answer(
+    *,
+    question: str,
+    intent: str,
+    execution: ExecutionModel,
+    sources: list[AssistantSource],
+    fixes: list[FixSuggestionResponse],
+    panels: dict[str, Any],
+    fallback_answer: str,
+) -> tuple[AssistantLLMAnswer | None, str | None, str | None, str | None]:
+    provider_info = _build_assistant_provider()
+    if provider_info is None:
+        return None, None, None, "No configured OpenAI or Anthropic provider/package was available."
+
+    provider, provider_name, model = provider_info
+    prompt = _assistant_prompt(
+        question=question,
+        intent=intent,
+        execution=execution,
+        sources=sources,
+        fixes=fixes,
+        panels=panels,
+        fallback_answer=fallback_answer,
+    )
+    try:
+        result = await asyncio.wait_for(provider.generate(prompt, AssistantLLMAnswer), timeout=45)
+    except TimeoutError:
+        message = "LLM generation timed out after 45 seconds."
+        logger.warning("AI Inspect assistant LLM generation failed with %s/%s: %s", provider_name, model, message)
+        return None, provider_name, model, message
+    except Exception as exc:  # pragma: no cover - provider/network failures vary by machine.
+        logger.warning("AI Inspect assistant LLM generation failed with %s/%s: %s", provider_name, model, exc)
+        return None, provider_name, model, str(exc)
+
+    allowed_ids = {fix.id for fix in fixes}
+    recommended_fix_id = result.recommended_fix_id if result.recommended_fix_id in allowed_ids else None
+    if recommended_fix_id is None and fixes and intent == "fix":
+        recommended_fix_id = fixes[0].id
+    return (
+        AssistantLLMAnswer(
+            answer=result.answer.strip(),
+            confidence=_clamp_confidence(result.confidence),
+            recommended_fix_id=recommended_fix_id,
+        ),
+        provider_name,
+        model,
+        None,
+    )
+
+
 async def _load_test_step(db: AsyncSession, step_id: str) -> TestStepModel | None:
     return await db.scalar(
         select(TestStepModel)
@@ -525,6 +920,10 @@ async def _build_fix_suggestion(
     if workflow_node is None:
         return None
 
+    desktop_config_suggestion = _desktop_launch_config_suggestion(execution_id, execution_node, workflow_node)
+    if desktop_config_suggestion is not None:
+        return desktop_config_suggestion
+
     if not _is_quick_heal_scope(execution_node, workflow_node):
         return None
 
@@ -608,6 +1007,27 @@ async def _build_fix_suggestion(
 
 # ── Routes ─────────────────────────────────────────────────────────────────────
 
+async def _collect_fix_suggestions(db: AsyncSession, execution_id: str) -> list[FixSuggestionResponse]:
+    execution = await db.get(ExecutionModel, execution_id)
+    if execution is None:
+        raise HTTPException(status_code=404, detail="Execution not found")
+    result = await db.execute(
+        select(ExecutionNodeModel)
+        .where(ExecutionNodeModel.execution_id == execution_id)
+        .order_by(ExecutionNodeModel.started_at.asc())
+    )
+    suggestions: list[FixSuggestionResponse] = []
+    seen: set[str] = set()
+    for node in result.scalars().all():
+        if node.status not in {"failed", "cancelled"} and not _has_runtime_heal(node):
+            continue
+        suggestion = await _build_fix_suggestion(db, execution_id, node.node_key)
+        if suggestion is not None and suggestion.id not in seen:
+            seen.add(suggestion.id)
+            suggestions.append(suggestion)
+    return sorted(suggestions, key=lambda item: (item.can_implement, item.confidence), reverse=True)
+
+
 @router.get("/executions/{execution_id}")
 async def get_heuristic_analysis(
     execution_id: str,
@@ -627,24 +1047,196 @@ async def get_fix_suggestions(
     db: AsyncSession = Depends(get_db),
 ) -> list[FixSuggestionResponse]:
     """Return minor locator/element quick-heal fixes for the execution panel."""
+    return await _collect_fix_suggestions(db, execution_id)
+
+
+@router.post("/executions/{execution_id}/assistant-query", response_model=AssistantQueryResponse)
+async def query_ai_inspect_assistant(
+    execution_id: str,
+    body: AssistantQueryRequest,
+    db: AsyncSession = Depends(get_db),
+) -> AssistantQueryResponse:
+    """Answer AI Inspect console questions using execution/workflow DB context."""
     execution = await db.get(ExecutionModel, execution_id)
     if execution is None:
         raise HTTPException(status_code=404, detail="Execution not found")
-    result = await db.execute(
-        select(ExecutionNodeModel)
-        .where(ExecutionNodeModel.execution_id == execution_id)
-        .order_by(ExecutionNodeModel.started_at.asc())
+
+    nodes = (
+        await db.scalars(
+            select(ExecutionNodeModel)
+            .where(ExecutionNodeModel.execution_id == execution_id)
+            .order_by(ExecutionNodeModel.started_at.asc())
+        )
+    ).all()
+    workflow_nodes = (
+        await db.scalars(
+            select(WorkflowNodeModel)
+            .where(WorkflowNodeModel.workflow_id == execution.workflow_id)
+            .order_by(WorkflowNodeModel.node_key.asc())
+        )
+    ).all()
+    latest_job = await db.scalar(
+        select(IntelligenceJobModel)
+        .where(IntelligenceJobModel.execution_id == execution_id)
+        .order_by(IntelligenceJobModel.created_at.desc())
     )
-    suggestions: list[FixSuggestionResponse] = []
-    seen: set[str] = set()
-    for node in result.scalars().all():
-        if node.status != "failed" and not _has_runtime_heal(node):
-            continue
-        suggestion = await _build_fix_suggestion(db, execution_id, node.node_key)
-        if suggestion is not None and suggestion.id not in seen:
-            seen.add(suggestion.id)
-            suggestions.append(suggestion)
-    return suggestions
+    fixes = await _collect_fix_suggestions(db, execution_id)
+
+    intent = _assistant_intent(body.question)
+    if intent == "fix":
+        answer, confidence = _assistant_fix_answer(body.question, fixes, execution)
+    elif intent == "root_cause":
+        answer, confidence = _assistant_root_answer(execution, list(nodes), fixes, latest_job)
+    elif intent == "next_steps":
+        answer, confidence = _assistant_next_answer(fixes)
+    else:
+        answer, confidence = _assistant_general_answer(execution, fixes)
+
+    failed_nodes = [node for node in nodes if node.status in {"failed", "cancelled"}]
+    source_rows: list[AssistantSource] = [
+        _source(
+            "Execution",
+            "execution",
+            {
+                "status": execution.status,
+                "platform": execution.platform,
+                "environment": execution.environment,
+                "error": execution.error,
+                "workflow_id": execution.workflow_id,
+            },
+        )
+    ]
+    source_rows.extend(
+        _source(
+            f"Execution node {node.node_key}",
+            "execution_node",
+            {
+                "label": node.node_label,
+                "type": node.node_type,
+                "status": node.status,
+                "attempts": node.attempt_count,
+                "error": node.error,
+                "output": node.output,
+            },
+            limit=500,
+        )
+        for node in failed_nodes[:3]
+    )
+    source_rows.extend(
+        _source(
+            f"Workflow node {node.node_key}",
+            "workflow_node",
+            {
+                "label": node.label,
+                "type": node.type,
+                "config": node.config,
+            },
+            limit=500,
+        )
+        for node in workflow_nodes[:5]
+    )
+    if latest_job is not None:
+        source_rows.append(
+            _source(
+                "Latest AI job",
+                "intelligence_job",
+                {
+                    "status": latest_job.status,
+                    "current_step": latest_job.current_step,
+                    "error": latest_job.error,
+                    "result": latest_job.result,
+                },
+            )
+        )
+    if fixes:
+        source_rows.append(_source("Recommended fix", "fix_suggestion", fixes[0].model_dump(), limit=540))
+
+    panels = {
+        "rag_scope": [
+            "executions",
+            "execution_nodes",
+            "workflow_nodes",
+            "intelligence_jobs",
+            "fix_suggestions",
+        ],
+        "execution": {
+            "id": execution.id,
+            "status": execution.status,
+            "platform": execution.platform,
+            "environment": execution.environment,
+            "error": execution.error,
+        },
+        "failed_nodes": [
+            {
+                "node_key": node.node_key,
+                "label": node.node_label,
+                "type": node.node_type,
+                "status": node.status,
+                "attempts": node.attempt_count,
+                "error": node.error,
+            }
+            for node in failed_nodes[:6]
+        ],
+        "workflow_context": [
+            {
+                "node_key": node.node_key,
+                "label": node.label,
+                "type": node.type,
+                "config": node.config,
+            }
+            for node in workflow_nodes[:8]
+        ],
+        "fix_count": len(fixes),
+        "recommended_fix_id": fixes[0].id if fixes else None,
+        "latest_job": {
+            "id": latest_job.id,
+            "status": latest_job.status,
+            "progress": latest_job.progress,
+            "current_step": latest_job.current_step,
+            "error": latest_job.error,
+        } if latest_job else None,
+    }
+
+    answer_source: Literal["llm", "fallback"] = "fallback"
+    provider_name: str | None = None
+    model_name: str | None = None
+    llm_error: str | None = None
+    recommended_fix_id = fixes[0].id if fixes else None
+    llm_answer, provider_name, model_name, llm_error = await _assistant_llm_answer(
+        question=body.question,
+        intent=intent,
+        execution=execution,
+        sources=source_rows,
+        fixes=fixes,
+        panels=panels,
+        fallback_answer=answer,
+    )
+    if llm_answer is not None:
+        answer = llm_answer.answer or answer
+        confidence = llm_answer.confidence
+        recommended_fix_id = llm_answer.recommended_fix_id or recommended_fix_id
+        answer_source = "llm"
+
+    panels["assistant_generation"] = {
+        "answer_source": answer_source,
+        "provider": provider_name,
+        "model": model_name,
+        "llm_error": llm_error,
+    }
+
+    return AssistantQueryResponse(
+        answer=answer,
+        intent=intent,
+        confidence=confidence,
+        sources=source_rows,
+        fixes=fixes,
+        recommended_fix_id=recommended_fix_id,
+        panels=panels,
+        answer_source=answer_source,
+        provider=provider_name,
+        model=model_name,
+        llm_error=llm_error,
+    )
 
 
 @router.post(
@@ -670,7 +1262,29 @@ async def implement_fix_suggestion(
         "old_value": suggestion.old_value,
         "new_value": suggestion.new_value,
     }
-    if suggestion.target_type == "page_element":
+    if suggestion.target_type == "workflow_node":
+        node = await db.get(WorkflowNodeModel, suggestion.target_id)
+        if node is None:
+            raise HTTPException(status_code=404, detail="Workflow node not found")
+        try:
+            next_config = json.loads(suggestion.new_value)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=500, detail="Generated config patch is invalid JSON") from exc
+        if not isinstance(next_config, dict):
+            raise HTTPException(status_code=500, detail="Generated config patch must be a JSON object")
+        node.config = next_config
+        try:
+            timeout_ms = int(float(next_config.get("timeout_ms") or 0))
+        except (TypeError, ValueError):
+            timeout_ms = 0
+        if timeout_ms >= 90000:
+            next_timeout_seconds = max(int(node.timeout_seconds or 0), int((timeout_ms + 999) // 1000) + 30)
+            if next_timeout_seconds != node.timeout_seconds:
+                changed["old_timeout_seconds"] = node.timeout_seconds
+                changed["new_timeout_seconds"] = next_timeout_seconds
+                node.timeout_seconds = next_timeout_seconds
+        changed["refreshed_workflow_nodes"] = 1
+    elif suggestion.target_type == "page_element":
         element = await db.get(PageElementModel, suggestion.target_id)
         if element is None:
             raise HTTPException(status_code=404, detail="Page element not found")

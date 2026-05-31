@@ -69,12 +69,109 @@ def test_compile_recording_adds_launch_node_and_edges():
 
     assert compiled["summary"]["action_count"] == 2
     assert compiled["workflow"]["nodes"][0]["type"] == "desktop.launch"
+    assert compiled["workflow"]["nodes"][0]["config"]["attach_if_running"] is True
     assert compiled["workflow"]["nodes"][1]["config"]["selector"] == "btnNew"
     assert compiled["workflow"]["nodes"][2]["config"]["selector"] == "txtName"
     assert compiled["workflow"]["edges"] == [
         {"source_key": "desktop_launch", "target_key": "recorded_step_1", "execution_order": 1},
         {"source_key": "recorded_step_1", "target_key": "recorded_step_2", "execution_order": 2},
     ]
+
+
+def test_compile_recording_carries_window_scope_to_launch_node():
+    session = SimpleNamespace(
+        id="session1",
+        name="VS Code flow",
+        application_path=r"C:\Users\VAnand\AppData\Local\Programs\Microsoft VS Code\Code.exe",
+        application="VS Code",
+        driver_type="uia3",
+        window_title="Visual Studio Code",
+        process_name="17880",
+    )
+    compiled = compile_recording(session, [_action()])
+
+    launch_config = compiled["workflow"]["nodes"][0]["config"]
+    assert launch_config["window_title"] == "Visual Studio Code"
+    assert launch_config["process_name"] == ""
+    assert launch_config["args"] == ["--new-window"]
+    assert launch_config["attach_if_running"] is True
+
+
+def test_compile_recording_does_not_launch_placeholder_application_name():
+    session = SimpleNamespace(
+        id="session1",
+        name="Recorded flow",
+        application_path="",
+        application="Desktop App",
+        driver_type="uia3",
+        window_title="Invoice",
+        process_name="",
+    )
+    compiled = compile_recording(session, [_action()])
+
+    first_node = compiled["workflow"]["nodes"][0]
+    assert first_node["type"] == "desktop.attach"
+    assert first_node["config"]["window_title"] == "Invoice"
+    assert "app" not in first_node["config"]
+    assert compiled["workflow"]["edges"][0] == {
+        "source_key": "desktop_attach",
+        "target_key": "recorded_step_1",
+        "execution_order": 1,
+    }
+
+
+def test_compile_recording_ignores_shell_window_title_without_launchable_app():
+    session = SimpleNamespace(
+        id="session1",
+        name="Recorded flow",
+        application_path="",
+        application="Desktop App",
+        driver_type="uia3",
+        window_title="Windows PowerShell",
+        process_name="",
+    )
+    compiled = compile_recording(session, [_action()])
+
+    assert compiled["workflow"]["nodes"][0]["node_key"] == "recorded_step_1"
+    assert all(node["type"] != "desktop.launch" for node in compiled["workflow"]["nodes"])
+
+
+def test_compile_recording_replaces_bad_shell_window_title_for_vs_code():
+    session = SimpleNamespace(
+        id="session1",
+        name="VS Code flow",
+        application_path=r"C:\Users\VAnand\AppData\Local\Programs\Microsoft VS Code\Code.exe",
+        application="VS Code",
+        driver_type="uia3",
+        window_title="Snap Assist",
+        process_name="17880",
+    )
+    compiled = compile_recording(session, [_action()])
+
+    launch_node = compiled["workflow"]["nodes"][0]
+    launch_config = launch_node["config"]
+    assert launch_config["window_title"] == "Visual Studio Code"
+    assert launch_config["process_name"] == ""
+    assert launch_config["args"] == ["--new-window"]
+    assert launch_node["retry_policy"]["max_attempts"] == 1
+
+
+def test_compile_recording_infers_intellij_launch_scope_from_path():
+    session = SimpleNamespace(
+        id="session1",
+        name="IntelliJ flow",
+        application_path=r"C:\Users\VAnand\AppData\Local\JetBrains\IntelliJ IDEA Community Edition 2024.3.5\bin\idea64.exe",
+        application="IntelliJ IDEA",
+        driver_type="uia3",
+        window_title="Windows PowerShell",
+        process_name="",
+    )
+    compiled = compile_recording(session, [_action()])
+
+    launch_config = compiled["workflow"]["nodes"][0]["config"]
+    assert launch_config["app"] == r"C:\Users\VAnand\AppData\Local\JetBrains\IntelliJ IDEA Community Edition 2024.3.5\bin\idea64.exe"
+    assert launch_config["window_title"] == "IntelliJ IDEA"
+    assert launch_config["process_name"] == "idea64.exe"
 
 
 def test_compile_recording_suggests_login_reusable_component():

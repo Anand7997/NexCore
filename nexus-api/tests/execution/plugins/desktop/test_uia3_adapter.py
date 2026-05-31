@@ -65,6 +65,35 @@ async def test_attach_by_title():
 
 
 @pytest.mark.asyncio
+async def test_attach_by_numeric_process_id():
+    pw, mock_app, _ = _make_mock_pywinauto()
+    with patch.dict("sys.modules", {"pywinauto": pw}):
+        from importlib import reload
+        import app.execution.plugins.desktop.drivers.uia3 as mod
+        reload(mod)
+        adapter = mod.UIA3Adapter()
+        result = await adapter.attach(process_name="17880")
+
+    assert result.success is True
+    mock_app.connect.assert_called_once_with(process=17880)
+
+
+@pytest.mark.asyncio
+async def test_attach_by_title_does_not_fallback_to_volatile_pid():
+    pw, mock_app, _ = _make_mock_pywinauto()
+    mock_app.connect.side_effect = Exception("not found")
+    with patch.dict("sys.modules", {"pywinauto": pw}):
+        from importlib import reload
+        import app.execution.plugins.desktop.drivers.uia3 as mod
+        reload(mod)
+        adapter = mod.UIA3Adapter()
+        result = await adapter.attach(window_title="Visual Studio Code", process_name="17880")
+
+    assert result.success is False
+    assert call(process=17880) not in mock_app.connect.call_args_list
+
+
+@pytest.mark.asyncio
 async def test_attach_requires_title_or_process():
     with patch.dict("sys.modules", {"pywinauto": MagicMock()}):
         from importlib import reload

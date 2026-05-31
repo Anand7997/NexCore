@@ -8,6 +8,8 @@ $root        = Resolve-Path (Join-Path $PSScriptRoot "..")
 $frontendDir = Join-Path $root "nexus-qa"
 $backendDir  = Join-Path $root "nexus-api"
 $venvPython  = Join-Path $backendDir ".venv\Scripts\python.exe"
+$nextCli     = Join-Path $frontendDir "node_modules\next\dist\bin\next"
+$frontendBuildId = Join-Path $frontendDir ".next\BUILD_ID"
 
 if (-not $env:NEXUS_API_HOST) { $env:NEXUS_API_HOST = "127.0.0.1" }
 if (-not $env:NEXUS_API_PORT) { $env:NEXUS_API_PORT = "8000" }
@@ -15,6 +17,79 @@ if (-not $env:NEXUS_QA_PORT)  { $env:NEXUS_QA_PORT  = "3000" }
 
 $apiUrl = "http://$($env:NEXUS_API_HOST):$($env:NEXUS_API_PORT)"
 $webUrl = "http://localhost:$($env:NEXUS_QA_PORT)"
+
+function Get-NexusPortListeners {
+    param([Parameter(Mandatory)] [int[]] $Ports)
+
+    $listeners = @()
+    $wantedPorts = $Ports | Sort-Object -Unique
+
+    foreach ($line in @(& netstat -ano -p tcp 2>$null)) {
+        $fields = ($line -replace '^\s+', '') -split '\s+'
+        if ($fields.Length -lt 5) { continue }
+        if ($fields[0] -ne 'TCP' -or $fields[3] -ne 'LISTENING') { continue }
+
+        $localPort = 0
+        $processId = 0
+        if (-not [int]::TryParse(($fields[1] -split ':')[-1], [ref]$localPort)) { continue }
+        if (-not [int]::TryParse($fields[4], [ref]$processId)) { continue }
+        if ($wantedPorts -notcontains $localPort) { continue }
+
+        $process = Get-Process -Id $processId -ErrorAction SilentlyContinue
+        $processName = $null
+        $processPath = $null
+        if ($process) {
+            $processName = $process.ProcessName
+            try { $processPath = $process.Path } catch { }
+        }
+
+        $listeners += [pscustomobject]@{
+            LocalPort   = $localPort
+            ProcessId   = $processId
+            ProcessName = $processName
+            Path        = $processPath
+        }
+    }
+
+    return $listeners | Sort-Object LocalPort, ProcessId -Unique
+}
+
+function Assert-NexusPortsAvailable {
+    param([Parameter(Mandatory)] [int[]] $Ports)
+
+    $listeners = @(Get-NexusPortListeners -Ports $Ports)
+    if (-not $listeners) { return }
+
+    $details = foreach ($listener in $listeners) {
+        $summary = "port $($listener.LocalPort) -> PID $($listener.ProcessId)"
+        if ($listener.ProcessName) {
+            $summary += " ($($listener.ProcessName))"
+        }
+        if ($listener.Path) {
+            $summary += " [$($listener.Path)]"
+        }
+        $summary
+    }
+
+    throw "Required service port(s) are already in use: $($details -join '; '). Run npm run stop:all or free the port before starting again."
+}
+
+function Stop-NexusProcessId {
+    param([Parameter(Mandatory)] [int] $ProcessId)
+
+    if (-not (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue)) {
+        return
+    }
+
+    try {
+        Stop-Process -Id $ProcessId -Force -ErrorAction Stop
+    }
+    catch {
+        if (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue) {
+            Write-Host "  Could not stop process ${ProcessId}: $($_.Exception.Message)" -ForegroundColor Yellow
+        }
+    }
+}
 
 function Start-NexusProcess {
     param(
@@ -44,11 +119,27 @@ function Start-NexusProcess {
 }
 
 function Wait-ForBackend {
-    param([string]$Url, [int]$MaxSeconds = 90)
+    param(
+        [string] $Url,
+        [System.Diagnostics.Process] $Process,
+        [int] $MaxSeconds = 90
+    )
+
     $healthUrl = "$Url/api/health"
     $deadline  = (Get-Date).AddSeconds($MaxSeconds)
     Write-Host "  Waiting for backend at $healthUrl (up to $MaxSeconds s)..."
     while ((Get-Date) -lt $deadline) {
+        if ($Process) {
+            try {
+                if ($Process.HasExited) {
+                    throw "Backend exited before becoming healthy (code $($Process.ExitCode))."
+                }
+            }
+            catch {
+                throw
+            }
+        }
+
         try {
             $r = Invoke-WebRequest -Uri $healthUrl -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop
             if ($r.StatusCode -eq 200) {
@@ -61,13 +152,20 @@ function Wait-ForBackend {
     throw "Backend did not become healthy within $MaxSeconds seconds."
 }
 
-function Get-NexusChildProcesses {
-    param([Parameter(Mandatory)] [int] $ParentId)
+function Invoke-NexusFrontendBuild {
+    param([string] $ApiUrl)
 
-    $children = @(Get-CimInstance Win32_Process -Filter "ParentProcessId=$ParentId" -ErrorAction SilentlyContinue)
-    foreach ($child in $children) {
-        Get-NexusChildProcesses -ParentId $child.ProcessId
-        $child
+    Write-Host "  Frontend build is missing; running npm run build..."
+    $build = Start-NexusProcess `
+        -Name "frontend build" `
+        -FileName "cmd.exe" `
+        -Arguments "/c npm run build" `
+        -WorkingDirectory $frontendDir `
+        -Environment @{ NEXT_PUBLIC_API_URL = "$ApiUrl/api" }
+
+    $build.WaitForExit()
+    if ($build.ExitCode -ne 0) {
+        throw "Frontend build failed (code $($build.ExitCode))."
     }
 }
 
@@ -76,41 +174,24 @@ function Stop-NexusProcessTree {
 
     if (-not $Process) { return }
 
-    $processIds = @()
+    $processId = $null
     try {
-        $processIds += @(Get-NexusChildProcesses -ParentId $Process.Id | Select-Object -ExpandProperty ProcessId)
-    } catch { }
-
-    try {
-        if (-not $Process.HasExited) {
-            $processIds += $Process.Id
+        if ($Process.HasExited) {
+            return
         }
+        $processId = $Process.Id
     } catch {
-        $processIds += $Process.Id
+        $processId = $Process.Id
     }
 
-    foreach ($processId in ($processIds | Select-Object -Unique)) {
-        try {
-            Stop-Process -Id $processId -Force -ErrorAction Stop
-        } catch {
-            Write-Host "  Could not stop process ${processId}: $($_.Exception.Message)"
-        }
-    }
+    Stop-NexusProcessId -ProcessId $processId
 }
 
 function Stop-NexusPortListeners {
     param([Parameter(Mandatory)] [int[]] $Ports)
 
-    foreach ($conn in @(Get-NetTCPConnection -LocalPort $Ports -State Listen -ErrorAction SilentlyContinue)) {
-        try {
-            $owner = Get-CimInstance Win32_Process -Filter "ProcessId=$($conn.OwningProcess)" -ErrorAction Stop
-            $commandLine = [string]$owner.CommandLine
-            if ($commandLine.Contains([string]$root) -or $commandLine -match "uvicorn app\.main:app|next dev|npm run dev") {
-                Stop-Process -Id $conn.OwningProcess -Force -ErrorAction Stop
-            }
-        } catch {
-            Write-Host "  Could not stop listener on port $($conn.LocalPort): $($_.Exception.Message)"
-        }
+    foreach ($listener in @(Get-NexusPortListeners -Ports $Ports)) {
+        Stop-NexusProcessId -ProcessId $listener.ProcessId
     }
 }
 
@@ -123,6 +204,8 @@ try {
     Write-Host "  Backend:  $apiUrl"
     Write-Host "  Frontend: $webUrl"
     Write-Host ""
+
+    Assert-NexusPortsAvailable -Ports @([int]$env:NEXUS_API_PORT, [int]$env:NEXUS_QA_PORT)
 
     # ── Step 1: Start backend (venv python preferred) ─────────────────────────
     $pythonExe = if (Test-Path $venvPython) { $venvPython } else { "python" }
@@ -141,7 +224,7 @@ try {
         -WorkingDirectory $backendDir
 
     # Wait until /api/health responds before touching the frontend
-    Wait-ForBackend -Url $apiUrl
+    Wait-ForBackend -Url $apiUrl -Process $backend
 
     if ($backend.HasExited) {
         throw "Backend exited early (code $($backend.ExitCode))."
@@ -151,10 +234,23 @@ try {
     Write-Host ""
     Write-Host "[2/2] Frontend"
 
+    if (-not (Test-Path $nextCli)) {
+        throw "Next.js CLI was not found. Run npm install inside $frontendDir first."
+    }
+
+    if (-not (Test-Path $frontendBuildId)) {
+        Invoke-NexusFrontendBuild -ApiUrl $apiUrl
+    }
+
+    $nodeExe = (Get-Command "node.exe" -ErrorAction Stop).Source
+    if ($Reload) {
+        Write-Host "  Backend reload is enabled. Frontend is using the built Next app because this Windows/Node environment blocks Next dev worker startup."
+    }
+
     $frontend = Start-NexusProcess `
         -Name "frontend" `
-        -FileName "cmd.exe" `
-        -Arguments "/c npm run dev -- --port $($env:NEXUS_QA_PORT)" `
+        -FileName $nodeExe `
+        -Arguments "`"$nextCli`" start --port $($env:NEXUS_QA_PORT)" `
         -WorkingDirectory $frontendDir `
         -Environment @{ NEXT_PUBLIC_API_URL = "$apiUrl/api" }
 
@@ -163,8 +259,19 @@ try {
     Write-Host ""
 
     while ($true) {
-        if ($frontend.HasExited) { throw "Frontend stopped (code $($frontend.ExitCode))." }
-        if ($backend.HasExited)  { throw "Backend stopped (code $($backend.ExitCode))." }
+        $frontendExited = $frontend.HasExited
+        $backendExited = $backend.HasExited
+
+        if ($frontendExited -or $backendExited) {
+            $listeners = @(Get-NexusPortListeners -Ports @([int]$env:NEXUS_API_PORT, [int]$env:NEXUS_QA_PORT))
+            if (-not $listeners) {
+                break
+            }
+
+            if ($frontendExited) { throw "Frontend stopped (code $($frontend.ExitCode))." }
+            if ($backendExited)  { throw "Backend stopped (code $($backend.ExitCode))." }
+        }
+
         Start-Sleep -Seconds 2
     }
 }

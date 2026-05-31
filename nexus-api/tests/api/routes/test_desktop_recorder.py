@@ -31,6 +31,18 @@ def test_build_recorder_agent_command_includes_session_and_hotkeys():
     assert response.requirements == ["pywinauto", "pynput"]
 
 
+def test_build_recorder_agent_command_strips_wrapping_quotes_from_application_path():
+    response = _build_agent_command(
+        RecorderAgentCommandRequest(
+            session_id="session-123",
+            application_path='"C:\\Users\\VAnand\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe"',
+        )
+    )
+
+    assert '\\"C:\\Users' not in response.command
+    assert '"C:\\Users\\VAnand\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe"' in response.command
+
+
 def test_build_desktop_mcp_command_exposes_mcp_tools():
     response = _build_mcp_command(
         DesktopMcpCommandRequest(

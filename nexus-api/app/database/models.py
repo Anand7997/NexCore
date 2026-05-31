@@ -502,10 +502,16 @@ class WorkflowModel(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
     nodes: Mapped[list["WorkflowNodeModel"]] = relationship(
-        "WorkflowNodeModel", back_populates="workflow", cascade="all, delete-orphan"
+        "WorkflowNodeModel",
+        back_populates="workflow",
+        cascade="all, delete-orphan",
+        order_by="WorkflowNodeModel.position_x, WorkflowNodeModel.position_y, WorkflowNodeModel.node_key",
     )
     edges: Mapped[list["WorkflowEdgeModel"]] = relationship(
-        "WorkflowEdgeModel", back_populates="workflow", cascade="all, delete-orphan"
+        "WorkflowEdgeModel",
+        back_populates="workflow",
+        cascade="all, delete-orphan",
+        order_by="WorkflowEdgeModel.execution_order, WorkflowEdgeModel.source_key, WorkflowEdgeModel.target_key",
     )
     executions: Mapped[list["ExecutionModel"]] = relationship(
         "ExecutionModel", back_populates="workflow"

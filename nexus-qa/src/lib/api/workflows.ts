@@ -16,7 +16,9 @@ export function useWorkflows(status?: string) {
   return useQuery({
     queryKey: [...workflowKeys.all, status],
     queryFn: () => api.get<WorkflowListItem[]>(`/workflows/${params}`),
-    staleTime: 10_000,
+    staleTime: status === 'active' ? 2_000 : 10_000,
+    refetchInterval: status === 'active' ? 5_000 : false,
+    refetchOnWindowFocus: status === 'active' ? 'always' : true,
   });
 }
 

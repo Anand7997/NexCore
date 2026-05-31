@@ -74,10 +74,10 @@ export function AIInspector() {
             Execution Quick Heal
           </p>
           <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/8 p-3">
-            <p className="text-xs font-semibold text-cyan-200">Minor locator and element fixes only</p>
+            <p className="text-xs font-semibold text-cyan-200">Evidence-backed fixes with safe auto-apply</p>
             <p className="mt-1 text-[10px] leading-relaxed text-slate-400">
-              This panel only promotes verified fallback locators or Page Repository alternatives into Test Configuration.
-              Full root-cause, flaky, environment, and system-level analysis stays in the AI Inspect dashboard.
+              This panel can promote verified locators and repair known desktop launch configuration issues directly in the workflow.
+              Deeper root-cause and flaky analysis stays in the AI Inspect dashboard.
             </p>
           </div>
         </div>
@@ -98,7 +98,7 @@ export function AIInspector() {
           <div className="mb-2 flex items-center justify-between gap-2">
             <p className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-slate-600">
               <Wrench size={10} className="text-emerald-400" />
-              Suggested Minor Fixes
+              Suggested Fixes
             </p>
             <Button
               variant="ghost"
@@ -112,15 +112,15 @@ export function AIInspector() {
           </div>
 
           {fixesLoading && (
-            <p className="text-[10px] text-slate-500">Scanning execution evidence for locator or element fixes...</p>
+            <p className="text-[10px] text-slate-500">Scanning execution evidence for safe config, locator, and element fixes...</p>
           )}
 
           {!fixesLoading && fixes.length === 0 && (
             <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
               <p className="text-xs font-semibold text-slate-300">No safe quick-heal fix found</p>
               <p className="mt-1 text-[10px] leading-relaxed text-slate-500">
-                The failure is either not a minor locator issue, or no verified fallback locator exists yet.
-                Use Page Discovery to capture alternatives, or open AI Inspect for a deeper investigation.
+                The failure either needs deeper investigation or does not have enough evidence for a safe patch.
+                Use AI Inspect for root cause analysis or capture more desktop evidence.
               </p>
             </div>
           )}
@@ -131,12 +131,12 @@ export function AIInspector() {
                 <div>
                   <p className="text-xs font-semibold text-emerald-300">{primaryFix.title}</p>
                   <p className="mt-1 text-[10px] text-emerald-300/70">
-                    {primaryFix.target_type === 'page_element' ? 'Page Repository' : 'Test Step'} /
+                    {primaryFix.target_type === 'page_element' ? 'Page Repository' : primaryFix.target_type === 'workflow_node' ? 'Workflow Node' : 'Test Step'} /
                     {' '}{confidenceLabel(primaryFix.confidence)} confidence
                   </p>
                 </div>
                 <span className="rounded-full border border-emerald-500/25 px-2 py-0.5 text-[9px] uppercase tracking-wider text-emerald-200">
-                  Minor
+                  {primaryFix.category === 'desktop_launch_config' ? 'Config' : 'Minor'}
                 </span>
               </div>
               <p className="mt-2 text-[10px] leading-relaxed text-slate-400">{primaryFix.rationale}</p>
@@ -154,7 +154,7 @@ export function AIInspector() {
                 onClick={() => implementFix.mutate({ executionId: exec.id, nodeKey: primaryFix.node_key })}
               >
                 <CheckCircle2 size={10} />
-                {implementFix.isPending ? 'Implementing...' : 'Implement in Config DB'}
+                {implementFix.isPending ? 'Implementing...' : primaryFix.target_type === 'workflow_node' ? 'Patch Workflow Node' : 'Implement in Config DB'}
               </Button>
               {!primaryFix.can_implement && primaryFix.blocked_reason && (
                 <p className="mt-2 text-[10px] leading-relaxed text-amber-300/80">{primaryFix.blocked_reason}</p>

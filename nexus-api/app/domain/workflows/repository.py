@@ -34,8 +34,10 @@ class WorkflowRepository:
 
         await self._upsert_nodes_edges(workflow.id, schema.nodes, schema.edges)
         await self.db.commit()
-        await self.db.refresh(workflow)
-        return workflow
+        created = await self.get(workflow.id)
+        if created is None:
+            raise RuntimeError("Created workflow could not be loaded")
+        return created
 
     async def get(self, workflow_id: str) -> WorkflowModel | None:
         result = await self.db.execute(
@@ -95,8 +97,7 @@ class WorkflowRepository:
             )
 
         await self.db.commit()
-        await self.db.refresh(workflow)
-        return workflow
+        return await self.get(workflow_id)
 
     async def delete(self, workflow_id: str) -> bool:
         workflow = await self.get(workflow_id)

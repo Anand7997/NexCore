@@ -3,7 +3,13 @@ from __future__ import annotations
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import delete, select, func
-from app.database.models import ExecutionModel, ExecutionNodeModel, ExecutionTimelineModel, IntelligenceJobModel
+from app.database.models import (
+    ExecutionModel,
+    ExecutionNodeModel,
+    ExecutionTimelineModel,
+    IntelligenceJobModel,
+    WorkflowNodeModel,
+)
 from app.domain.executions.schemas import ExecutionTriggerSchema
 import uuid
 
@@ -52,12 +58,37 @@ class ExecutionRepository:
         return list(result.scalars().all())
 
     async def get_nodes(self, execution_id: str) -> list[ExecutionNodeModel]:
+        execution = await self.get(execution_id)
         result = await self.db.execute(
             select(ExecutionNodeModel)
             .where(ExecutionNodeModel.execution_id == execution_id)
-            .order_by(ExecutionNodeModel.started_at)
         )
-        return list(result.scalars().all())
+        nodes = list(result.scalars().all())
+        if execution is None:
+            return nodes
+
+        workflow_result = await self.db.execute(
+            select(WorkflowNodeModel.node_key)
+            .where(WorkflowNodeModel.workflow_id == execution.workflow_id)
+            .order_by(
+                WorkflowNodeModel.position_x.asc(),
+                WorkflowNodeModel.position_y.asc(),
+                WorkflowNodeModel.node_key.asc(),
+            )
+        )
+        order = {
+            node_key: index
+            for index, node_key in enumerate(workflow_result.scalars().all())
+        }
+
+        def sort_key(node: ExecutionNodeModel) -> tuple[int, datetime, str]:
+            return (
+                order.get(node.node_key, len(order)),
+                node.started_at or datetime.max,
+                node.node_key or "",
+            )
+
+        return sorted(nodes, key=sort_key)
 
     async def get_timeline(self, execution_id: str) -> list[ExecutionTimelineModel]:
         result = await self.db.execute(

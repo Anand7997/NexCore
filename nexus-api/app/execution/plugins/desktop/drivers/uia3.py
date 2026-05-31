@@ -2,6 +2,11 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import re
+import shlex
+import subprocess
+import time
 from typing import Any
 
 from .base import DesktopDriver, DriverResult, LocatorCandidate
@@ -10,9 +15,10 @@ from .base import DesktopDriver, DriverResult, LocatorCandidate
 class UIA3Adapter(DesktopDriver):
     """Drives Windows applications directly via the UI Automation API (pywinauto)."""
 
-    def __init__(self) -> None:
+    def __init__(self, timeout: float = 30.0) -> None:
         self._app = None      # pywinauto.Application
         self._top_window = None
+        self._timeout = timeout
 
     def _import_pywinauto(self):
         try:
@@ -31,10 +37,24 @@ class UIA3Adapter(DesktopDriver):
     ) -> DriverResult:
         def _do():
             pw = self._import_pywinauto()
-            cmd = app_path if not args else f"{app_path} {' '.join(args)}"
+            app = str(app_path or "").strip().strip('"')
+            cmd_parts = [app, *(args or [])]
+            cmd = subprocess.list2cmdline(cmd_parts) if os.name == "nt" else shlex.join(cmd_parts)
             app = pw.Application(backend="uia").start(cmd)
             self._app = app
-            self._top_window = app.top_window()
+            deadline = time.monotonic() + min(max(self._timeout, 1.0), 5.0)
+            last_error: Exception | None = None
+            while time.monotonic() <= deadline:
+                try:
+                    self._top_window = app.top_window()
+                    break
+                except Exception as exc:
+                    last_error = exc
+                    time.sleep(0.25)
+            else:
+                if last_error:
+                    raise last_error
+                raise RuntimeError("No application window was found after launch")
             return self._top_window.window_text()
 
         try:
@@ -56,7 +76,11 @@ class UIA3Adapter(DesktopDriver):
             if window_title:
                 app = pw.Application(backend="uia").connect(title=window_title)
             elif process_name:
-                app = pw.Application(backend="uia").connect(path=process_name)
+                process = str(process_name).strip()
+                if process.isdigit():
+                    app = pw.Application(backend="uia").connect(process=int(process))
+                else:
+                    app = pw.Application(backend="uia").connect(path=process)
             else:
                 raise ValueError("window_title or process_name is required for attach")
             self._app = app
@@ -65,8 +89,23 @@ class UIA3Adapter(DesktopDriver):
 
         try:
             title = await asyncio.to_thread(_do)
-            return DriverResult(success=True, metadata={"window_title": title})
+            return DriverResult(success=True, metadata={"window_title": title, "process_name": process_name or ""})
         except Exception as exc:
+            if window_title:
+                def _fallback_title_re():
+                    pw = self._import_pywinauto()
+                    app = pw.Application(backend="uia").connect(title_re=f".*{re.escape(window_title)}.*")
+                    self._app = app
+                    self._top_window = app.top_window()
+                    return self._top_window.window_text()
+
+                try:
+                    title = await asyncio.to_thread(_fallback_title_re)
+                    return DriverResult(success=True, metadata={"window_title": title, "title_match": "contains"})
+                except Exception:
+                    pass
+            if window_title and process_name and not str(process_name).strip().isdigit():
+                return await self.attach(process_name=process_name)
             return DriverResult(success=False, error=str(exc))
 
     async def close(self) -> DriverResult:
@@ -266,6 +305,68 @@ class UIA3Adapter(DesktopDriver):
                     "chars": len(text),
                 },
             )
+        except Exception as exc:
+            return DriverResult(success=False, error=str(exc))
+
+    async def click_coordinates(
+        self,
+        x: float,
+        y: float,
+        button: str = "left",
+    ) -> DriverResult:
+        def _do():
+            pw = self._import_pywinauto()
+            if self._top_window is not None:
+                try:
+                    self._top_window.set_focus()
+                except Exception:
+                    pass
+            coords = (int(float(x)), int(float(y)))
+            pw.mouse.click(button=button, coords=coords)
+            return coords
+
+        try:
+            coords = await asyncio.to_thread(_do)
+            return DriverResult(success=True, metadata={"strategy": "coordinates", "x": coords[0], "y": coords[1], "button": button})
+        except Exception as exc:
+            return DriverResult(success=False, error=str(exc))
+
+    async def double_click_coordinates(
+        self,
+        x: float,
+        y: float,
+    ) -> DriverResult:
+        def _do():
+            pw = self._import_pywinauto()
+            if self._top_window is not None:
+                try:
+                    self._top_window.set_focus()
+                except Exception:
+                    pass
+            coords = (int(float(x)), int(float(y)))
+            pw.mouse.double_click(button="left", coords=coords)
+            return coords
+
+        try:
+            coords = await asyncio.to_thread(_do)
+            return DriverResult(success=True, metadata={"strategy": "coordinates", "x": coords[0], "y": coords[1], "button": "left"})
+        except Exception as exc:
+            return DriverResult(success=False, error=str(exc))
+
+    async def hover_coordinates(
+        self,
+        x: float,
+        y: float,
+    ) -> DriverResult:
+        def _do():
+            pw = self._import_pywinauto()
+            coords = (int(float(x)), int(float(y)))
+            pw.mouse.move(coords=coords)
+            return coords
+
+        try:
+            coords = await asyncio.to_thread(_do)
+            return DriverResult(success=True, metadata={"strategy": "coordinates", "x": coords[0], "y": coords[1]})
         except Exception as exc:
             return DriverResult(success=False, error=str(exc))
 

@@ -44,10 +44,10 @@ export interface FixSuggestion {
   node_key: string;
   node_label: string;
   scope: 'execution_quick_heal';
-  category: 'minor_locator' | 'minor_element';
+  category: 'minor_locator' | 'minor_element' | 'desktop_launch_config';
   title: string;
   rationale: string;
-  target_type: 'page_element' | 'test_step';
+  target_type: 'page_element' | 'test_step' | 'workflow_node';
   target_id: string;
   field: string;
   old_value: string;
@@ -61,6 +61,26 @@ export interface ImplementFixResponse {
   applied: boolean;
   suggestion: FixSuggestion;
   changed: Record<string, unknown>;
+}
+
+export interface AssistantSource {
+  type: string;
+  label: string;
+  excerpt: string;
+}
+
+export interface AssistantQueryResponse {
+  answer: string;
+  intent: string;
+  confidence: number;
+  sources: AssistantSource[];
+  fixes: FixSuggestion[];
+  recommended_fix_id?: string | null;
+  panels: Record<string, unknown>;
+  answer_source?: 'llm' | 'fallback';
+  provider?: string | null;
+  model?: string | null;
+  llm_error?: string | null;
 }
 
 export type AIJobType =
@@ -126,6 +146,15 @@ export function useImplementFixSuggestion() {
       qc.invalidateQueries({ queryKey: ['page-repository'] });
       qc.invalidateQueries({ queryKey: ['workflows'] });
     },
+  });
+}
+
+export function useAskAIInspectAssistant() {
+  return useMutation({
+    mutationFn: ({ executionId, question }: { executionId: string; question: string }) =>
+      api.post<AssistantQueryResponse>(`/intelligence/executions/${executionId}/assistant-query`, {
+        question,
+      }),
   });
 }
 

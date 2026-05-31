@@ -152,6 +152,28 @@ class DesktopDriver(ABC):
     ) -> DriverResult:
         return DriverResult(success=False, error="hover is not supported by this desktop driver")
 
+    async def click_coordinates(
+        self,
+        x: float,
+        y: float,
+        button: str = "left",
+    ) -> DriverResult:
+        return DriverResult(success=False, error="coordinate clicking is not supported by this desktop driver")
+
+    async def double_click_coordinates(
+        self,
+        x: float,
+        y: float,
+    ) -> DriverResult:
+        return DriverResult(success=False, error="coordinate double-clicking is not supported by this desktop driver")
+
+    async def hover_coordinates(
+        self,
+        x: float,
+        y: float,
+    ) -> DriverResult:
+        return DriverResult(success=False, error="coordinate hover is not supported by this desktop driver")
+
     async def clear_text(
         self,
         candidates: list[LocatorCandidate],

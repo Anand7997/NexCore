@@ -731,6 +731,10 @@ export interface DesktopRecordedActionCreate {
   metadata?: Record<string, unknown>;
 }
 
+export interface DesktopRecordedActionUpdate extends Partial<DesktopRecordedActionCreate> {
+  action_order?: number;
+}
+
 export interface DesktopRecordedAction extends DesktopRecordedActionCreate {
   id: string;
   session_id: string;

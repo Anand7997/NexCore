@@ -267,6 +267,22 @@ def _post_json(api_url: str, path: str, payload: dict[str, Any]) -> dict[str, An
         raise RuntimeError(f"API request failed: {exc.code} {body}") from exc
 
 
+def _get_json(api_url: str, path: str) -> dict[str, Any]:
+    url = f"{_normalize_api_url(api_url)}/{path.lstrip('/')}"
+    request = urllib.request.Request(
+        url,
+        headers={"Accept": "application/json"},
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=8) as response:
+            raw = response.read().decode("utf-8")
+            return json.loads(raw) if raw else {}
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"API request failed: {exc.code} {body}") from exc
+
+
 def _parse_hotkey(value: str) -> set[str]:
     aliases = {
         "control": "ctrl",
@@ -318,6 +334,7 @@ class LiveDesktopRecorderAgent:
         self.pending_click: ClickCandidate | None = None
         self.click_lock = threading.Lock()
         self.desktop = None
+        self.last_status_check_at = 0.0
 
     def run(self) -> None:
         try:
@@ -344,6 +361,7 @@ class LiveDesktopRecorderAgent:
         ):
             while not self.stop_event.wait(0.1):
                 self._flush_idle_text()
+                self._stop_if_session_closed()
 
         self._flush_pending_click()
         self._flush_text_buffer()
@@ -377,6 +395,19 @@ class LiveDesktopRecorderAgent:
         except Exception as exc:
             print(f"Could not stop recorder session: {exc}", file=sys.stderr)
 
+    def _stop_if_session_closed(self) -> None:
+        now = time.time()
+        if not self.session_id or now - self.last_status_check_at < 2.0:
+            return
+        self.last_status_check_at = now
+        try:
+            session = _get_json(self.options.api_url, f"/desktop-recorder/sessions/{self.session_id}")
+        except Exception:
+            return
+        if str(session.get("status") or "").lower() == "stopped":
+            print("Recorder session was stopped from NexCore. Exiting agent.")
+            self.stop_event.set()
+
     def _post_worker(self) -> None:
         while True:
             payload = self.action_queue.get()
@@ -387,6 +418,8 @@ class LiveDesktopRecorderAgent:
                 print(f"Recorded {payload.get('action_type')} -> {payload.get('object_name')}")
             except Exception as exc:
                 print(f"Failed to post recorded action: {exc}", file=sys.stderr)
+                if "409" in str(exc) and "not accepting actions" in str(exc):
+                    self.stop_event.set()
 
     def _queue_action(self, payload: dict[str, Any]) -> None:
         if self.paused:

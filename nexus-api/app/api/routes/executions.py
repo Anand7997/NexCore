@@ -506,6 +506,54 @@ def _step_navigate_url(step) -> str:
     return _step_page_url(step)
 
 
+def _desktop_launch_scope_from_step(step) -> dict[str, object]:
+    bindings = step.bindings or {}
+    desktop_binding = bindings.get("desktop") if isinstance(bindings, dict) else None
+    desktop_binding = desktop_binding if isinstance(desktop_binding, dict) else {}
+    data = step.test_data or {}
+    data = data if isinstance(data, dict) else {}
+    window_title = _first_non_empty(
+        desktop_binding.get("window_title"),
+        desktop_binding.get("window"),
+        desktop_binding.get("screen"),
+        data.get("window_title"),
+        data.get("window"),
+        data.get("screen"),
+    )
+    process_name = _first_non_empty(
+        desktop_binding.get("process_name"),
+        desktop_binding.get("process"),
+        data.get("process_name"),
+        data.get("process"),
+    )
+    scope: dict[str, object] = {"attach_if_running": True}
+    if window_title:
+        scope["window_title"] = str(window_title)
+    if process_name:
+        scope["process_name"] = str(process_name)
+    return scope
+
+
+def _desktop_launch_scope_from_variables(variables: dict[str, object]) -> dict[str, object]:
+    window_title = _first_non_empty(
+        variables.get("window_title"),
+        variables.get("desktop_window_title"),
+        variables.get("window"),
+        variables.get("screen"),
+    )
+    process_name = _first_non_empty(
+        variables.get("process_name"),
+        variables.get("desktop_process_name"),
+        variables.get("process"),
+    )
+    scope: dict[str, object] = {"attach_if_running": True}
+    if window_title:
+        scope["window_title"] = str(window_title)
+    if process_name:
+        scope["process_name"] = str(process_name)
+    return scope
+
+
 def _step_element_type(step) -> str:
     element = getattr(step, "page_element", None)
     if element is not None:
@@ -680,7 +728,7 @@ def _node_type_and_config(
         if _is_navigate_action(action):
             app = _step_navigate_url(step) or value
             if app:
-                config = {"app": app, "timeout_ms": 30000}
+                config = {"app": app, "timeout_ms": 30000, **_desktop_launch_scope_from_step(step)}
                 if master_metadata and len(master_metadata) > 1:
                     config["master_sheet"] = master_metadata
                 return "desktop.launch", config
@@ -848,7 +896,7 @@ def _workflow_from_test_cases(test_cases: list, schema: TestCaseExecutionTrigger
     if start_url and not _has_explicit_navigate_step(test_cases):
         previous_key = "start_navigate"
         start_config = (
-            {"app": start_url, "timeout_ms": 30000}
+            {"app": start_url, "timeout_ms": 30000, **_desktop_launch_scope_from_variables(schema.variables)}
             if is_desktop
             else {"url": start_url, "wait_until": "load", "timeout_ms": 30000}
         )

@@ -18,6 +18,56 @@ param(
 $ErrorActionPreference = "Stop"
 $workspaceRoot = $PSScriptRoot
 
+function Get-NexusPortListeners {
+    param([Parameter(Mandatory)] [int[]] $Ports)
+
+    $listeners = @()
+    $wantedPorts = $Ports | Sort-Object -Unique
+
+    foreach ($line in @(& netstat -ano -p tcp 2>$null)) {
+        $fields = ($line -replace '^\s+', '') -split '\s+'
+        if ($fields.Length -lt 5) { continue }
+        if ($fields[0] -ne 'TCP' -or $fields[3] -ne 'LISTENING') { continue }
+
+        $localPort = 0
+        $processId = 0
+        if (-not [int]::TryParse(($fields[1] -split ':')[-1], [ref]$localPort)) { continue }
+        if (-not [int]::TryParse($fields[4], [ref]$processId)) { continue }
+        if ($wantedPorts -notcontains $localPort) { continue }
+
+        $process = Get-Process -Id $processId -ErrorAction SilentlyContinue
+        $processName = $null
+        if ($process) {
+            $processName = $process.ProcessName
+        }
+
+        $listeners += [pscustomobject]@{
+            LocalPort   = $localPort
+            ProcessId   = $processId
+            ProcessName = $processName
+        }
+    }
+
+    return $listeners | Sort-Object LocalPort, ProcessId -Unique
+}
+
+function Stop-NexusProcessId {
+    param([Parameter(Mandatory)] [int] $ProcessId)
+
+    if (-not (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue)) {
+        return
+    }
+
+    try {
+        Stop-Process -Id $ProcessId -Force -ErrorAction Stop
+    }
+    catch {
+        if (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue) {
+            Write-Host "    [WARN] Could not stop PID ${ProcessId}: $($_.Exception.Message)" -ForegroundColor Yellow
+        }
+    }
+}
+
 Write-Host "================================================================" -ForegroundColor Red
 Write-Host "      Shutting Down NexCore Platform                          " -ForegroundColor Red
 Write-Host "================================================================" -ForegroundColor Red
@@ -32,38 +82,17 @@ Write-Host "[1/2] Stopping application services..." -ForegroundColor Yellow
 $ports = @(3000, 3001, 8000)  # Frontend, NestJS API, Python AI Service
 
 foreach ($port in $ports) {
-    try {
-        $connections = Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue
-        
-        if ($connections) {
-            foreach ($conn in $connections) {
-                $processId = $conn.OwningProcess
-                $process = Get-Process -Id $processId -ErrorAction SilentlyContinue
-                
-                if ($process) {
-                    Write-Host "    Stopping process on port $port (PID: $processId, Name: $($process.ProcessName))..." -ForegroundColor Gray
-                    Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
-                    Write-Host "    [OK] Stopped" -ForegroundColor Green
-                }
-            }
-        } else {
-            Write-Host "    No process found on port $port" -ForegroundColor Gray
+    $listeners = @(Get-NexusPortListeners -Ports @($port))
+
+    if ($listeners) {
+        foreach ($listener in $listeners) {
+            $nameSuffix = if ($listener.ProcessName) { ", Name: $($listener.ProcessName)" } else { "" }
+            Write-Host "    Stopping process on port $port (PID: $($listener.ProcessId)$nameSuffix)..." -ForegroundColor Gray
+            Stop-NexusProcessId -ProcessId $listener.ProcessId
+            Write-Host "    [OK] Stopped" -ForegroundColor Green
         }
-    }
-    catch {
-        Write-Host "    [WARN] Could not stop process on port $port" -ForegroundColor Yellow
-    }
-}
-
-# Stop any remaining Node.js processes running from nexus-backend or nexus-qa
-Write-Host "    Stopping remaining Node.js and Python processes..." -ForegroundColor Gray
-
-Get-Process -Name node, python, uvicorn -ErrorAction SilentlyContinue | ForEach-Object {
-    $cmdLine = (Get-WmiObject Win32_Process -Filter "ProcessId = $($_.Id)").CommandLine
-    
-    if ($cmdLine -like "*nexus-backend*" -or $cmdLine -like "*nexus-api*" -or $cmdLine -like "*nexus-qa*") {
-        Write-Host "    Stopping $($_.ProcessName) (PID: $($_.Id))..." -ForegroundColor Gray
-        Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
+    } else {
+        Write-Host "    No process found on port $port" -ForegroundColor Gray
     }
 }
 

@@ -17,9 +17,9 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.database.models import DesktopRecordedActionModel, DesktopRecordingSessionModel
+from app.database.models import DesktopRecordedActionModel, DesktopRecordingSessionModel, WorkflowModel
 from app.database.session import get_db
-from app.execution.plugins.desktop.recorder import compile_recording
+from app.execution.plugins.desktop.recorder import compile_recording, _is_bad_window_title
 
 router = APIRouter(prefix="/desktop-recorder", tags=["desktop-recorder"])
 
@@ -81,6 +81,32 @@ class RecordedActionCreate(BaseModel):
     screenshot_artifact_id: str = ""
     ui_tree_artifact_id: str = ""
     metadata: dict[str, Any] = {}
+
+
+class RecordedActionUpdate(BaseModel):
+    action_order: Optional[int] = None
+    action_type: Optional[str] = None
+    object_key: Optional[str] = None
+    object_name: Optional[str] = None
+    control_type: Optional[str] = None
+    automation_id: Optional[str] = None
+    name_text: Optional[str] = None
+    class_name: Optional[str] = None
+    uia_path: Optional[str] = None
+    locator_strategy: Optional[str] = None
+    value: Optional[str] = None
+    expected: Optional[str] = None
+    property_name: Optional[str] = None
+    variable: Optional[str] = None
+    window_title: Optional[str] = None
+    screen: Optional[str] = None
+    x: Optional[float] = None
+    y: Optional[float] = None
+    duration_ms: Optional[int] = None
+    locators: Optional[list[dict[str, Any]]] = None
+    screenshot_artifact_id: Optional[str] = None
+    ui_tree_artifact_id: Optional[str] = None
+    metadata: Optional[dict[str, Any]] = None
 
 
 class RecordedActionResponse(RecordedActionCreate):
@@ -164,6 +190,13 @@ def _safe_filename(value: str, fallback: str = "desktop-recorder") -> str:
     return cleaned or fallback
 
 
+def _strip_wrapping_quotes(value: str) -> str:
+    text = str(value or "").strip()
+    if len(text) >= 2 and text[0] == text[-1] and text[0] in {"'", '"'}:
+        return text[1:-1]
+    return text
+
+
 def _agent_arg_pairs(body: RecorderAgentCommandRequest) -> list[tuple[str, str]]:
     pairs = [
         ("--api-url", body.api_url),
@@ -182,7 +215,7 @@ def _agent_arg_pairs(body: RecorderAgentCommandRequest) -> list[tuple[str, str]]
     }
     for flag, value in optional_args.items():
         if value:
-            pairs.append((flag, value))
+            pairs.append((flag, _strip_wrapping_quotes(value)))
     return pairs
 
 
@@ -221,7 +254,7 @@ def _mcp_arg_pairs(body: DesktopMcpCommandRequest) -> list[tuple[str, str]]:
     }
     for flag, value in optional_args.items():
         if value:
-            pairs.append((flag, value))
+            pairs.append((flag, _strip_wrapping_quotes(value)))
     return pairs
 
 
@@ -296,6 +329,9 @@ $Python = Join-Path $Venv 'Scripts\\python.exe'
 $Pip = Join-Path $Venv 'Scripts\\pip.exe'
 $Script = Join-Path $Root 'desktop_recorder_agent.py'
 
+Remove-Item Env:PIP_NO_INDEX -ErrorAction SilentlyContinue
+Remove-Item Env:NO_INDEX -ErrorAction SilentlyContinue
+
 if (-not (Get-Command py -ErrorAction SilentlyContinue) -and -not (Get-Command python -ErrorAction SilentlyContinue)) {{
     throw 'Python was not found. Install Python 3.11+ and rerun this launcher.'
 }}
@@ -308,8 +344,10 @@ if (-not (Test-Path $Python)) {{
     }}
 }}
 
-& $Python -m pip install --upgrade pip
-& $Pip install -r (Join-Path $Root 'requirements.txt')
+& $Python -m pip install --upgrade pip --index-url https://pypi.org/simple --trusted-host pypi.org --trusted-host files.pythonhosted.org
+if ($LASTEXITCODE -ne 0) {{ throw "Failed to upgrade pip (exit code $LASTEXITCODE)." }}
+& $Pip install -r (Join-Path $Root 'requirements.txt') --index-url https://pypi.org/simple --trusted-host pypi.org --trusted-host files.pythonhosted.org
+if ($LASTEXITCODE -ne 0) {{ throw "Failed to install recorder dependencies (exit code $LASTEXITCODE)." }}
 
 $ArgsList = @(
 {args_literal}
@@ -334,6 +372,9 @@ $Python = Join-Path $Venv 'Scripts\\python.exe'
 $Pip = Join-Path $Venv 'Scripts\\pip.exe'
 $Script = Join-Path $Root 'desktop_mcp_server.py'
 
+Remove-Item Env:PIP_NO_INDEX -ErrorAction SilentlyContinue
+Remove-Item Env:NO_INDEX -ErrorAction SilentlyContinue
+
 if (-not (Get-Command py -ErrorAction SilentlyContinue) -and -not (Get-Command python -ErrorAction SilentlyContinue)) {{
     throw 'Python was not found. Install Python 3.11+ and rerun this launcher.'
 }}
@@ -346,8 +387,10 @@ if (-not (Test-Path $Python)) {{
     }}
 }}
 
-& $Python -m pip install --upgrade pip
-& $Pip install -r (Join-Path $Root 'requirements.txt')
+& $Python -m pip install --upgrade pip --index-url https://pypi.org/simple --trusted-host pypi.org --trusted-host files.pythonhosted.org
+if ($LASTEXITCODE -ne 0) {{ throw "Failed to upgrade pip (exit code $LASTEXITCODE)." }}
+& $Pip install -r (Join-Path $Root 'requirements.txt') --index-url https://pypi.org/simple --trusted-host pypi.org --trusted-host files.pythonhosted.org
+if ($LASTEXITCODE -ne 0) {{ throw "Failed to install desktop MCP dependencies (exit code $LASTEXITCODE)." }}
 
 $ArgsList = @(
 {args_literal}
@@ -556,6 +599,115 @@ async def _load_session(session_id: str, db: AsyncSession) -> DesktopRecordingSe
     return session
 
 
+async def _load_action(
+    session_id: str,
+    action_id: str,
+    db: AsyncSession,
+) -> DesktopRecordedActionModel:
+    result = await db.execute(
+        select(DesktopRecordedActionModel)
+        .where(
+            DesktopRecordedActionModel.id == action_id,
+            DesktopRecordedActionModel.session_id == session_id,
+        )
+    )
+    action = result.scalar_one_or_none()
+    if action is None:
+        raise HTTPException(status_code=404, detail="Desktop recorded action not found")
+    return action
+
+
+def _renumber_actions(actions: list[DesktopRecordedActionModel]) -> None:
+    for index, action in enumerate(sorted(actions, key=lambda item: int(item.action_order or 0)), start=1):
+        action.action_order = index
+
+
+async def _move_action(
+    session: DesktopRecordingSessionModel,
+    action: DesktopRecordedActionModel,
+    target_order: int,
+) -> None:
+    actions = sorted(list(session.actions or []), key=lambda item: int(item.action_order or 0))
+    if action not in actions:
+        actions.append(action)
+    actions = [item for item in actions if item.id != action.id]
+    insert_at = max(0, min(target_order - 1, len(actions)))
+    actions.insert(insert_at, action)
+    for index, item in enumerate(actions, start=1):
+        item.action_order = index
+
+
+def _apply_session_context_from_action(
+    session: DesktopRecordingSessionModel,
+    body: RecordedActionCreate,
+) -> None:
+    """Fill empty session-level context from recorded action metadata."""
+    metadata = body.metadata or {}
+    if not session.window_title and body.window_title and not _is_bad_window_title(body.window_title):
+        session.window_title = body.window_title
+    if not session.application and metadata.get("application"):
+        session.application = str(metadata.get("application") or "")
+    if not session.application_path and metadata.get("application_path"):
+        session.application_path = str(metadata.get("application_path") or "")
+    if not session.process_name:
+        process_name = metadata.get("process_name") or metadata.get("process") or metadata.get("process_id")
+        if process_name:
+            session.process_name = str(process_name)
+
+
+def _normalized_match_text(value: Any) -> str:
+    return " ".join(str(value or "").casefold().split())
+
+
+def _has_workflow_marker(workflow: WorkflowModel, marker: str) -> bool:
+    raw_tags = workflow.tags or []
+    if not isinstance(raw_tags, list):
+        return False
+    return marker in {str(tag).casefold() for tag in raw_tags}
+
+
+def _is_desktop_recording_workflow(workflow: WorkflowModel) -> bool:
+    return _has_workflow_marker(workflow, "desktop") and _has_workflow_marker(workflow, "recorded")
+
+
+def _workflow_matches_recording_session(
+    workflow: WorkflowModel,
+    session: DesktopRecordingSessionModel,
+) -> bool:
+    if not _is_desktop_recording_workflow(workflow):
+        return False
+
+    variables = workflow.variables or {}
+    if not isinstance(variables, dict):
+        variables = {}
+
+    session_id = str(session.id)
+    if str(variables.get("desktop_recorder_session_id") or "") == session_id:
+        return True
+
+    session_name = _normalized_match_text(session.name)
+    if session_name and _normalized_match_text(variables.get("desktop_recorder_session_name")) == session_name:
+        return True
+
+    legacy_workflow_name = _normalized_match_text(f"{session.name} Workflow")
+    return bool(legacy_workflow_name and _normalized_match_text(workflow.name) == legacy_workflow_name)
+
+
+async def _archive_workflows_for_recording_session(
+    session: DesktopRecordingSessionModel,
+    db: AsyncSession,
+) -> int:
+    result = await db.execute(select(WorkflowModel).where(WorkflowModel.status == "active"))
+    count = 0
+    now = _db_utcnow()
+    for workflow in result.scalars():
+        if _workflow_matches_recording_session(workflow, session):
+            workflow.status = "archived"
+            workflow.updated_at = now
+            count += 1
+    return count
+
+
 @router.post("/agent-command", response_model=RecorderAgentCommandResponse)
 async def build_recorder_agent_command(body: RecorderAgentCommandRequest):
     return _build_agent_command(body)
@@ -643,6 +795,7 @@ async def add_recorded_action(session_id: str, body: RecordedActionCreate, db: A
     session = await _load_session(session_id, db)
     if session.status not in {"recording", "paused"}:
         raise HTTPException(status_code=409, detail="Recording session is not accepting actions")
+    _apply_session_context_from_action(session, body)
     next_order = len(session.actions or []) + 1
     action = DesktopRecordedActionModel(
         session_id=session.id,
@@ -671,9 +824,49 @@ async def add_recorded_action(session_id: str, body: RecordedActionCreate, db: A
         action_metadata=body.metadata,
     )
     db.add(action)
+    session.updated_at = _db_utcnow()
     await db.commit()
     await db.refresh(action)
     return _action_response(action)
+
+
+@router.patch("/sessions/{session_id}/actions/{action_id}", response_model=RecordedActionResponse)
+async def update_recorded_action(
+    session_id: str,
+    action_id: str,
+    body: RecordedActionUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    session = await _load_session(session_id, db)
+    action = await _load_action(session_id, action_id, db)
+    changes = body.model_dump(exclude_unset=True)
+    target_order = changes.pop("action_order", None)
+    for field, value in changes.items():
+        model_field = "action_metadata" if field == "metadata" else field
+        setattr(action, model_field, value)
+    if target_order is not None:
+        await _move_action(session, action, int(target_order))
+    session.updated_at = _db_utcnow()
+    await db.commit()
+    await db.refresh(action)
+    return _action_response(action)
+
+
+@router.delete(
+    "/sessions/{session_id}/actions/{action_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+    response_model=None,
+)
+async def delete_recorded_action(session_id: str, action_id: str, db: AsyncSession = Depends(get_db)):
+    session = await _load_session(session_id, db)
+    action = await _load_action(session_id, action_id, db)
+    await db.delete(action)
+    remaining = [item for item in (session.actions or []) if item.id != action_id]
+    _renumber_actions(remaining)
+    session.updated_at = _db_utcnow()
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/sessions/{session_id}/compile", response_model=RecorderCompileResponse)
@@ -689,7 +882,9 @@ async def compile_recording_session(session_id: str, db: AsyncSession = Depends(
     response_model=None,
 )
 async def delete_recording_session(session_id: str, db: AsyncSession = Depends(get_db)):
-    await _load_session(session_id, db)
+    session = await _load_session(session_id, db)
+    await _archive_workflows_for_recording_session(session, db)
+    await db.execute(delete(DesktopRecordedActionModel).where(DesktopRecordedActionModel.session_id == session_id))
     await db.execute(delete(DesktopRecordingSessionModel).where(DesktopRecordingSessionModel.id == session_id))
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
