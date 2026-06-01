@@ -54,6 +54,37 @@ class LocatorGenerationTests(unittest.TestCase):
 
         self.assertIn('//p[contains(normalize-space(.), "Departure Date")]', locators)
 
+    def test_scrape_keeps_css_relative_and_absolute_xpath_fallbacks(self) -> None:
+        agent = ElementDiscoveryAgent()
+        [element] = agent.process_elements([
+            {
+                "tag": "input",
+                "attributes": {
+                    "id": "customerEmail",
+                    "label_text": "Email",
+                    "type": "email",
+                    "xpath": '//*[@id="customerEmail"]',
+                    "absolute_xpath": "/html/body/main/form/input[1]",
+                    "css_path": "body > main > form:nth-of-type(1) > input:nth-of-type(1)",
+                    "visible": True,
+                    "enabled": True,
+                },
+                "roles": ["textbox"],
+                "visible": True,
+                "enabled": True,
+                "match_count_id": 1,
+                "match_count_css": 1,
+                "match_count_xpath": 1,
+            }
+        ])
+
+        locators = [candidate.locator for candidate in element.alternative_locators]
+
+        self.assertIn("#customerEmail", locators)
+        self.assertIn('//label[contains(normalize-space(.), "Email")]/following::input[1]', locators)
+        self.assertIn("/html/body/main/form/input[1]", locators)
+        self.assertIn("body > main > form:nth-of-type(1) > input:nth-of-type(1)", locators)
+
 
 if __name__ == "__main__":
     unittest.main()

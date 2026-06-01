@@ -1,8 +1,11 @@
 """Tests for AI workflow element binding quality and data hints."""
 
+import asyncio
+
 from app.ai_workflow.schemas import GeneratedTestStep
 from app.ai_workflow.service import (
     _build_step_bindings,
+    _enhance_scraped_candidates_with_ai,
     _infer_workflow_action,
     _score_candidate,
     _step_configured_input_value,
@@ -160,3 +163,58 @@ def test_navigate_step_uses_real_page_url_over_ai_placeholder():
     assert bindings["web"]["action_type"] == "NAVIGATE_TO_URL"
     assert bindings["web"]["value"] == real_url
     assert bindings["web"]["url"] == real_url
+
+
+class _LocatorEnhancementProvider:
+    async def generate(self, prompt, schema):
+        return schema(items=[{
+            "candidate_id": "scraped-1",
+            "recommended_strategy": "xpath",
+            "recommended_locator": '//label[contains(normalize-space(.), "Email")]/following::input[1]',
+            "locator_order": ["testid", "role", "css", "xpath"],
+            "rationale": "Label-relative XPath is verified and more stable than the absolute path.",
+        }])
+
+
+def test_ai_locator_enhancement_promotes_verified_relative_xpath_and_keeps_fallbacks():
+    candidates = [{
+        "candidate_id": "scraped-1",
+        "name": "Email",
+        "element_type": "input",
+        "locator_strategy": "css",
+        "best_locator": "#customerEmail",
+        "xpath": "/html/body/main/form/input[1]",
+        "css_selector": "#customerEmail",
+        "confidence_score": 0.92,
+        "locator_quality": 0.91,
+        "alternative_locators": [
+            {"strategy": "css", "locator": "#customerEmail", "verified": True, "element_count": 1, "score": 0.88},
+            {
+                "strategy": "xpath",
+                "locator": '//label[contains(normalize-space(.), "Email")]/following::input[1]',
+                "verified": True,
+                "element_count": 1,
+                "score": 0.86,
+            },
+            {"strategy": "xpath", "locator": "/html/body/main/form/input[1]", "verified": True, "element_count": 1, "score": 0.2},
+        ],
+        "tags": [],
+    }]
+
+    [enhanced] = asyncio.run(
+        _enhance_scraped_candidates_with_ai(
+            _LocatorEnhancementProvider(),
+            "gpt-5.5",
+            candidates,
+        )
+    )
+
+    assert enhanced["locator_strategy"] == "xpath"
+    assert enhanced["best_locator"] == '//label[contains(normalize-space(.), "Email")]/following::input[1]'
+    assert enhanced["xpath"] == '//label[contains(normalize-space(.), "Email")]/following::input[1]'
+    assert enhanced["alternative_locators"][0]["locator"] == enhanced["best_locator"]
+    assert "/html/body/main/form/input[1]" in {
+        locator["locator"] for locator in enhanced["alternative_locators"]
+    }
+    assert enhanced["ai_locator_model"] == "gpt-5.5"
+    assert "ai-locator-ranked" in enhanced["tags"]

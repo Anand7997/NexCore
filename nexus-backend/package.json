@@ -6,7 +6,7 @@
   "license": "UNLICENSED",
   "scripts": {
     "build": "nest build",
-    "start": "node dist/main",
+    "start": "node dist/src/main.js",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:worker": "ts-node -r tsconfig-paths/register src/temporal-worker.ts",

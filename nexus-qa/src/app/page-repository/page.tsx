@@ -91,12 +91,48 @@ function isDesktopPlatform(platform?: string) {
 
 function tagsToCSV(tags: string[]) { return tags.join(', '); }
 function csvToTags(s: string) { return s.split(',').map((t) => t.trim()).filter(Boolean); }
+function formatLocators(locators?: PageElement['alternative_locators']) {
+  return (locators ?? [])
+    .filter((item) => item?.locator)
+    .map((item) => `${item.strategy || 'xpath'}=${item.locator}`)
+    .join('\n');
+}
+function parseLocators(text: string) {
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const eq = line.indexOf('=');
+      if (eq > 0) {
+        return {
+          strategy: line.slice(0, eq).trim() || 'xpath',
+          locator: line.slice(eq + 1).trim(),
+          verified: false,
+          element_count: 0,
+          score: 0.5,
+          reason: 'Manual alternative locator',
+        };
+      }
+      const strategy = line.startsWith('/') || line.startsWith('xpath=') ? 'xpath' : 'css';
+      return {
+        strategy,
+        locator: line,
+        verified: false,
+        element_count: 0,
+        score: 0.5,
+        reason: 'Manual alternative locator',
+      };
+    })
+    .filter((item) => item.locator);
+}
 
 // ── Element Row (inline editable) ─────────────────────────────────────────────
 
 type ElemUpdates = {
   name?: string; element_type?: string; xpath?: string; css_selector?: string;
   id_attr?: string; name_attr?: string; locator_strategy?: string;
+  alternative_locators?: PageElement['alternative_locators'];
 };
 
 function ElementRow({
@@ -115,6 +151,7 @@ function ElementRow({
   const [idAttr,   setIdAttr]   = useState(el.id_attr);
   const [nameAttr, setNameAttr] = useState(el.name_attr);
   const [strategy, setStrategy] = useState(el.locator_strategy || 'xpath');
+  const [altLocs, setAltLocs] = useState(formatLocators(el.alternative_locators));
   const prevId = useRef(el.id);
 
   useEffect(() => {
@@ -123,10 +160,21 @@ function ElementRow({
     setName(el.name); setType(el.element_type); setXpath(el.xpath);
     setCss(el.css_selector); setIdAttr(el.id_attr);
     setNameAttr(el.name_attr); setStrategy(el.locator_strategy);
+    setAltLocs(formatLocators(el.alternative_locators));
   }, [el.id]);
 
   function save(overrides: ElemUpdates = {}) {
-    onUpdate({ name, element_type: type, xpath, css_selector: css, id_attr: idAttr, name_attr: nameAttr, locator_strategy: strategy, ...overrides });
+    onUpdate({
+      name,
+      element_type: type,
+      xpath,
+      css_selector: css,
+      id_attr: idAttr,
+      name_attr: nameAttr,
+      locator_strategy: strategy,
+      alternative_locators: parseLocators(altLocs),
+      ...overrides,
+    });
   }
 
   const ic = 'w-full bg-transparent text-[11px] font-mono text-[var(--color-fg-default)] outline-none placeholder:text-[var(--color-fg-subtle)]/40';
@@ -207,6 +255,18 @@ function ElementRow({
             <option key={s} value={s} style={{ background: '#0d0d18', color: STRATEGY_COLOR[s] ?? '#8b8c97' }}>{s}</option>
           ))}
         </select>
+      </td>
+
+      {/* Alternative locators */}
+      <td className={`${bd} min-w-[210px]`}>
+        <textarea
+          value={altLocs}
+          onChange={(e) => setAltLocs(e.target.value)}
+          onBlur={() => save()}
+          className={`${ic} min-h-12 resize-y text-[10px] leading-4`}
+          placeholder="xpath=//label[...]&#10;css=input[name='email']"
+          title={altLocs}
+        />
       </td>
 
       {/* Actions */}
@@ -746,12 +806,12 @@ export default function PageRepositoryPage() {
                   </div>
                 )
                 : (
-                  <table className="w-full border-collapse" style={{ minWidth: 900 }}>
+                  <table className="w-full border-collapse" style={{ minWidth: 1120 }}>
                     <thead className="sticky top-0 z-10" style={{ background: 'var(--color-surface-1)' }}>
                       <tr className="border-b border-[var(--color-line-default)]">
                         {(isDesktopPage
-                          ? ['#','Object','Control','UIA Path','Class','Automation ID','Name/Text','Strategy','']
-                          : ['#','Name','Type','XPath','CSS Selector','ID Attr','Name Attr','Strategy','']
+                          ? ['#','Object','Control','UIA Path','Class','Automation ID','Name/Text','Strategy','Alt Locators','']
+                          : ['#','Name','Type','XPath','CSS Selector','ID Attr','Name Attr','Strategy','Alt Locators','']
                         ).map((h, i) => (
                           <th key={i} className="px-2 py-2 text-left font-mono text-[9px] uppercase tracking-[0.14em] text-[var(--color-fg-subtle)] border-r border-[var(--color-line-subtle)] last:border-r-0">
                             {h}

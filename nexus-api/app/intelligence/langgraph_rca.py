@@ -22,6 +22,7 @@ locator_healing, anomaly_analysis) by branching logic inside nodes.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import inspect
@@ -30,6 +31,22 @@ from typing import Any, Awaitable, Callable, Optional, TypedDict
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
+
+
+def _select_openai_model(settings: Any) -> str:
+    from app.config import DEFAULT_OPENAI_MODEL
+
+    configured = str(settings.default_ai_model or "").strip()
+    return configured if configured.lower().startswith("gpt") else DEFAULT_OPENAI_MODEL
+
+
+def _select_claude_model(settings: Any) -> str:
+    from app.config import DEFAULT_CLAUDE_MODEL
+
+    configured = str(settings.default_ai_model or "").strip()
+    if "claude" in configured.lower():
+        return configured
+    return str(settings.default_claude_model or DEFAULT_CLAUDE_MODEL).strip() or DEFAULT_CLAUDE_MODEL
 
 
 # ── Structured LLM Pydantic Schemas ───────────────────────────────────────────
@@ -73,21 +90,91 @@ def _get_ai_provider() -> Any:
         has_anthropic = importlib.util.find_spec("anthropic") is not None
         if provider_name == "openai" and settings.openai_api_key and has_openai:
             from app.ai_workflow.providers.openai_provider import OpenAIProvider
-            return OpenAIProvider(api_key=settings.openai_api_key, model=settings.default_ai_model or "gpt-5.5")
+            return OpenAIProvider(api_key=settings.openai_api_key, model=_select_openai_model(settings))
         elif provider_name in ("claude", "anthropic") and settings.anthropic_api_key and has_anthropic:
             from app.ai_workflow.providers.claude_provider import ClaudeProvider
-            return ClaudeProvider(api_key=settings.anthropic_api_key, model=settings.default_ai_model or "claude-3-5-sonnet-latest")
+            return ClaudeProvider(api_key=settings.anthropic_api_key, model=_select_claude_model(settings))
         
         # Fallback to whatever key is present
         if settings.openai_api_key and has_openai:
             from app.ai_workflow.providers.openai_provider import OpenAIProvider
-            return OpenAIProvider(api_key=settings.openai_api_key, model="gpt-5.5")
+            return OpenAIProvider(api_key=settings.openai_api_key, model=_select_openai_model(settings))
         elif settings.anthropic_api_key and has_anthropic:
             from app.ai_workflow.providers.claude_provider import ClaudeProvider
-            return ClaudeProvider(api_key=settings.anthropic_api_key, model="claude-3-5-sonnet-latest")
+            return ClaudeProvider(api_key=settings.anthropic_api_key, model=_select_claude_model(settings))
     except Exception as exc:
         logger.warning("Could not load AI provider config: %s", exc)
     return None
+
+
+def _provider_error_status(error: str) -> str:
+    text = str(error or "").lower()
+    if any(token in text for token in ("quota", "insufficient_quota", "credit", "exhaust", "rate_limit", "429")):
+        return "quota_exhausted"
+    if any(token in text for token in ("api key", "authentication", "unauthorized", "invalid x-api-key", "401")):
+        return "auth_failed"
+    if any(token in text for token in ("timeout", "timed out")):
+        return "timeout"
+    return "failed"
+
+
+def _ai_provider_candidates() -> list[dict[str, Any]]:
+    from app.config import settings
+
+    candidates: list[dict[str, Any]] = []
+    has_openai = importlib.util.find_spec("openai") is not None
+    has_anthropic = importlib.util.find_spec("anthropic") is not None
+    if settings.openai_api_key and has_openai:
+        from app.ai_workflow.providers.openai_provider import OpenAIProvider
+        model = _select_openai_model(settings)
+        candidates.append({
+            "provider": OpenAIProvider(api_key=settings.openai_api_key, model=model),
+            "name": "openai",
+            "label": "OpenAI",
+            "model": model,
+        })
+    if settings.anthropic_api_key and has_anthropic:
+        from app.ai_workflow.providers.claude_provider import ClaudeProvider
+        model = _select_claude_model(settings)
+        candidates.append({
+            "provider": ClaudeProvider(api_key=settings.anthropic_api_key, model=model),
+            "name": "claude",
+            "label": "Claude",
+            "model": model,
+        })
+    return candidates
+
+
+async def _run_root_cause_provider(candidate: dict[str, Any], prompt: str) -> dict[str, Any]:
+    name = str(candidate["name"])
+    model = str(candidate["model"])
+    try:
+        result = await asyncio.wait_for(candidate["provider"].generate(prompt, RootCauseAnalysis), timeout=70)
+        return {
+            "provider": name,
+            "label": candidate["label"],
+            "model": model,
+            "status": "ok",
+            "confidence": round(result.confidence, 3),
+            "root_cause": result.root_cause,
+            "findings": [f.model_dump() for f in result.findings],
+            "recommendations": [r.model_dump() for r in result.recommendations],
+            "error": None,
+        }
+    except Exception as exc:  # pragma: no cover - provider/network/quota failures vary.
+        message = str(exc)
+        logger.warning("RCA provider %s/%s failed: %s", name, model, message)
+        return {
+            "provider": name,
+            "label": candidate["label"],
+            "model": model,
+            "status": _provider_error_status(message),
+            "confidence": 0.0,
+            "root_cause": "",
+            "findings": [],
+            "recommendations": [],
+            "error": message,
+        }
 
 
 # ── State ─────────────────────────────────────────────────────────────────────
@@ -109,6 +196,7 @@ class RCAState(TypedDict, total=False):
     recommendations: list[dict[str, Any]]
     confidence: float
     analysis_steps: list[str]
+    provider_results: list[dict[str, Any]]
     # ── Output ────────────────────────────────────────────────────
     summary: str
     artifacts: list[dict[str, Any]]
@@ -249,28 +337,60 @@ async def analyze_root_cause(state: RCAState) -> dict[str, Any]:
     job_type: str = state.get("job_type") or "root_cause_analysis"
     evidence: dict[str, Any] = state.get("evidence") or {}
 
-    provider = _get_ai_provider()
-    if provider is not None:
-        try:
-            prompt = (
-                f"You are an expert systems reliability and QA automation engineer. Perform a root cause analysis for the following test execution failure:\n\n"
-                f"Job Type: {job_type}\n"
-                f"Failure Class: {failure_class}\n"
-                f"Error Message: {error_text}\n"
-                f"Failed Timeline Nodes: {json.dumps(failed_nodes, indent=2)}\n"
-                f"Similar Past Failures: {json.dumps(similar, indent=2)}\n"
-                f"Full Evidence Context: {json.dumps(evidence, indent=2)[:4000]}\n"
+    prompt = (
+        f"You are an expert systems reliability and QA automation engineer. Perform a root cause analysis for the following test execution failure:\n\n"
+        f"Job Type: {job_type}\n"
+        f"Failure Class: {failure_class}\n"
+        f"Error Message: {error_text}\n"
+        f"Failed Timeline Nodes: {json.dumps(failed_nodes, indent=2)}\n"
+        f"Similar Past Failures: {json.dumps(similar, indent=2)}\n"
+        f"Full Evidence Context: {json.dumps(evidence, indent=2)[:4000]}\n"
+    )
+    provider_results: list[dict[str, Any]] = []
+    candidates = _ai_provider_candidates()
+    if candidates:
+        provider_results = await asyncio.gather(
+            *(_run_root_cause_provider(candidate, prompt) for candidate in candidates)
+        )
+        successful = [item for item in provider_results if item.get("status") == "ok"]
+        if successful:
+            best = max(
+                successful,
+                key=lambda item: (
+                    float(item.get("confidence") or 0.0),
+                    len(item.get("findings") or []),
+                    1 if item.get("provider") == "openai" else 0,
+                ),
             )
-            result = await provider.generate(prompt, RootCauseAnalysis)
+            findings: list[dict[str, Any]] = []
+            recommendations: list[dict[str, Any]] = []
+            for item in successful:
+                for finding in item.get("findings") or []:
+                    copied = dict(finding)
+                    copied.setdefault("provider", item.get("provider"))
+                    findings.append(copied)
+                for recommendation in item.get("recommendations") or []:
+                    copied = dict(recommendation)
+                    copied.setdefault("provider", item.get("provider"))
+                    recommendations.append(copied)
+            provider_status = ", ".join(
+                f"{item.get('label')}: {item.get('status')}" for item in provider_results
+            )
             return {
-                "findings": [f.model_dump() for f in result.findings],
-                "recommendations": [r.model_dump() for r in result.recommendations],
-                "root_cause": result.root_cause,
-                "confidence": round(result.confidence, 3),
-                "analysis_steps": _steps(state, f"analyze_root_cause (LLM): {len(result.findings)} finding(s), {len(result.recommendations)} recommendation(s)"),
+                "findings": findings,
+                "recommendations": recommendations,
+                "root_cause": str(best.get("root_cause") or ""),
+                "confidence": round(float(best.get("confidence") or 0.5), 3),
+                "provider_results": provider_results,
+                "analysis_steps": _steps(
+                    state,
+                    f"analyze_root_cause (AI council): selected {best.get('label')} from {provider_status}",
+                ),
             }
-        except Exception as exc:
-            logger.warning("LLM root cause analysis failed, falling back to heuristics: %s", exc)
+        logger.warning(
+            "All RCA providers failed, falling back to heuristics: %s",
+            "; ".join(f"{item.get('label')}: {item.get('error')}" for item in provider_results),
+        )
 
     # Heuristic fallback code
     findings: list[dict[str, Any]] = []
@@ -346,6 +466,7 @@ async def analyze_root_cause(state: RCAState) -> dict[str, Any]:
         "findings": findings,
         "root_cause": _summarize_root_cause(failure_class, failed_nodes, job_type),
         "confidence": round(confidence, 3),
+        "provider_results": provider_results,
         "analysis_steps": _steps(state, f"analyze_root_cause (Heuristic): {len(findings)} finding(s)"),
     }
 
@@ -522,6 +643,7 @@ def _make_initial_state(
         "findings": [],
         "recommendations": [],
         "confidence": 0.0,
+        "provider_results": [],
         "analysis_steps": [],
         "summary": "",
         "artifacts": [],

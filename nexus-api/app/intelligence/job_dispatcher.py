@@ -111,6 +111,7 @@ async def dispatch_ai_job(
             "failure_class":   state.get("failure_class", "unknown_failure"),
             "root_cause":      state.get("root_cause", ""),
             "similar_failures":state.get("similar_failures", []),
+            "provider_results":state.get("provider_results", []),
         }
 
         # ── Persist result ────────────────────────────────────────────────────

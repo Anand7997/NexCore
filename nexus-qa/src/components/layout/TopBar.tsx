@@ -40,7 +40,7 @@ const WORKSPACE_META: Record<string, { label: string; env: string }> = {
   '/master-sheet':       { label: 'Master Sheet',               env: 'build' },
   '/desktop-recorder':   { label: 'Desktop Recorder',           env: 'build' },
   '/executions':         { label: 'Execution Monitoring',       env: 'run' },
-  '/ai-analysis':        { label: 'AI Inspect',                 env: 'debug' },
+  '/ai-analysis':        { label: 'AI Inspect Lab',             env: 'debug' },
   '/test-configuration': { label: 'Test Configuration',         env: 'build' },
 };
 

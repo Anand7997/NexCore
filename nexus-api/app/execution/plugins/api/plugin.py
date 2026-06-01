@@ -67,6 +67,18 @@ def _summarize_headers(headers: httpx.Headers) -> dict[str, str]:
     return {k.lower(): v for k, v in headers.items()}
 
 
+def _as_bool(value: Any, default: bool = True) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() not in {"false", "0", "no", "off", "disable", "disabled"}
+    return default
+
+
 # ── Plugin ──────────────────────────────────────────────────────────────────
 
 class APIExecutionPlugin(ExecutionPlugin):
@@ -78,8 +90,8 @@ class APIExecutionPlugin(ExecutionPlugin):
 
     def __init__(self) -> None:
         super().__init__()
-        # client per execution_id
-        self._clients: dict[str, httpx.AsyncClient] = {}
+        # client per execution_id, SSL verification mode, and env proxy mode
+        self._clients: dict[tuple[str, bool, bool], httpx.AsyncClient] = {}
         self._lock = asyncio.Lock()
 
     # ---- Discovery ---------------------------------------------------------
@@ -90,6 +102,8 @@ class APIExecutionPlugin(ExecutionPlugin):
             "headers": {"type": "object", "supports_template": True},
             "params":  {"type": "object", "supports_template": True},
             "timeout_seconds": {"type": "number", "default": 30},
+            "verify_ssl": {"type": "boolean", "default": True},
+            "trust_env": {"type": "boolean", "default": False},
         }
         body_field = {"body": {"type": "object", "supports_template": True}}
 
@@ -211,30 +225,45 @@ class APIExecutionPlugin(ExecutionPlugin):
 
     async def on_execution_start(self, execution_id: str) -> None:
         async with self._lock:
-            if execution_id in self._clients:
+            key = (execution_id, True, False)
+            if key in self._clients:
                 return
-            self._clients[execution_id] = httpx.AsyncClient(
+            self._clients[key] = httpx.AsyncClient(
                 timeout=httpx.Timeout(settings.api_plugin_default_timeout),
                 follow_redirects=True,
                 headers={"User-Agent": "NEXUS-QA-Executor/1.0"},
+                verify=True,
+                trust_env=False,
             )
 
     async def on_execution_end(self, execution_id: str) -> None:
         async with self._lock:
-            client = self._clients.pop(execution_id, None)
-        if client:
+            clients = [
+                self._clients.pop(key)
+                for key in list(self._clients)
+                if key[0] == execution_id
+            ]
+        for client in clients:
             await client.aclose()
 
-    async def _client_for(self, execution_id: str) -> httpx.AsyncClient:
+    async def _client_for(
+        self,
+        execution_id: str,
+        verify_ssl: bool = True,
+        trust_env: bool = False,
+    ) -> httpx.AsyncClient:
         async with self._lock:
-            client = self._clients.get(execution_id)
+            key = (execution_id, verify_ssl, trust_env)
+            client = self._clients.get(key)
             if client is None:
                 client = httpx.AsyncClient(
                     timeout=httpx.Timeout(settings.api_plugin_default_timeout),
                     follow_redirects=True,
                     headers={"User-Agent": "NEXUS-QA-Executor/1.0"},
+                    verify=verify_ssl,
+                    trust_env=trust_env,
                 )
-                self._clients[execution_id] = client
+                self._clients[key] = client
             return client
 
     # ---- Execution dispatcher ---------------------------------------------
@@ -276,14 +305,17 @@ class APIExecutionPlugin(ExecutionPlugin):
         params = cfg.get("params", {}) or {}
         body = cfg.get("body")
         timeout = float(cfg.get("timeout_seconds", settings.api_plugin_default_timeout))
+        verify_ssl = _as_bool(cfg.get("verify_ssl"), True)
+        trust_env = _as_bool(cfg.get("trust_env"), False)
 
-        client = await self._client_for(envelope.execution_id)
+        client = await self._client_for(envelope.execution_id, verify_ssl=verify_ssl, trust_env=trust_env)
 
         # Capture request artifact before sending — useful even if the call fails.
         await envelope.artifacts.record_json(
             ArtifactKind.HTTP_REQUEST, "request.json",
             {"method": method, "url": url, "headers": headers,
-             "params": params, "body": body, "timeout": timeout},
+             "params": params, "body": body, "timeout": timeout,
+             "verify_ssl": verify_ssl, "trust_env": trust_env},
             metadata={"node_key": envelope.node_key},
         )
 
@@ -326,6 +358,27 @@ class APIExecutionPlugin(ExecutionPlugin):
             return PluginResult(
                 success=False, duration_ms=duration_ms,
                 error=f"Request timed out after {timeout}s",
+            )
+        except httpx.ConnectError as exc:
+            duration_ms = int((time.perf_counter() - start) * 1000)
+            raw_error = str(exc)
+            if "CERTIFICATE_VERIFY_FAILED" in raw_error:
+                error = (
+                    "SSL certificate verification failed. Enable a trusted CA bundle "
+                    "or set verify_ssl=false for trusted demo endpoints."
+                )
+            else:
+                error = f"Connection failed: {raw_error}"
+            await envelope.emit(ApiCall(
+                execution_id=envelope.execution_id,
+                node_id=envelope.node_key,
+                method=method, url=url,
+                duration_ms=duration_ms,
+                error=error,
+            ))
+            return PluginResult(
+                success=False, duration_ms=duration_ms,
+                error=error,
             )
         except Exception as exc:
             duration_ms = int((time.perf_counter() - start) * 1000)

@@ -63,6 +63,22 @@ export interface ImplementFixResponse {
   changed: Record<string, unknown>;
 }
 
+export interface ImplementAllFixesResponse {
+  applied: number;
+  skipped: number;
+  results: ImplementFixResponse[];
+}
+
+export interface AIProviderStatus {
+  provider: 'openai' | 'claude';
+  label: string;
+  model: string;
+  configured: boolean;
+  package_available: boolean;
+  status: 'ready' | 'ok' | 'not_configured' | 'package_missing' | 'failed' | 'quota_exhausted' | 'auth_failed' | 'timeout';
+  error?: string | null;
+}
+
 export interface AssistantSource {
   type: string;
   label: string;
@@ -81,6 +97,14 @@ export interface AssistantQueryResponse {
   provider?: string | null;
   model?: string | null;
   llm_error?: string | null;
+  provider_results?: Record<string, unknown>[];
+}
+
+export interface AssistantQueryRequest {
+  executionId: string;
+  question: string;
+  preferredProvider?: 'openai' | 'claude';
+  preferredModel?: string;
 }
 
 export type AIJobType =
@@ -108,7 +132,17 @@ export const intelligenceKeys = {
   fixes: (id: string | null) => ['intelligence', 'fixes', id] as const,
   jobs: (executionId: string | null) => ['intelligence', 'jobs', executionId] as const,
   job: (jobId: string | null) => ['intelligence', 'job', jobId] as const,
+  providers: (probe: boolean) => ['intelligence', 'providers', probe] as const,
 };
+
+export function useAIProviderStatus(probe = false) {
+  return useQuery({
+    queryKey: intelligenceKeys.providers(probe),
+    queryFn: () => api.get<AIProviderStatus[]>(`/intelligence/providers/status${probe ? '?probe=true' : ''}`),
+    staleTime: probe ? 30_000 : 10_000,
+    retry: false,
+  });
+}
 
 export function useExecutionAnalysis(executionId: string | null) {
   return useQuery({
@@ -120,11 +154,11 @@ export function useExecutionAnalysis(executionId: string | null) {
   });
 }
 
-export function useFixSuggestions(executionId: string | null) {
+export function useFixSuggestions(executionId: string | null, enabled = true) {
   return useQuery({
     queryKey: intelligenceKeys.fixes(executionId),
     queryFn: () => api.get<FixSuggestion[]>(`/intelligence/executions/${executionId}/fix-suggestions`),
-    enabled: !!executionId,
+    enabled: !!executionId && enabled,
     staleTime: 5_000,
     retry: false,
   });
@@ -149,11 +183,38 @@ export function useImplementFixSuggestion() {
   });
 }
 
+export function useImplementAllFixSuggestions() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ executionId, fixes }: { executionId: string; fixes: FixSuggestion[] }) => {
+      const implementable = fixes.filter((fix) => fix.can_implement);
+      const results: ImplementFixResponse[] = [];
+      for (const fix of implementable) {
+        results.push(await api.post<ImplementFixResponse>(
+          `/intelligence/executions/${executionId}/fix-suggestions/${encodeURIComponent(fix.node_key)}/implement`,
+          {},
+        ));
+      }
+      return { applied: results.length, skipped: fixes.length - implementable.length, results } satisfies ImplementAllFixesResponse;
+    },
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: intelligenceKeys.fixes(variables.executionId) });
+      qc.invalidateQueries({ queryKey: intelligenceKeys.execution(variables.executionId) });
+      qc.invalidateQueries({ queryKey: ['executions', variables.executionId] });
+      qc.invalidateQueries({ queryKey: ['test-configuration'] });
+      qc.invalidateQueries({ queryKey: ['page-repository'] });
+      qc.invalidateQueries({ queryKey: ['workflows'] });
+    },
+  });
+}
+
 export function useAskAIInspectAssistant() {
   return useMutation({
-    mutationFn: ({ executionId, question }: { executionId: string; question: string }) =>
+    mutationFn: ({ executionId, question, preferredProvider, preferredModel }: AssistantQueryRequest) =>
       api.post<AssistantQueryResponse>(`/intelligence/executions/${executionId}/assistant-query`, {
         question,
+        preferred_provider: preferredProvider,
+        preferred_model: preferredModel,
       }),
   });
 }

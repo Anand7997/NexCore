@@ -1,15 +1,13 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { useUIStore } from '@/lib/stores/uiStore';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { useExecution } from '@/lib/api/executions';
-import {
-  useFixSuggestions,
-  useImplementFixSuggestion,
-} from '@/lib/api/intelligence';
+import { type AssistantQueryResponse, useAskAIInspectAssistant, useFixSuggestions } from '@/lib/api/intelligence';
 import { timeAgo } from '@/lib/utils';
-import { CheckCircle2, RefreshCw, ShieldCheck, Wrench, X } from 'lucide-react';
+import { Bot, FileSearch, RefreshCw, ShieldCheck, X } from 'lucide-react';
 
 function confidenceLabel(value: number): string {
   return `${Math.round(value * 100)}%`;
@@ -24,13 +22,23 @@ function executionTitle(exec: NonNullable<ReturnType<typeof useExecution>['data'
 
 export function AIInspector() {
   const { inspectorExecutionId, closeInspector } = useUIStore();
+  const [scanRequested, setScanRequested] = useState(false);
+  const [assistantResult, setAssistantResult] = useState<AssistantQueryResponse | null>(null);
+  const [assistantError, setAssistantError] = useState<string | null>(null);
   const { data: exec, isLoading } = useExecution(inspectorExecutionId);
+  const askAssistant = useAskAIInspectAssistant();
   const {
     data: fixes = [],
     isLoading: fixesLoading,
+    isFetching: fixesFetching,
     refetch: refetchFixes,
-  } = useFixSuggestions(inspectorExecutionId);
-  const implementFix = useImplementFixSuggestion();
+  } = useFixSuggestions(inspectorExecutionId, scanRequested);
+
+  useEffect(() => {
+    setScanRequested(false);
+    setAssistantResult(null);
+    setAssistantError(null);
+  }, [inspectorExecutionId]);
 
   if (!inspectorExecutionId) return null;
 
@@ -48,6 +56,31 @@ export function AIInspector() {
   const primaryFix = failedNode
     ? fixes.find((item) => item.node_key === failedNode.node_key) ?? fixes[0]
     : fixes[0];
+  const scanning = fixesLoading || fixesFetching || askAssistant.isPending;
+  const runScan = () => {
+    if (!inspectorExecutionId) return;
+    setAssistantResult(null);
+    setAssistantError(null);
+    if (!scanRequested) {
+      setScanRequested(true);
+    } else {
+      void refetchFixes();
+    }
+    askAssistant.mutate(
+      {
+        executionId: inspectorExecutionId,
+        question: 'Scan this execution and explain the most likely failure cause. Keep it short and do not implement changes.',
+        preferredProvider: 'openai',
+        preferredModel: 'gpt-5.5',
+      },
+      {
+        onSuccess: setAssistantResult,
+        onError: (error) => {
+          setAssistantError(error instanceof Error ? error.message : 'Mini AI Bot could not reach OpenAI gpt-5.5.');
+        },
+      },
+    );
+  };
 
   return (
     <div className="flex h-full flex-col">
@@ -71,13 +104,13 @@ export function AIInspector() {
         <div className="p-3">
           <p className="mb-2 flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-slate-600">
             <ShieldCheck size={10} className="text-cyan-400" />
-            Execution Quick Heal
+            Mini AI Bot
           </p>
           <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/8 p-3">
-            <p className="text-xs font-semibold text-cyan-200">Evidence-backed fixes with safe auto-apply</p>
+            <p className="text-xs font-semibold text-cyan-200">Scan-only diagnosis for this execution</p>
             <p className="mt-1 text-[10px] leading-relaxed text-slate-400">
-              This panel can promote verified locators and repair known desktop launch configuration issues directly in the workflow.
-              Deeper root-cause and flaky analysis stays in the AI Inspect dashboard.
+              This panel explains the likely problem without changing workflow, page, or test-step configuration.
+              Use AI Inspect Lab when you need full root cause analysis and implementation plans.
             </p>
           </div>
         </div>
@@ -97,39 +130,69 @@ export function AIInspector() {
         <div className="p-3">
           <div className="mb-2 flex items-center justify-between gap-2">
             <p className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-slate-600">
-              <Wrench size={10} className="text-emerald-400" />
-              Suggested Fixes
+              <Bot size={10} className="text-emerald-400" />
+              Diagnosis
             </p>
             <Button
               variant="ghost"
               size="xs"
-              disabled={fixesLoading}
-              onClick={() => void refetchFixes()}
+              disabled={scanning}
+              onClick={runScan}
             >
-              <RefreshCw size={10} className={fixesLoading ? 'animate-spin' : ''} />
+              <RefreshCw size={10} className={scanning ? 'animate-spin' : ''} />
               Scan
             </Button>
           </div>
 
-          {fixesLoading && (
-            <p className="text-[10px] text-slate-500">Scanning execution evidence for safe config, locator, and element fixes...</p>
-          )}
-
-          {!fixesLoading && fixes.length === 0 && (
+          {!scanRequested && (
             <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
-              <p className="text-xs font-semibold text-slate-300">No safe quick-heal fix found</p>
+              <p className="flex items-center gap-2 text-xs font-semibold text-slate-300">
+                <FileSearch size={12} className="text-cyan-300" />
+                Ready to scan
+              </p>
               <p className="mt-1 text-[10px] leading-relaxed text-slate-500">
-                The failure either needs deeper investigation or does not have enough evidence for a safe patch.
-                Use AI Inspect for root cause analysis or capture more desktop evidence.
+                Click Scan and Mini AI Bot will read the failed node, runtime error, and available quick-heal evidence to explain the problem.
               </p>
             </div>
           )}
 
-          {!fixesLoading && primaryFix && (
+          {scanRequested && scanning && (
+            <p className="text-[10px] text-slate-500">Mini AI Bot is scanning execution evidence for the most likely problem...</p>
+          )}
+
+          {scanRequested && !scanning && assistantError && (
+            <div className="rounded-lg border border-amber-500/20 bg-amber-500/8 p-3">
+              <p className="text-xs font-semibold text-amber-200">OpenAI scan unavailable</p>
+              <p className="mt-1 text-[10px] leading-relaxed text-amber-100/70">{assistantError}</p>
+            </div>
+          )}
+
+          {scanRequested && !scanning && assistantResult && (
+            <div className="rounded-lg border border-cyan-500/25 bg-cyan-500/8 p-3">
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-xs font-semibold text-cyan-200">OpenAI diagnosis</p>
+                <span className="shrink-0 rounded-full border border-cyan-500/25 px-2 py-0.5 text-[9px] uppercase tracking-wider text-cyan-100">
+                  {assistantResult.model || 'gpt-5.5'}
+                </span>
+              </div>
+              <p className="mt-2 whitespace-pre-wrap text-[10px] leading-relaxed text-slate-300">{assistantResult.answer}</p>
+            </div>
+          )}
+
+          {scanRequested && !scanning && fixes.length === 0 && (
+            <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+              <p className="text-xs font-semibold text-slate-300">Problem summary</p>
+              <p className="mt-1 text-[10px] leading-relaxed text-slate-500">
+                {failedNode?.error || exec.error || 'No failed-node error was captured. Run AI Inspect Lab for a deeper evidence scan.'}
+              </p>
+            </div>
+          )}
+
+          {scanRequested && !scanning && primaryFix && (
             <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/8 p-3">
               <div className="flex items-start justify-between gap-2">
                 <div>
-                  <p className="text-xs font-semibold text-emerald-300">{primaryFix.title}</p>
+                  <p className="text-xs font-semibold text-emerald-300">Problem found: {primaryFix.title}</p>
                   <p className="mt-1 text-[10px] text-emerald-300/70">
                     {primaryFix.target_type === 'page_element' ? 'Page Repository' : primaryFix.target_type === 'workflow_node' ? 'Workflow Node' : 'Test Step'} /
                     {' '}{confidenceLabel(primaryFix.confidence)} confidence
@@ -141,21 +204,11 @@ export function AIInspector() {
               </div>
               <p className="mt-2 text-[10px] leading-relaxed text-slate-400">{primaryFix.rationale}</p>
               <div className="mt-2 space-y-1 font-mono text-[10px]">
-                <p className="break-all text-red-300/80">Old: {primaryFix.old_value || 'not set'}</p>
+                <p className="break-all text-red-300/80">Current: {primaryFix.old_value || failedNode?.error || 'not set'}</p>
                 <p className="break-all text-emerald-300/80">
-                  New: {primaryFix.new_value || primaryFix.blocked_reason || 'pending discovery'}
+                  Suggested direction: {primaryFix.new_value || primaryFix.blocked_reason || 'needs deeper evidence'}
                 </p>
               </div>
-              <Button
-                variant="neon"
-                size="xs"
-                className="mt-3 w-full justify-center"
-                disabled={!primaryFix.can_implement || implementFix.isPending}
-                onClick={() => implementFix.mutate({ executionId: exec.id, nodeKey: primaryFix.node_key })}
-              >
-                <CheckCircle2 size={10} />
-                {implementFix.isPending ? 'Implementing...' : primaryFix.target_type === 'workflow_node' ? 'Patch Workflow Node' : 'Implement in Config DB'}
-              </Button>
               {!primaryFix.can_implement && primaryFix.blocked_reason && (
                 <p className="mt-2 text-[10px] leading-relaxed text-amber-300/80">{primaryFix.blocked_reason}</p>
               )}

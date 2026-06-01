@@ -122,7 +122,7 @@ const MODULE_LIBRARY: RouteTile[] = [
   { href: '/agents',             name: 'Agents',             icon: Bot,             color: '#45c08a' },
   // ── Analyze ────────────────────────────────────────────────────────────────
   { href: '/ai-workflow',        name: 'AI Workflow',        icon: Sparkles,        color: '#a195ff' },
-  { href: '/ai-analysis',        name: 'AI Inspect',         icon: Brain,           color: '#4dd1e1' },
+  { href: '/ai-analysis',        name: 'AI Inspect Lab',     icon: Brain,           color: '#4dd1e1' },
   { href: '/ai-investigation',   name: 'AI Investigation',   icon: Microscope,      color: '#f0b558' },
   { href: '/matrix',             name: 'Matrix',             icon: Grid3X3,         color: '#f0b558' },
   { href: '/knowledge-graph',    name: 'Knowledge Graph',    icon: Network,         color: '#5b8cff' },

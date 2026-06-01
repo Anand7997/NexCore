@@ -28,6 +28,7 @@ import type { WorkflowCreateInput, WorkflowDetail } from '@/lib/api/types';
 interface NexusNodeData extends Record<string, unknown> {
   label: string;
   nodeType: string;
+  config?: Record<string, unknown>;
   status?: ExecutionStatus;
   duration?: number;
 }
@@ -68,8 +69,70 @@ const PALETTE_GROUPS = [
 
 const EDGE_STYLE = { stroke: 'url(#edgeGradient)', strokeWidth: 1.5 };
 const MARKER = { type: MarkerType.ArrowClosed, color: '#6366f1' };
+const OPEN_METEO_SAMPLE_URL =
+  'https://api.open-meteo.com/v1/forecast?latitude=12.9716&longitude=77.5946&current=temperature_2m,relative_humidity_2m,wind_speed_10m&timezone=Asia%2FKolkata';
+const API_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'];
 
 let nodeId = 0;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function nodeConfig(value: unknown): Record<string, unknown> {
+  return isRecord(value) ? value : {};
+}
+
+function isApiNodeType(type: string): boolean {
+  return type.startsWith('api.');
+}
+
+function fixedApiMethod(type: string): string | null {
+  if (type === 'api.get') return 'GET';
+  if (type === 'api.post') return 'POST';
+  if (type === 'api.put') return 'PUT';
+  if (type === 'api.delete') return 'DELETE';
+  return null;
+}
+
+function apiNodeTypeForMethod(method: string): string {
+  const normalized = method.toUpperCase();
+  if (normalized === 'POST') return 'api.post';
+  if (normalized === 'PUT') return 'api.put';
+  if (normalized === 'DELETE') return 'api.delete';
+  if (normalized === 'PATCH') return 'api.request';
+  return 'api.get';
+}
+
+function apiNodeLabelForMethod(method: string): string {
+  return `${method.toUpperCase()} Request`;
+}
+
+function defaultConfigForType(type: string): Record<string, unknown> {
+  if (!isApiNodeType(type)) return {};
+  const config: Record<string, unknown> = { timeout_seconds: 30, verify_ssl: true, trust_env: false };
+  const fixedMethod = fixedApiMethod(type);
+  if (fixedMethod) config.method = fixedMethod;
+  if (['api.assert_status', 'api.assert_json_path', 'api.extract', 'api.assert_headers', 'api.assert_response_time', 'api.request'].includes(type)) {
+    config.method = 'GET';
+  }
+  if (type === 'api.assert_status') config.expected_status = 200;
+  if (type === 'api.assert_json_path') config.operator = 'exists';
+  if (type === 'api.assert_response_time') config.max_ms = 2000;
+  return config;
+}
+
+function inferWorkflowPlatforms(nodes: NexusNode[]): string[] {
+  const platforms = new Set<string>();
+  for (const node of nodes) {
+    const type = String(node.data.nodeType || '');
+    if (type.startsWith('api.')) platforms.add('api');
+    else if (type.startsWith('desktop.') || type === 'desktopAction') platforms.add('desktop');
+    else if (type.startsWith('mobile.') || type === 'mobileAction') platforms.add('android');
+    else if (type.startsWith('web.') || type === 'webAction') platforms.add('web');
+  }
+  return platforms.size ? Array.from(platforms) : ['web'];
+}
 
 // ── Converters ─────────────────────────────────────────────────────────────────
 
@@ -77,7 +140,7 @@ function workflowToNodes(wf: WorkflowDetail): NexusNode[] {
   return wf.nodes.map((n) => ({
     id: n.node_key, type: 'nexusNode',
     position: { x: n.position_x, y: n.position_y },
-    data: { label: n.label, nodeType: n.type },
+    data: { label: n.label, nodeType: n.type, config: n.config || {} },
   }));
 }
 
@@ -95,14 +158,14 @@ function toInput(name: string, nodes: NexusNode[], edges: Edge[]): WorkflowCreat
     name: name.trim() || 'Untitled Workflow',
     description: 'Authored in NEXUS QA workflow canvas.',
     tags: ['canvas'],
-    platforms: ['web'],
+    platforms: inferWorkflowPlatforms(nodes),
     variables: {},
     nodes: nodes.map((n) => ({
       node_key: n.id,
       type: String(n.data.nodeType || 'webAction'),
       label: String(n.data.label || n.id),
       description: '',
-      config: {},
+      config: nodeConfig(n.data.config),
       position: { x: n.position.x, y: n.position.y },
       timeout_seconds: 60,
       retry_policy: { max_attempts: 3 },
@@ -121,6 +184,271 @@ function timeAgo(iso: string) {
   if (s < 3600) return `${Math.floor(s / 60)}m ago`;
   if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
   return `${Math.floor(s / 86400)}d ago`;
+}
+
+function formatConfigValue(value: unknown): string {
+  if (value === undefined || value === null || value === '') return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return '';
+  }
+}
+
+function ConfigTextField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  type = 'text',
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  type?: string;
+}) {
+  return (
+    <div>
+      <label className="text-[9px] font-mono uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]">{label}</label>
+      <input
+        type={type}
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+        className="mt-1.5 w-full rounded-lg border border-[var(--color-line-default)] bg-[var(--color-surface-2)] px-3 py-2 font-mono text-[11px] text-[var(--color-fg-default)] outline-none transition-colors placeholder:text-[var(--color-fg-subtle)]/45 focus:border-[var(--color-accent-default)]"
+      />
+    </div>
+  );
+}
+
+function ConfigJsonField({
+  label,
+  value,
+  onChange,
+  placeholder = '{}',
+  objectOnly = true,
+}: {
+  label: string;
+  value: unknown;
+  onChange: (value: unknown) => void;
+  placeholder?: string;
+  objectOnly?: boolean;
+}) {
+  const [text, setText] = useState(formatConfigValue(value));
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    setText(formatConfigValue(value));
+    setError('');
+  }, [value]);
+
+  function commit() {
+    const trimmed = text.trim();
+    if (!trimmed) {
+      onChange(undefined);
+      setError('');
+      return;
+    }
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (objectOnly && !isRecord(parsed)) {
+        setError('Must be a JSON object');
+        return;
+      }
+      onChange(parsed);
+      setError('');
+    } catch {
+      setError('Invalid JSON');
+    }
+  }
+
+  return (
+    <div>
+      <label className="text-[9px] font-mono uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]">{label}</label>
+      <textarea
+        value={text}
+        placeholder={placeholder}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={commit}
+        rows={3}
+        className="mt-1.5 w-full resize-y rounded-lg border border-[var(--color-line-default)] bg-[var(--color-surface-2)] px-3 py-2 font-mono text-[11px] text-[var(--color-fg-default)] outline-none transition-colors placeholder:text-[var(--color-fg-subtle)]/45 focus:border-[var(--color-accent-default)]"
+      />
+      {error && <p className="mt-1 text-[10px] text-[var(--color-state-error)]">{error}</p>}
+    </div>
+  );
+}
+
+function ApiConfigEditor({
+  nodeType,
+  config,
+  onChange,
+}: {
+  nodeType: string;
+  config: Record<string, unknown>;
+  onChange: (key: string, value: unknown) => void;
+}) {
+  const fixedMethod = fixedApiMethod(nodeType);
+  const method = String(config.method ?? fixedMethod ?? 'GET').toUpperCase();
+  const showMethodSelect = !fixedMethod && [
+    'api.request',
+    'api.assert_status',
+    'api.assert_json_path',
+    'api.extract',
+    'api.assert_headers',
+    'api.assert_response_time',
+  ].includes(nodeType);
+  const showBody = ['api.post', 'api.put', 'api.request'].includes(nodeType);
+
+  return (
+    <div className="space-y-3 rounded-xl border border-[var(--color-line-default)] bg-[rgba(91,140,255,0.05)] p-3">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-mono uppercase tracking-[0.14em] text-[var(--color-accent-default)]">API Config</span>
+        <span className="rounded-md border border-[rgba(91,140,255,0.25)] bg-[rgba(91,140,255,0.08)] px-2 py-0.5 text-[10px] font-mono text-[var(--color-accent-default)]">
+          {fixedMethod ?? method}
+        </span>
+      </div>
+
+      {showMethodSelect && (
+        <div>
+          <label className="text-[9px] font-mono uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]">Method</label>
+          <select
+            value={method}
+            onChange={(e) => onChange('method', e.target.value)}
+            className="mt-1.5 w-full rounded-lg border border-[var(--color-line-default)] bg-[var(--color-surface-2)] px-3 py-2 font-mono text-[11px] text-[var(--color-fg-default)] outline-none transition-colors focus:border-[var(--color-accent-default)]"
+          >
+            {API_METHODS.map((item) => <option key={item} value={item}>{item}</option>)}
+          </select>
+        </div>
+      )}
+
+      <ConfigTextField
+        label="URL"
+        value={formatConfigValue(config.url)}
+        placeholder={OPEN_METEO_SAMPLE_URL}
+        onChange={(value) => onChange('url', value)}
+      />
+
+      <ConfigTextField
+        label="Timeout Seconds"
+        type="number"
+        value={formatConfigValue(config.timeout_seconds ?? 30)}
+        onChange={(value) => onChange('timeout_seconds', Number(value || 30))}
+      />
+
+      <label className="flex items-center justify-between rounded-lg border border-[var(--color-line-default)] bg-[var(--color-surface-2)] px-3 py-2">
+        <span className="text-[9px] font-mono uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]">Verify SSL</span>
+        <input
+          type="checkbox"
+          checked={config.verify_ssl !== false}
+          onChange={(event) => onChange('verify_ssl', event.target.checked)}
+          className="h-4 w-4 accent-[var(--color-accent-default)]"
+        />
+      </label>
+
+      <label className="flex items-center justify-between rounded-lg border border-[var(--color-line-default)] bg-[var(--color-surface-2)] px-3 py-2">
+        <span className="text-[9px] font-mono uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]">Use Env Proxy</span>
+        <input
+          type="checkbox"
+          checked={config.trust_env === true}
+          onChange={(event) => onChange('trust_env', event.target.checked)}
+          className="h-4 w-4 accent-[var(--color-accent-default)]"
+        />
+      </label>
+
+      {nodeType === 'api.assert_status' && (
+        <ConfigTextField
+          label="Expected Status"
+          type="number"
+          value={formatConfigValue(config.expected_status ?? 200)}
+          onChange={(value) => onChange('expected_status', Number(value || 200))}
+        />
+      )}
+
+      {['api.assert_json_path', 'api.extract'].includes(nodeType) && (
+        <ConfigTextField
+          label="JSON Path"
+          value={formatConfigValue(config.path)}
+          placeholder="$.current.temperature_2m"
+          onChange={(value) => onChange('path', value)}
+        />
+      )}
+
+      {nodeType === 'api.assert_json_path' && (
+        <>
+          <div>
+            <label className="text-[9px] font-mono uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]">Operator</label>
+            <select
+              value={String(config.operator ?? 'exists')}
+              onChange={(e) => onChange('operator', e.target.value)}
+              className="mt-1.5 w-full rounded-lg border border-[var(--color-line-default)] bg-[var(--color-surface-2)] px-3 py-2 font-mono text-[11px] text-[var(--color-fg-default)] outline-none transition-colors focus:border-[var(--color-accent-default)]"
+            >
+              {['exists', 'eq', 'ne', 'contains'].map((item) => <option key={item} value={item}>{item}</option>)}
+            </select>
+          </div>
+          <ConfigTextField
+            label="Expected"
+            value={formatConfigValue(config.expected)}
+            placeholder="Optional unless using eq/ne/contains"
+            onChange={(value) => onChange('expected', value || undefined)}
+          />
+        </>
+      )}
+
+      {nodeType === 'api.extract' && (
+        <ConfigTextField
+          label="Variable"
+          value={formatConfigValue(config.variable)}
+          placeholder="current_temperature"
+          onChange={(value) => onChange('variable', value)}
+        />
+      )}
+
+      {nodeType === 'api.assert_headers' && (
+        <ConfigJsonField
+          label="Expected Headers JSON"
+          value={config.expected_headers}
+          placeholder={'{"content-type":"application/json"}'}
+          onChange={(value) => onChange('expected_headers', value)}
+        />
+      )}
+
+      {nodeType === 'api.assert_response_time' && (
+        <ConfigTextField
+          label="Max MS"
+          type="number"
+          value={formatConfigValue(config.max_ms ?? 2000)}
+          onChange={(value) => onChange('max_ms', Number(value || 2000))}
+        />
+      )}
+
+      <ConfigJsonField
+        label="Headers JSON"
+        value={config.headers}
+        placeholder={'{"accept":"application/json"}'}
+        onChange={(value) => onChange('headers', value)}
+      />
+
+      <ConfigJsonField
+        label="Params JSON"
+        value={config.params}
+        placeholder={'{"timezone":"Asia/Kolkata"}'}
+        onChange={(value) => onChange('params', value)}
+      />
+
+      {showBody && (
+        <ConfigJsonField
+          label="Body JSON"
+          value={config.body}
+          placeholder={'{"name":"sample"}'}
+          objectOnly={false}
+          onChange={(value) => onChange('body', value)}
+        />
+      )}
+    </div>
+  );
 }
 
 // ── Workflow card ──────────────────────────────────────────────────────────────
@@ -168,10 +496,19 @@ export default function WorkflowsPage() {
   const [workflowName, setWorkflowName]       = useState('Untitled Workflow');
   const [editingName, setEditingName]         = useState(false);
   const [nameInput,   setNameInput]           = useState('Untitled Workflow');
+  const [draftMode, setDraftMode]             = useState(false);
+  const [apiDialogOpen, setApiDialogOpen]     = useState(false);
+  const [apiDraftName, setApiDraftName]       = useState('Open-Meteo API Test');
+  const [apiDraftMethod, setApiDraftMethod]   = useState('GET');
+  const [apiDraftUrl, setApiDraftUrl]         = useState(OPEN_METEO_SAMPLE_URL);
+  const [apiDraftStatus, setApiDraftStatus]   = useState('200');
+  const [apiDraftVerifySsl, setApiDraftVerifySsl] = useState(true);
+  const [apiDraftTrustEnv, setApiDraftTrustEnv] = useState(false);
+  const [apiDraftError, setApiDraftError]     = useState('');
   const loadedRef = useRef<string | null>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
 
-  const { data: apiWorkflows = [] }     = useWorkflows();
+  const { data: apiWorkflows = [] }     = useWorkflows('active');
   const { data: selectedWorkflow }      = useWorkflow(selectedWfId);
   const { mutate: triggerExec, isPending: launching } = useTriggerExecution();
   const { mutate: createWf, isPending: creating }     = useCreateWorkflow();
@@ -181,8 +518,8 @@ export default function WorkflowsPage() {
   const saving = creating || updating;
 
   useEffect(() => {
-    if (!selectedWfId && apiWorkflows.length > 0) setSelectedWfId(apiWorkflows[0].id);
-  }, [apiWorkflows, selectedWfId]);
+    if (!draftMode && !selectedWfId && apiWorkflows.length > 0) setSelectedWfId(apiWorkflows[0].id);
+  }, [apiWorkflows, draftMode, selectedWfId]);
 
   useEffect(() => {
     if (!selectedWorkflow || loadedRef.current === selectedWorkflow.id) return;
@@ -209,23 +546,99 @@ export default function WorkflowsPage() {
 
   function addNode(type: string, label: string) {
     const id = `n${++nodeId}`;
-    setNodes((ns) => [...ns, { id, type: 'nexusNode', position: { x: 220 + Math.random() * 220, y: 180 + Math.random() * 220 }, data: { label, nodeType: type } } as NexusNode]);
+    setNodes((ns) => [...ns, { id, type: 'nexusNode', position: { x: 220 + Math.random() * 220, y: 180 + Math.random() * 220 }, data: { label, nodeType: type, config: defaultConfigForType(type) } } as NexusNode]);
   }
 
-  function newDraft() {
+  function openApiWorkflowDialog() {
+    setApiDraftName('Open-Meteo API Test');
+    setApiDraftMethod('GET');
+    setApiDraftUrl(OPEN_METEO_SAMPLE_URL);
+    setApiDraftStatus('200');
+    setApiDraftVerifySsl(true);
+    setApiDraftTrustEnv(false);
+    setApiDraftError('');
+    setApiDialogOpen(true);
+  }
+
+  function createApiWorkflowDraft() {
+    const url = apiDraftUrl.trim();
+    if (!url) {
+      setApiDraftError('URL is required');
+      return;
+    }
+
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      setApiDraftError('Enter a valid http or https URL');
+      return;
+    }
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      setApiDraftError('URL must start with http or https');
+      return;
+    }
+
+    const method = apiDraftMethod.toUpperCase();
+    const expectedStatus = Number(apiDraftStatus || 200);
+    const requestId = `n${++nodeId}`;
+    const assertId = `n${++nodeId}`;
+    const timingId = `n${++nodeId}`;
+    const requestType = apiNodeTypeForMethod(method);
+    const baseConfig = { url, method, timeout_seconds: 30, verify_ssl: apiDraftVerifySsl, trust_env: apiDraftTrustEnv };
+
     loadedRef.current = null;
+    setDraftMode(true);
     setSelectedWfId(null);
-    setSelectedNode(null);
-    setWorkflowName('Untitled Workflow');
-    setNameInput('Untitled Workflow');
-    setNodes([]); setEdges([]);
+    setWorkflowName(apiDraftName.trim() || 'API Workflow');
+    setNameInput(apiDraftName.trim() || 'API Workflow');
+    setSelectedNode(requestId);
+    setNodes([
+      {
+        id: requestId,
+        type: 'nexusNode',
+        position: { x: 180, y: 180 },
+        data: { label: apiNodeLabelForMethod(method), nodeType: requestType, config: baseConfig },
+      },
+      {
+        id: assertId,
+        type: 'nexusNode',
+        position: { x: 470, y: 180 },
+        data: {
+          label: 'Assert Status',
+          nodeType: 'api.assert_status',
+          config: { ...baseConfig, expected_status: Number.isFinite(expectedStatus) ? expectedStatus : 200 },
+        },
+      },
+      {
+        id: timingId,
+        type: 'nexusNode',
+        position: { x: 760, y: 180 },
+        data: {
+          label: 'Response Time Validation',
+          nodeType: 'api.assert_response_time',
+          config: { ...baseConfig, max_ms: 2000 },
+        },
+      },
+    ] as NexusNode[]);
+    setEdges([
+      { id: `${requestId}-${assertId}`, source: requestId, target: assertId, animated: true, style: EDGE_STYLE, markerEnd: MARKER },
+      { id: `${assertId}-${timingId}`, source: assertId, target: timingId, animated: true, style: EDGE_STYLE, markerEnd: MARKER },
+    ]);
+    setApiDialogOpen(false);
   }
 
   function save() {
     const input = toInput(workflowName, nodes, edges);
     if (selectedWfId) { updateWf(input); return; }
     createWf(input, {
-      onSuccess: (wf) => { loadedRef.current = wf.id; setSelectedWfId(wf.id); setWorkflowName(wf.name); setNameInput(wf.name); },
+      onSuccess: (wf) => {
+        setDraftMode(false);
+        loadedRef.current = wf.id;
+        setSelectedWfId(wf.id);
+        setWorkflowName(wf.name);
+        setNameInput(wf.name);
+      },
     });
   }
 
@@ -239,15 +652,149 @@ export default function WorkflowsPage() {
   function run() {
     const wfId = selectedWfId ?? apiWorkflows[0]?.id;
     if (!wfId) return;
-    triggerExec({ workflow_id: wfId, trigger: 'manual', environment: 'staging', platform: 'web' }, {
+    const [platform] = inferWorkflowPlatforms(nodes);
+    triggerExec({ workflow_id: wfId, trigger: 'manual', environment: 'staging', platform }, {
       onSuccess: (res) => openInspectorFor(res.execution_id),
     });
   }
 
   const selectedNodeData = nodes.find((n) => n.id === selectedNode);
 
+  function updateSelectedNodeConfig(key: string, value: unknown) {
+    if (!selectedNode) return;
+    setNodes((ns) => ns.map((n) => {
+      if (n.id !== selectedNode) return n;
+      const current = nodeConfig(n.data.config);
+      return { ...n, data: { ...n.data, config: { ...current, [key]: value } } };
+    }));
+  }
+
   return (
     <div className="flex h-full overflow-hidden">
+      <AnimatePresence>
+        {apiDialogOpen && (
+          <motion.div
+            key="api-workflow-dialog"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 px-4 backdrop-blur-sm"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) setApiDialogOpen(false);
+            }}
+          >
+            <motion.form
+              initial={{ opacity: 0, y: 12, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 12, scale: 0.98 }}
+              transition={{ duration: 0.18 }}
+              onSubmit={(event) => {
+                event.preventDefault();
+                createApiWorkflowDraft();
+              }}
+              className="w-full max-w-xl rounded-xl border border-[var(--color-line-default)] bg-[var(--color-surface-1)] shadow-2xl"
+            >
+              <div className="flex items-center justify-between border-b border-[var(--color-line-subtle)] px-5 py-4">
+                <div>
+                  <p className="text-sm font-semibold text-[var(--color-fg-default)]">Create API Workflow</p>
+                  <p className="mt-1 text-[11px] text-[var(--color-fg-subtle)]">Start with a request, status check, and response-time check.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setApiDialogOpen(false)}
+                  className="rounded-md p-1.5 text-[var(--color-fg-subtle)] transition-colors hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg-default)]"
+                  aria-label="Close"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+
+              <div className="space-y-4 px-5 py-5">
+                <ConfigTextField
+                  label="Workflow Name"
+                  value={apiDraftName}
+                  onChange={setApiDraftName}
+                  placeholder="Open-Meteo API Test"
+                />
+
+                <div className="grid gap-3 sm:grid-cols-[140px_1fr]">
+                  <div>
+                    <label className="text-[9px] font-mono uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]">Method</label>
+                    <select
+                      value={apiDraftMethod}
+                      onChange={(event) => setApiDraftMethod(event.target.value)}
+                      className="mt-1.5 w-full rounded-lg border border-[var(--color-line-default)] bg-[var(--color-surface-2)] px-3 py-2 font-mono text-[11px] text-[var(--color-fg-default)] outline-none transition-colors focus:border-[var(--color-accent-default)]"
+                    >
+                      {API_METHODS.map((method) => <option key={method} value={method}>{method}</option>)}
+                    </select>
+                  </div>
+
+                  <ConfigTextField
+                    label="Expected Status"
+                    type="number"
+                    value={apiDraftStatus}
+                    onChange={setApiDraftStatus}
+                    placeholder="200"
+                  />
+                </div>
+
+                <ConfigTextField
+                  label="Request URL"
+                  value={apiDraftUrl}
+                  onChange={(value) => {
+                    setApiDraftUrl(value);
+                    if (apiDraftError) setApiDraftError('');
+                  }}
+                  placeholder={OPEN_METEO_SAMPLE_URL}
+                />
+
+                <label className="flex items-center justify-between rounded-lg border border-[var(--color-line-default)] bg-[var(--color-surface-2)] px-3 py-2">
+                  <span className="text-[9px] font-mono uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]">Verify SSL</span>
+                  <input
+                    type="checkbox"
+                    checked={apiDraftVerifySsl}
+                    onChange={(event) => setApiDraftVerifySsl(event.target.checked)}
+                    className="h-4 w-4 accent-[var(--color-accent-default)]"
+                  />
+                </label>
+
+                <label className="flex items-center justify-between rounded-lg border border-[var(--color-line-default)] bg-[var(--color-surface-2)] px-3 py-2">
+                  <span className="text-[9px] font-mono uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]">Use Env Proxy</span>
+                  <input
+                    type="checkbox"
+                    checked={apiDraftTrustEnv}
+                    onChange={(event) => setApiDraftTrustEnv(event.target.checked)}
+                    className="h-4 w-4 accent-[var(--color-accent-default)]"
+                  />
+                </label>
+
+                <button
+                  type="button"
+                  onClick={() => setApiDraftUrl(OPEN_METEO_SAMPLE_URL)}
+                  className="rounded-lg border border-[var(--color-line-default)] px-3 py-2 text-[11px] font-mono text-[var(--color-fg-muted)] transition-colors hover:border-[var(--color-line-strong)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg-default)]"
+                >
+                  Use Open-Meteo sample URL
+                </button>
+
+                {apiDraftError && (
+                  <p className="rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+                    {apiDraftError}
+                  </p>
+                )}
+              </div>
+
+              <div className="flex justify-end gap-2 border-t border-[var(--color-line-subtle)] px-5 py-4">
+                <Button type="button" variant="ghost" size="sm" onClick={() => setApiDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" variant="neon" size="sm">
+                  <Plus size={12} /> Create
+                </Button>
+              </div>
+            </motion.form>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── Left sidebar: Workflow library ─────────────────────────────────── */}
       <aside className="hidden w-60 shrink-0 flex-col border-r border-[var(--color-line-default)] bg-[var(--color-surface-1)] xl:flex">
@@ -256,7 +803,7 @@ export default function WorkflowsPage() {
             <FolderOpen size={13} className="text-[var(--color-accent-default)]" />
             <span className="text-[10px] font-mono uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]">Workflows</span>
           </div>
-          <button onClick={newDraft} title="New workflow"
+          <button onClick={openApiWorkflowDialog} title="New API workflow"
             className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--color-fg-subtle)] transition-all hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg-default)]">
             <Plus size={12} />
           </button>
@@ -273,7 +820,7 @@ export default function WorkflowsPage() {
             : apiWorkflows.map((wf) => (
               <WorkflowCard
                 key={wf.id} wf={wf} selected={wf.id === selectedWfId}
-                onClick={() => { loadedRef.current = null; setSelectedWfId(wf.id); }}
+                onClick={() => { setDraftMode(false); loadedRef.current = null; setSelectedWfId(wf.id); }}
               />
             ))
           }
@@ -374,7 +921,7 @@ export default function WorkflowsPage() {
           </div>
 
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={newDraft}><Plus size={11} /> New</Button>
+            <Button variant="ghost" size="sm" onClick={openApiWorkflowDialog}><Plus size={11} /> New</Button>
             <Button variant="glass" size="sm" onClick={save} disabled={saving || nodes.length === 0}>
               <Save size={11} className={saving ? 'animate-pulse' : ''} />
               {saving ? 'Saving…' : 'Save'}
@@ -475,6 +1022,14 @@ export default function WorkflowsPage() {
                     <span className="font-mono text-[11px] text-[#5b8cff]">{String(selectedNodeData.data.nodeType)}</span>
                   </div>
                 </div>
+
+                {isApiNodeType(String(selectedNodeData.data.nodeType)) && (
+                  <ApiConfigEditor
+                    nodeType={String(selectedNodeData.data.nodeType)}
+                    config={nodeConfig(selectedNodeData.data.config)}
+                    onChange={updateSelectedNodeConfig}
+                  />
+                )}
 
                 {/* Status if present */}
                 {selectedNodeData.data.status && (() => {

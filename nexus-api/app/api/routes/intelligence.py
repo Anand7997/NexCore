@@ -35,13 +35,25 @@ from app.database.models import (
 )
 from app.database.session import get_db
 from app.api.routes.page_repository import _sync_test_steps_for_element
-from app.config import settings
+from app.config import DEFAULT_CLAUDE_MODEL, DEFAULT_OPENAI_MODEL, settings
 from app.intelligence.analyzer import ExecutionIntelligenceAnalyzer
 from app.ai_workflow.providers.claude_provider import ClaudeProvider
 from app.ai_workflow.providers.openai_provider import OpenAIProvider
 
 router = APIRouter(prefix="/intelligence", tags=["intelligence"])
 logger = logging.getLogger(__name__)
+
+
+def _openai_model() -> str:
+    configured = str(settings.default_ai_model or "").strip()
+    return configured if configured.lower().startswith("gpt") else DEFAULT_OPENAI_MODEL
+
+
+def _claude_model() -> str:
+    configured = str(settings.default_ai_model or "").strip()
+    if "claude" in configured.lower():
+        return configured
+    return str(settings.default_claude_model or DEFAULT_CLAUDE_MODEL).strip() or DEFAULT_CLAUDE_MODEL
 
 
 # ── Request / response schemas ─────────────────────────────────────────────────
@@ -97,6 +109,8 @@ class ImplementFixResponse(BaseModel):
 
 class AssistantQueryRequest(BaseModel):
     question: str
+    preferred_provider: Literal["openai", "claude"] | None = None
+    preferred_model: str | None = None
 
 
 class AssistantSource(BaseModel):
@@ -117,6 +131,17 @@ class AssistantQueryResponse(BaseModel):
     provider: str | None = None
     model: str | None = None
     llm_error: str | None = None
+    provider_results: list[dict[str, Any]] = []
+
+
+class AIProviderStatusResponse(BaseModel):
+    provider: Literal["openai", "claude"]
+    label: str
+    model: str
+    configured: bool
+    package_available: bool
+    status: Literal["ready", "ok", "not_configured", "package_missing", "failed", "quota_exhausted", "auth_failed", "timeout"]
+    error: str | None = None
 
 
 class AssistantLLMAnswer(BaseModel):
@@ -625,22 +650,112 @@ def _clamp_confidence(value: float) -> float:
         return 0.7
 
 
+def _provider_error_status(error: str) -> str:
+    text = str(error or "").lower()
+    if any(token in text for token in ("quota", "insufficient_quota", "credit", "exhaust", "rate_limit", "429")):
+        return "quota_exhausted"
+    if any(token in text for token in ("api key", "authentication", "unauthorized", "invalid x-api-key", "401")):
+        return "auth_failed"
+    if any(token in text for token in ("timeout", "timed out")):
+        return "timeout"
+    return "failed"
+
+
+def _provider_status_rows() -> list[AIProviderStatusResponse]:
+    has_openai = importlib.util.find_spec("openai") is not None
+    has_anthropic = importlib.util.find_spec("anthropic") is not None
+    openai_model = _openai_model()
+    claude_model = _claude_model()
+    return [
+        AIProviderStatusResponse(
+            provider="openai",
+            label="OpenAI",
+            model=openai_model,
+            configured=bool(settings.openai_api_key),
+            package_available=has_openai,
+            status="ready" if settings.openai_api_key and has_openai else ("package_missing" if settings.openai_api_key else "not_configured"),
+            error=None if settings.openai_api_key and has_openai else ("openai package is not installed" if settings.openai_api_key else "OPENAI_API_KEY is not configured"),
+        ),
+        AIProviderStatusResponse(
+            provider="claude",
+            label="Claude",
+            model=claude_model,
+            configured=bool(settings.anthropic_api_key),
+            package_available=has_anthropic,
+            status="ready" if settings.anthropic_api_key and has_anthropic else ("package_missing" if settings.anthropic_api_key else "not_configured"),
+            error=None if settings.anthropic_api_key and has_anthropic else ("anthropic package is not installed" if settings.anthropic_api_key else "ANTHROPIC_API_KEY is not configured"),
+        ),
+    ]
+
+
+def _assistant_provider_candidates(
+    preferred_provider: str | None = None,
+    preferred_model: str | None = None,
+) -> list[tuple[Any, str, str, str]]:
+    rows = _provider_status_rows()
+    candidates: list[tuple[Any, str, str, str]] = []
+    provider_filter = (preferred_provider or "").strip().lower()
+    model_override = (preferred_model or "").strip()
+    for row in rows:
+        if row.status != "ready":
+            continue
+        if provider_filter and row.provider != provider_filter:
+            continue
+        if row.provider == "openai":
+            model = model_override if model_override and model_override.lower().startswith("gpt") else row.model
+            candidates.append((OpenAIProvider(api_key=settings.openai_api_key, model=model), "openai", "OpenAI", model))
+        elif row.provider == "claude":
+            model = model_override if model_override and "claude" in model_override.lower() else row.model
+            candidates.append((ClaudeProvider(api_key=settings.anthropic_api_key, model=model), "claude", "Claude", model))
+    return candidates
+
+
+async def _probe_provider(row: AIProviderStatusResponse) -> AIProviderStatusResponse:
+    if row.status != "ready":
+        return row
+    try:
+        provider = (
+            OpenAIProvider(api_key=settings.openai_api_key, model=row.model)
+            if row.provider == "openai"
+            else ClaudeProvider(api_key=settings.anthropic_api_key, model=row.model)
+        )
+        await asyncio.wait_for(
+            provider.generate(
+                'Health check. Return exactly this JSON shape with your own wording: {"answer":"provider available","confidence":1,"recommended_fix_id":null}',
+                AssistantLLMAnswer,
+            ),
+            timeout=25,
+        )
+        row.status = "ok"
+        row.error = None
+    except asyncio.TimeoutError:
+        row.status = "timeout"
+        row.error = "Provider health check timed out after 25 seconds."
+    except Exception as exc:  # pragma: no cover - provider/network/quota failures vary.
+        message = str(exc) or repr(exc)
+        row.status = _provider_error_status(message)  # type: ignore[assignment]
+        row.error = message
+    return row
+
+
 def _build_assistant_provider() -> tuple[Any, str, str] | None:
     provider = (settings.default_ai_provider or "openai").strip().lower()
-    model = (settings.default_ai_model or "gpt-5.5").strip()
+    model = (settings.default_ai_model or DEFAULT_OPENAI_MODEL).strip()
     has_openai = importlib.util.find_spec("openai") is not None
     has_anthropic = importlib.util.find_spec("anthropic") is not None
 
     if provider == "openai" and settings.openai_api_key and has_openai:
-        return OpenAIProvider(api_key=settings.openai_api_key, model=model), "openai", model
+        selected_model = model if model.lower().startswith("gpt") else DEFAULT_OPENAI_MODEL
+        return OpenAIProvider(api_key=settings.openai_api_key, model=selected_model), "openai", selected_model
     if provider in {"claude", "anthropic"} and settings.anthropic_api_key and has_anthropic:
-        return ClaudeProvider(api_key=settings.anthropic_api_key, model=model), "anthropic", model
+        selected_model = model if "claude" in model.lower() else _claude_model()
+        return ClaudeProvider(api_key=settings.anthropic_api_key, model=selected_model), "anthropic", selected_model
 
     if settings.openai_api_key and has_openai:
-        fallback_model = model if model.lower().startswith("gpt") else "gpt-5.5"
+        fallback_model = model if model.lower().startswith("gpt") else DEFAULT_OPENAI_MODEL
         return OpenAIProvider(api_key=settings.openai_api_key, model=fallback_model), "openai", fallback_model
     if settings.anthropic_api_key and has_anthropic:
-        fallback_model = model if "claude" in model.lower() else "claude-3-5-sonnet-latest"
+        fallback_model = model if "claude" in model.lower() else _claude_model()
         return ClaudeProvider(api_key=settings.anthropic_api_key, model=fallback_model), "anthropic", fallback_model
     return None
 
@@ -693,12 +808,16 @@ async def _assistant_llm_answer(
     fixes: list[FixSuggestionResponse],
     panels: dict[str, Any],
     fallback_answer: str,
-) -> tuple[AssistantLLMAnswer | None, str | None, str | None, str | None]:
-    provider_info = _build_assistant_provider()
-    if provider_info is None:
-        return None, None, None, "No configured OpenAI or Anthropic provider/package was available."
+    preferred_provider: str | None = None,
+    preferred_model: str | None = None,
+) -> tuple[AssistantLLMAnswer | None, str | None, str | None, str | None, list[dict[str, Any]]]:
+    candidates = _assistant_provider_candidates(preferred_provider, preferred_model)
+    if not candidates:
+        provider_hint = f" for {preferred_provider}" if preferred_provider else ""
+        return None, None, None, f"No configured OpenAI or Anthropic provider/package was available{provider_hint}.", [
+            row.model_dump() for row in _provider_status_rows()
+        ]
 
-    provider, provider_name, model = provider_info
     prompt = _assistant_prompt(
         question=question,
         intent=intent,
@@ -708,29 +827,75 @@ async def _assistant_llm_answer(
         panels=panels,
         fallback_answer=fallback_answer,
     )
-    try:
-        result = await asyncio.wait_for(provider.generate(prompt, AssistantLLMAnswer), timeout=45)
-    except TimeoutError:
-        message = "LLM generation timed out after 45 seconds."
-        logger.warning("AI Inspect assistant LLM generation failed with %s/%s: %s", provider_name, model, message)
-        return None, provider_name, model, message
-    except Exception as exc:  # pragma: no cover - provider/network failures vary by machine.
-        logger.warning("AI Inspect assistant LLM generation failed with %s/%s: %s", provider_name, model, exc)
-        return None, provider_name, model, str(exc)
 
+    async def run_candidate(candidate: tuple[Any, str, str, str]) -> tuple[AssistantLLMAnswer | None, dict[str, Any]]:
+        provider, provider_name, label, model = candidate
+        try:
+            result = await asyncio.wait_for(provider.generate(prompt, AssistantLLMAnswer), timeout=45)
+            return result, {
+                "provider": provider_name,
+                "label": label,
+                "model": model,
+                "status": "ok",
+                "confidence": _clamp_confidence(result.confidence),
+                "error": None,
+            }
+        except asyncio.TimeoutError:
+            message = "LLM generation timed out after 45 seconds."
+            logger.warning("AI Inspect assistant LLM generation failed with %s/%s: %s", provider_name, model, message)
+            return None, {
+                "provider": provider_name,
+                "label": label,
+                "model": model,
+                "status": "timeout",
+                "confidence": 0.0,
+                "error": message,
+            }
+        except Exception as exc:  # pragma: no cover - provider/network failures vary by machine.
+            message = str(exc)
+            logger.warning("AI Inspect assistant LLM generation failed with %s/%s: %s", provider_name, model, message)
+            return None, {
+                "provider": provider_name,
+                "label": label,
+                "model": model,
+                "status": _provider_error_status(message),
+                "confidence": 0.0,
+                "error": message,
+            }
+
+    raw_results = await asyncio.gather(*(run_candidate(candidate) for candidate in candidates))
     allowed_ids = {fix.id for fix in fixes}
-    recommended_fix_id = result.recommended_fix_id if result.recommended_fix_id in allowed_ids else None
+    provider_results = [item for _answer, item in raw_results]
+    successful = [
+        (answer, item)
+        for answer, item in raw_results
+        if answer is not None and item.get("status") == "ok"
+    ]
+    if not successful:
+        joined_errors = "; ".join(f"{item.get('label')}: {item.get('error')}" for item in provider_results)
+        return None, None, None, joined_errors or "All configured AI providers failed.", provider_results
+
+    answer, selected = max(
+        successful,
+        key=lambda pair: (
+            _clamp_confidence(pair[0].confidence if pair[0] else 0.0),
+            1 if pair[1].get("provider") == "openai" else 0,
+        ),
+    )
+    assert answer is not None
+    recommended_fix_id = answer.recommended_fix_id if answer.recommended_fix_id in allowed_ids else None
     if recommended_fix_id is None and fixes and intent == "fix":
         recommended_fix_id = fixes[0].id
     return (
         AssistantLLMAnswer(
-            answer=result.answer.strip(),
-            confidence=_clamp_confidence(result.confidence),
+            answer=answer.answer.strip(),
+            confidence=_clamp_confidence(answer.confidence),
             recommended_fix_id=recommended_fix_id,
         ),
-        provider_name,
-        model,
+        str(selected.get("provider")),
+        str(selected.get("model")),
         None,
+        provider_results,
     )
 
 
@@ -1028,6 +1193,15 @@ async def _collect_fix_suggestions(db: AsyncSession, execution_id: str) -> list[
     return sorted(suggestions, key=lambda item: (item.can_implement, item.confidence), reverse=True)
 
 
+@router.get("/providers/status", response_model=list[AIProviderStatusResponse])
+async def get_ai_provider_status(probe: bool = False) -> list[AIProviderStatusResponse]:
+    """Return OpenAI/Claude availability, optionally doing a live low-cost probe."""
+    rows = _provider_status_rows()
+    if not probe:
+        return rows
+    return list(await asyncio.gather(*(_probe_provider(row) for row in rows)))
+
+
 @router.get("/executions/{execution_id}")
 async def get_heuristic_analysis(
     execution_id: str,
@@ -1201,8 +1375,9 @@ async def query_ai_inspect_assistant(
     provider_name: str | None = None
     model_name: str | None = None
     llm_error: str | None = None
+    provider_results: list[dict[str, Any]] = []
     recommended_fix_id = fixes[0].id if fixes else None
-    llm_answer, provider_name, model_name, llm_error = await _assistant_llm_answer(
+    llm_answer, provider_name, model_name, llm_error, provider_results = await _assistant_llm_answer(
         question=body.question,
         intent=intent,
         execution=execution,
@@ -1210,6 +1385,8 @@ async def query_ai_inspect_assistant(
         fixes=fixes,
         panels=panels,
         fallback_answer=answer,
+        preferred_provider=body.preferred_provider,
+        preferred_model=body.preferred_model,
     )
     if llm_answer is not None:
         answer = llm_answer.answer or answer
@@ -1222,6 +1399,7 @@ async def query_ai_inspect_assistant(
         "provider": provider_name,
         "model": model_name,
         "llm_error": llm_error,
+        "provider_results": provider_results,
     }
 
     return AssistantQueryResponse(
@@ -1236,6 +1414,7 @@ async def query_ai_inspect_assistant(
         provider=provider_name,
         model=model_name,
         llm_error=llm_error,
+        provider_results=provider_results,
     )
 
 

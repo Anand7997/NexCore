@@ -34,13 +34,16 @@ import { Button } from '@/components/ui/Button';
 import { useExecutions } from '@/lib/api/executions';
 import {
   useAskAIInspectAssistant,
+  useAIProviderStatus,
   useAIJobs,
   useExecutionAnalysis,
+  useImplementAllFixSuggestions,
   useFixSuggestions,
   useImplementFixSuggestion,
   useTriggerAIAnalysis,
   type AssistantQueryResponse,
   type AssistantSource,
+  type AIProviderStatus,
   type AIJobStatus,
   type AIJobType,
   type FixSuggestion,
@@ -689,6 +692,76 @@ function asRecordArray(value: unknown): Record<string, unknown>[] {
   ));
 }
 
+function providerAccent(status: string): Accent {
+  if (status === 'ok' || status === 'ready') return 'green';
+  if (status === 'quota_exhausted' || status === 'auth_failed') return 'amber';
+  if (status === 'not_configured' || status === 'package_missing') return 'slate';
+  return 'red';
+}
+
+function providerLabel(status: string): string {
+  if (status === 'quota_exhausted') return 'Quota exhausted';
+  if (status === 'auth_failed') return 'Auth failed';
+  if (status === 'package_missing') return 'Package missing';
+  if (status === 'not_configured') return 'Not configured';
+  return status;
+}
+
+function ProviderCouncil({
+  statuses,
+  attempts,
+  checking,
+  onCheck,
+}: {
+  statuses: AIProviderStatus[];
+  attempts: Record<string, unknown>[];
+  checking: boolean;
+  onCheck: () => void;
+}) {
+  const attemptsByProvider = new Map(attempts.map((attempt) => [asText(attempt.provider), attempt]));
+  return (
+    <Panel accent="blue" className="p-5">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-500">Provider Council</p>
+          <h2 className="mt-1 text-lg font-bold text-white">OpenAI and Claude health</h2>
+          <p className="mt-1 text-xs text-slate-500">
+            OpenAI remains the fallback path when Claude is out of quota. When both are healthy, the Lab compares both and selects the strongest fix.
+          </p>
+        </div>
+        <Button variant="neon" size="sm" onClick={onCheck} disabled={checking}>
+          {checking ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+          {checking ? 'Checking...' : 'Check Live'}
+        </Button>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        {statuses.map((status) => {
+          const attempt = attemptsByProvider.get(status.provider);
+          const liveStatus = asText(attempt?.status) || status.status;
+          const confidence = asText(attempt?.confidence);
+          const error = asText(attempt?.error) || status.error || '';
+          return (
+            <div key={status.provider} className={`rounded-2xl border p-4 ${ACCENTS[providerAccent(liveStatus)].border} bg-white/[0.035]`}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-bold text-white">{status.label}</p>
+                  <p className="mt-1 font-mono text-[10px] text-slate-500">{status.model}</p>
+                </div>
+                <StatusPill label={providerLabel(liveStatus)} accent={providerAccent(liveStatus)} />
+              </div>
+              <p className="mt-3 text-xs leading-relaxed text-slate-400">
+                {liveStatus === 'ok'
+                  ? `Working${confidence ? ` at ${confidence} confidence` : ''}.`
+                  : error || 'Ready to check live availability.'}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+    </Panel>
+  );
+}
+
 function AssistantSourceList({ sources }: { sources: AssistantSource[] }) {
   if (sources.length === 0) {
     return (
@@ -733,7 +806,7 @@ function AssistantFixCouncil({
       <div className="rounded-xl border border-white/8 bg-white/[0.035] px-4 py-8 text-center">
         <Wrench className="mx-auto text-slate-600" size={24} />
         <p className="mt-3 text-sm font-semibold text-slate-300">No fix candidate selected</p>
-        <p className="mt-1 text-xs text-slate-500">Ask "show fixes" or run Deep Inspect to build a patch council.</p>
+        <p className="mt-1 text-xs text-slate-500">Ask "show fixes" or run a Lab Scan to build a patch council.</p>
       </div>
     );
   }
@@ -942,7 +1015,7 @@ function buildAssistantResponse({
         `I do not have a safe patch ready for ${title} yet.`,
         'OpenAI 5.5 view: gather the failed node config, runtime output, and linked repository/test-step metadata first.',
         'Claude view: avoid patching until there is a verified target and rollback path.',
-        'Run Deep Inspect, then I will show ranked fixes you can choose from.',
+        'Run Lab Scan, then I will show ranked fixes you can choose from.',
       ].join('\n');
     }
     const modelLines = modelFixes.map((candidate) => (
@@ -972,19 +1045,19 @@ function buildAssistantResponse({
     }
     return rootCause
       ? `Root cause readout for ${title}: ${cleanText(rootCause, 620)}`
-      : `I need a completed inspection job before I can explain the root cause for ${title}. Click Run Deep Inspect and I will stream the evidence path here.`;
+      : `I need a completed inspection job before I can explain the root cause for ${title}. Click Run Lab Scan and I will stream the evidence path here.`;
   }
   if (normalized.includes('next') || normalized.includes('rerun') || normalized.includes('validate')) {
     const moves = recommendations.length
       ? recommendations.slice(0, 3).map((item, index) => `${index + 1}. ${cleanText(item, 180)}`).join('\n')
       : fix
         ? `1. Review the recommended ${fixTargetLabel(fix)} patch.\n2. Apply with audit.\n3. Rerun the same testcase and confirm desktop.launch completes before interaction steps.`
-        : '1. Run Deep Inspect.\n2. Review Suggested Fixes.\n3. Apply only implementable patches, then rerun.';
+        : '1. Run Lab Scan.\n2. Review Suggested Fixes.\n3. Apply only implementable patches, then rerun.';
     return `Recommended next moves:\n${moves}`;
   }
   return [
     `As a test engineer, I would read ${title} from three angles: failed node behavior, workflow/test-step config, and runtime evidence.`,
-    rootCause ? `Current root-cause summary: ${cleanText(rootCause, 360)}` : 'There is not enough root-cause text yet, so I would run Deep Inspect before making a risky change.',
+    rootCause ? `Current root-cause summary: ${cleanText(rootCause, 360)}` : 'There is not enough root-cause text yet, so I would run Lab Scan before making a risky change.',
     fix ? `Current best patch candidate: ${fix.title} (${confidencePercent(fix.confidence)}% confidence). Ask "show fixes" to compare OpenAI 5.5 and Claude recommendations.` : 'No implementable patch is selected yet.',
   ].join('\n');
 }
@@ -1188,13 +1261,21 @@ export default function AIAnalysisPage() {
   const [selectedExecution, setSelectedExecution] = useState<string | null>(null);
   const [jobType, setJobType] = useState<AIJobType>('root_cause_analysis');
   const [implementedFixId, setImplementedFixId] = useState('');
+  const [implementationMessage, setImplementationMessage] = useState('');
+  const [bulkScanning, setBulkScanning] = useState(false);
+  const [bulkScanMessage, setBulkScanMessage] = useState('');
+  const [providerProbe, setProviderProbe] = useState(false);
 
   useEffect(() => {
     const requestedExecution = new URLSearchParams(window.location.search).get('executionId');
     if (requestedExecution) setSelectedExecution(requestedExecution);
   }, []);
 
-  const defaultExecution = executions.find((execution) => execution.status === 'failed') ?? executions[0];
+  const failedExecutions = useMemo(
+    () => executions.filter((execution) => execution.status === 'failed'),
+    [executions],
+  );
+  const defaultExecution = failedExecutions[0] ?? executions[0];
   const selectedExecutionId = executions.some((execution) => execution.id === selectedExecution)
     ? selectedExecution
     : defaultExecution?.id ?? null;
@@ -1202,8 +1283,14 @@ export default function AIAnalysisPage() {
   const { data: analysis } = useExecutionAnalysis(selectedExecutionId);
   const { data: aiJobs = [] } = useAIJobs(selectedExecutionId);
   const { data: fixes = [] } = useFixSuggestions(selectedExecutionId);
+  const {
+    data: providerStatuses = [],
+    isFetching: providerChecking,
+    refetch: refetchProviderStatus,
+  } = useAIProviderStatus(providerProbe);
   const triggerMutation = useTriggerAIAnalysis();
   const implementFix = useImplementFixSuggestion();
+  const implementAllFixes = useImplementAllFixSuggestions();
 
   const selectedExecutionItem = executions.find((execution) => execution.id === selectedExecutionId);
   const latestJob = aiJobs[0];
@@ -1214,6 +1301,7 @@ export default function AIAnalysisPage() {
   const recommendations = asList(jobResult?.recommendations);
   const analysisSteps = asList(jobResult?.analysis_steps);
   const rootCause = cleanText(asText(jobResult?.root_cause) || asText(jobResult?.summary) || insights[0]?.description || '', 900);
+  const providerAttempts = asRecordArray(jobResult?.provider_results);
   const confidence = confidencePercent(typeof jobResult?.confidence === 'number' ? jobResult.confidence : insights[0]?.confidence);
   const progress = Math.round((latestJob?.progress ?? 0) * 100);
   const failedCount = selectedExecutionItem ? Math.max(selectedExecutionItem.node_count - selectedExecutionItem.completed_nodes, 0) : 0;
@@ -1232,14 +1320,60 @@ export default function AIAnalysisPage() {
   const runInvestigation = () => {
     if (!selectedExecutionId) return;
     setImplementedFixId('');
+    setImplementationMessage('');
+    setBulkScanMessage('');
     triggerMutation.mutate({ executionId: selectedExecutionId, jobType });
+  };
+
+  const runProviderCheck = () => {
+    if (providerProbe) {
+      void refetchProviderStatus();
+      return;
+    }
+    setProviderProbe(true);
+  };
+
+  const runFailedLabScan = async () => {
+    if (failedExecutions.length === 0) return;
+    setBulkScanning(true);
+    setBulkScanMessage('');
+    setImplementedFixId('');
+    try {
+      for (const execution of failedExecutions) {
+        await triggerMutation.mutateAsync({
+          executionId: execution.id,
+          jobType: 'root_cause_analysis',
+        });
+      }
+      setBulkScanMessage(`Queued detailed lab scans for ${failedExecutions.length} failed ${failedExecutions.length === 1 ? 'execution' : 'executions'}.`);
+    } catch {
+      setBulkScanMessage('Could not queue every failed execution. Check backend availability and retry the Lab Scan.');
+    } finally {
+      setBulkScanning(false);
+    }
   };
 
   const implementSelectedFix = (fix: FixSuggestion) => {
     if (!selectedExecutionId) return;
     implementFix.mutate(
       { executionId: selectedExecutionId, nodeKey: fix.node_key },
-      { onSuccess: () => setImplementedFixId(fix.id) },
+      { onSuccess: () => {
+        setImplementedFixId(fix.id);
+        setImplementationMessage('Implemented the recommended verified fix and refreshed linked configuration.');
+      } },
+    );
+  };
+
+  const implementAllVerifiedFixes = () => {
+    if (!selectedExecutionId || recommendedFixes.length === 0) return;
+    implementAllFixes.mutate(
+      { executionId: selectedExecutionId, fixes: recommendedFixes },
+      {
+        onSuccess: (result) => {
+          setImplementedFixId('all');
+          setImplementationMessage(`Implemented ${result.applied} verified ${result.applied === 1 ? 'fix' : 'fixes'}${result.skipped ? `; ${result.skipped} candidates need more evidence or manual review.` : '.'}`);
+        },
+      },
     );
   };
 
@@ -1261,15 +1395,15 @@ export default function AIAnalysisPage() {
             <div className="flex min-w-0 flex-col justify-between gap-6">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <StatusPill label="MCP Inspect" accent="green" />
-                  <StatusPill label="Full-system diagnosis" accent="cyan" />
+                  <StatusPill label="AI Inspect Lab" accent="green" />
+                  <StatusPill label="Failed execution diagnosis" accent="cyan" />
                 </div>
                 <h1 className="mt-5 max-w-4xl text-4xl font-black tracking-[-0.04em] text-white md:text-6xl">
-                  AI Inspect that can follow the failure all the way down.
+                  AI Inspect Lab for deep failure reasons and implementation plans.
                 </h1>
                 <p className="mt-4 max-w-3xl text-sm leading-7 text-cyan-50/70 md:text-base">
-                  Not just "XPath wrong". This cockpit checks locator quality, page element links, action mapping,
-                  backend handler support, stale workflow config, DB integrity, API evidence, and browser runtime behavior.
+                  This lab scans failed testcases and workflows in depth: failed nodes, runtime evidence, locator quality,
+                  page and test-step config, API responses, stale workflow bindings, and safe implementation options.
                 </p>
               </div>
 
@@ -1314,7 +1448,7 @@ export default function AIAnalysisPage() {
                     onClick={runInvestigation}
                   >
                     {triggerMutation.isPending || activeJob ? <Loader2 size={15} className="animate-spin" /> : <Play size={15} />}
-                    {triggerMutation.isPending || activeJob ? 'Inspecting...' : 'Run Deep Inspect'}
+                    {triggerMutation.isPending || activeJob ? 'Inspecting...' : 'Run Lab Scan'}
                   </Button>
                 </div>
               </div>
@@ -1330,6 +1464,73 @@ export default function AIAnalysisPage() {
           <MetricCard label="Insights" value={insights.length} icon={Brain} accent="violet" />
           <MetricCard label="Patch Plans" value={fixes.length} icon={Wrench} accent="green" />
         </div>
+
+        <ProviderCouncil
+          statuses={providerStatuses}
+          attempts={providerAttempts}
+          checking={providerChecking}
+          onCheck={runProviderCheck}
+        />
+
+        <Panel accent="red" className="p-5">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-500">Failed Lab Queue</p>
+              <h2 className="mt-1 text-lg font-bold text-white">Detailed scan queue for failed testcases and workflows</h2>
+              <p className="mt-1 text-xs text-slate-500">
+                The Lab keeps implementation actions here, while Mini AI Bot stays read-only inside Workflow and Execution.
+              </p>
+            </div>
+            <Button
+              variant="neon"
+              size="sm"
+              className="border-red-300/35 bg-red-400/10 text-red-100 hover:bg-red-400/20"
+              disabled={failedExecutions.length === 0 || bulkScanning || triggerMutation.isPending}
+              onClick={() => void runFailedLabScan()}
+            >
+              {bulkScanning ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
+              {bulkScanning ? 'Queuing scans...' : `Scan All Failed (${failedExecutions.length})`}
+            </Button>
+          </div>
+
+          {bulkScanMessage && (
+            <p className="mb-3 rounded-2xl border border-white/8 bg-white/[0.035] px-4 py-3 text-xs text-slate-300">
+              {bulkScanMessage}
+            </p>
+          )}
+
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            {failedExecutions.slice(0, 9).map((execution) => {
+              const selected = execution.id === selectedExecutionId;
+              return (
+                <button
+                  key={execution.id}
+                  type="button"
+                  onClick={() => setSelectedExecution(execution.id)}
+                  className={`rounded-2xl border p-3 text-left transition ${selected ? 'border-cyan-300/35 bg-cyan-400/10' : 'border-white/8 bg-white/[0.035] hover:border-red-300/20 hover:bg-red-400/5'}`}
+                >
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <span className="rounded-md border border-red-300/20 bg-red-400/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.18em] text-red-100">
+                      {execution.test_case_name ? 'Testcase' : 'Workflow'}
+                    </span>
+                    <span className="font-mono text-[10px] text-red-200">{execution.platform}</span>
+                  </div>
+                  <p className="truncate text-xs font-semibold text-white">{executionLabel(execution)}</p>
+                  <p className="mt-1 text-[10px] text-slate-500">
+                    {execution.environment} / {timeAgo(execution.started_at ?? execution.created_at)}
+                  </p>
+                </button>
+              );
+            })}
+            {failedExecutions.length === 0 && (
+              <div className="rounded-2xl border border-white/8 bg-white/[0.035] px-4 py-6 text-center md:col-span-2 xl:col-span-3">
+                <CheckCircle2 className="mx-auto text-emerald-300" size={22} />
+                <p className="mt-2 text-sm font-semibold text-slate-200">No failed executions in the current list</p>
+                <p className="mt-1 text-xs text-slate-500">Failed workflows and testcases will appear here for lab-level diagnosis.</p>
+              </div>
+            )}
+          </div>
+        </Panel>
 
         <Panel accent="green" className="p-4">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -1372,25 +1573,42 @@ export default function AIAnalysisPage() {
               </div>
               <div className="rounded-3xl border border-white/8 bg-slate-950/40 p-5">
                 <p className="text-sm leading-7 text-slate-200">
-                  {rootCause || (activeJob ? 'AI Inspect is correlating execution evidence, code paths, DB links, and runtime behavior.' : 'Run Deep Inspect to produce a detailed root-cause narrative.')}
+                  {rootCause || (activeJob ? 'AI Inspect Lab is correlating execution evidence, code paths, DB links, and runtime behavior.' : 'Run Lab Scan to produce a detailed root-cause narrative.')}
                 </p>
               </div>
             </Panel>
 
             <Panel accent="green" className="p-5">
-              <div className="mb-4 flex items-center justify-between gap-3">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-500">Patch Plans</p>
+                  <p className="mt-1 text-xs text-slate-500">Implement applies every verified repository, test-step, or workflow-config fix candidate for this execution.</p>
                 </div>
-                <StatusPill label={`${recommendedFixes.length} found`} accent={recommendedFixes.length ? 'green' : 'slate'} />
+                <div className="flex items-center gap-2">
+                  <StatusPill label={`${recommendedFixes.length} found`} accent={recommendedFixes.length ? 'green' : 'slate'} />
+                  <Button
+                    variant="neon"
+                    size="sm"
+                    disabled={!selectedExecutionId || recommendedFixes.every((fix) => !fix.can_implement) || implementAllFixes.isPending}
+                    onClick={implementAllVerifiedFixes}
+                  >
+                    {implementAllFixes.isPending ? <Loader2 size={13} className="animate-spin" /> : <Wand2 size={13} />}
+                    Implement All Verified
+                  </Button>
+                </div>
               </div>
+              {implementationMessage && (
+                <p className="mb-3 rounded-2xl border border-emerald-300/15 bg-emerald-400/8 px-4 py-3 text-xs text-emerald-100">
+                  {implementationMessage}
+                </p>
+              )}
               <div className="space-y-3">
                 {recommendedFixes.slice(0, 4).map((fix) => (
                   <FixCard
                     key={fix.id}
                     fix={fix}
-                    implemented={implementedFixId === fix.id}
-                    disabled={implementFix.isPending}
+                    implemented={implementedFixId === fix.id || implementedFixId === 'all'}
+                    disabled={implementFix.isPending || implementAllFixes.isPending}
                     onImplement={() => implementSelectedFix(fix)}
                   />
                 ))}
@@ -1407,7 +1625,7 @@ export default function AIAnalysisPage() {
             <Panel accent="cyan" className="p-5">
               <div className="mb-4">
                 <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-500">Capability Matrix</p>
-                <h2 className="mt-1 text-lg font-bold text-white">What this dashboard is allowed to inspect</h2>
+                <h2 className="mt-1 text-lg font-bold text-white">What this Lab is allowed to inspect</h2>
               </div>
               <CapabilityGrid />
               <ClopAgentConsole

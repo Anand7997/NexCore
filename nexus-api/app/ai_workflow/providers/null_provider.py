@@ -86,6 +86,9 @@ class NullProvider(AbstractAIProvider):
                 locator_order=["testid", "role", "css", "xpath"],
             )
 
+        if name == "LocatorEnhancementList":
+            return schema(items=[])  # type: ignore[return-value]
+
         return schema.model_validate({})
 
     async def generate_stream(self, prompt: str, schema: type[T]) -> AsyncIterator[str]:

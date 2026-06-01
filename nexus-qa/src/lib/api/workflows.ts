@@ -11,14 +11,15 @@ export const workflowKeys = {
   detail: (id: string) => ['workflows', id] as const,
 };
 
-export function useWorkflows(status?: string) {
-  const params = status ? `?status=${status}` : '';
+export function useWorkflows(status: string = 'active') {
+  const effectiveStatus = status === 'all' ? '' : status;
+  const params = effectiveStatus ? `?status=${effectiveStatus}` : '';
   return useQuery({
-    queryKey: [...workflowKeys.all, status],
+    queryKey: [...workflowKeys.all, effectiveStatus || 'all'],
     queryFn: () => api.get<WorkflowListItem[]>(`/workflows/${params}`),
-    staleTime: status === 'active' ? 2_000 : 10_000,
-    refetchInterval: status === 'active' ? 5_000 : false,
-    refetchOnWindowFocus: status === 'active' ? 'always' : true,
+    staleTime: effectiveStatus === 'active' ? 2_000 : 10_000,
+    refetchInterval: effectiveStatus === 'active' ? 5_000 : false,
+    refetchOnWindowFocus: effectiveStatus === 'active' ? 'always' : true,
   });
 }
 

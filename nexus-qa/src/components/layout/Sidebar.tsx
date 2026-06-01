@@ -76,7 +76,7 @@ const GROUPS: NavGroup[] = [
     id: 'observability',
     label: 'Observability',
     items: [
-      { href: '/ai-analysis', label: 'AI Inspect', icon: Brain },
+      { href: '/ai-analysis', label: 'AI Inspect Lab', icon: Brain },
       { href: '/knowledge-graph', label: 'Knowledge Graph', icon: Network },
       { href: '/matrix', label: 'Matrix', icon: Grid3X3 },
     ],

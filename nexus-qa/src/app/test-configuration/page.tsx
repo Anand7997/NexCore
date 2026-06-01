@@ -213,6 +213,61 @@ function stepSecondaryAction(s: TestStep) { return asStr(s.test_data?.secondary_
 function tagsToCSV(t: string[]) { return t.join(', '); }
 function csvToTags(c: string) { return c.split(',').map((t) => t.trim()).filter(Boolean); }
 function uniqueSorted(vs: string[]) { return [...new Set(vs.filter(Boolean))].sort((a, b) => a.localeCompare(b)); }
+function formatLocators(locators?: LocatorCandidate[] | null) {
+  return (locators ?? [])
+    .filter((item) => item?.locator)
+    .map((item) => `${item.strategy || 'xpath'}=${item.locator}`)
+    .join('\n');
+}
+function parseLocators(text: string): LocatorCandidate[] {
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const eq = line.indexOf('=');
+      if (eq > 0) {
+        return {
+          strategy: line.slice(0, eq).trim() || 'xpath',
+          locator: line.slice(eq + 1).trim(),
+          verified: false,
+          element_count: 0,
+          score: 0.5,
+          reason: 'Manual step locator',
+        };
+      }
+      const strategy = line.startsWith('/') || line.startsWith('xpath=') ? 'xpath' : 'css';
+      return {
+        strategy,
+        locator: line,
+        verified: false,
+        element_count: 0,
+        score: 0.5,
+        reason: 'Manual step locator',
+      };
+    })
+    .filter((item) => item.locator);
+}
+function stepLocators(s: TestStep, pageRepo: PageDetail[] = [], isDesktop = false): LocatorCandidate[] {
+  const page = findRepoPage(pageRepo, stepPage(s, pageRepo), s.page_id);
+  const repoEl = findRepoElement(page, stepElement(s, pageRepo), s.page_element_id);
+  if (repoEl) return locatorCandidatesForElement(repoEl, isDesktop);
+  const binding = isDesktop ? desktopBind(s) : webBind(s);
+  const raw = [
+    ...((binding.locators as LocatorCandidate[] | undefined) ?? []),
+    ...((binding.alternative_locators as LocatorCandidate[] | undefined) ?? []),
+    ...((s.test_data?.locators as LocatorCandidate[] | undefined) ?? []),
+    ...((s.test_data?.alternative_locators as LocatorCandidate[] | undefined) ?? []),
+  ];
+  const seen = new Set<string>();
+  return raw.filter((item) => {
+    if (!item?.locator) return false;
+    const key = `${item.strategy || ''}:${item.locator}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
 
 type StepUpdates = {
   description?: string; action?: string; page?: string;
@@ -220,6 +275,7 @@ type StepUpdates = {
   assertionType?: string; secondaryAction?: string;
   pageId?: string | null; pageElementId?: string | null;
   stepOrder?: number; isEnabled?: boolean;
+  locators?: LocatorCandidate[];
 };
 
 function buildPayload(step: TestStep, u: StepUpdates, pageRepo: PageDetail[] = [], isDesktop = false) {
@@ -239,7 +295,7 @@ function buildPayload(step: TestStep, u: StepUpdates, pageRepo: PageDetail[] = [
   const pageElementId   = u.pageElementId !== undefined
     ? u.pageElementId
     : repoElement?.id ?? ((u.page !== undefined || u.element !== undefined) ? null : step.page_element_id ?? null);
-  const locators        = repoElement ? locatorCandidatesForElement(repoElement, isDesktop) : [];
+  const locators        = u.locators ?? (repoElement ? locatorCandidatesForElement(repoElement, isDesktop) : stepLocators(step, pageRepo, isDesktop));
   const platformBindingKey = isDesktop ? 'desktop' : 'web';
   const platformBinding = isDesktop
     ? {
@@ -256,6 +312,7 @@ function buildPayload(step: TestStep, u: StepUpdates, pageRepo: PageDetail[] = [
         selector: loc,
         uia_path: asStr(step.test_data?.uia_path) || loc,
         locators,
+        alternative_locators: locators,
       }
     : {
         ...(step.bindings?.web ?? {}),
@@ -266,6 +323,7 @@ function buildPayload(step: TestStep, u: StepUpdates, pageRepo: PageDetail[] = [
         selector: loc,
         xpath: loc,
         locators,
+        alternative_locators: locators,
       };
   return {
     name: desc.trim().slice(0, 90) || `Step ${u.stepOrder ?? step.step_order}`,
@@ -294,6 +352,7 @@ function buildPayload(step: TestStep, u: StepUpdates, pageRepo: PageDetail[] = [
       locator: loc,
       ...(isDesktop ? { automation_id: loc, uia_path: loc, application_path: isNavigateAction(action) ? val : pageUrlForStep(step, pageRepo) } : {}),
       locators,
+      alternative_locators: locators,
       ...(assertionType   ? { assertion_type:   assertionType   } : {}),
       ...(secondaryAction ? { secondary_action: secondaryAction } : {}),
     },
@@ -327,6 +386,7 @@ function StepRow({
   const [value, setValue]             = useState(stepValue(step, pageRepo, isDesktop));
   const [assertionType, setAssType]   = useState(stepAssertionType(step));
   const [secondaryAction, setSecAct]  = useState(stepSecondaryAction(step));
+  const [altLocs, setAltLocs]         = useState(formatLocators(stepLocators(step, pageRepo, isDesktop)));
   const [enabled, setEnabled]         = useState(step.is_enabled);
   const prevId = useRef(step.id);
   const pageRepoSignature = pageRepo.map((p) => `${p.id}:${p.url_pattern}`).join('|');
@@ -344,6 +404,7 @@ function StepRow({
     setValue(stepValue(step, pageRepo, isDesktop));
     setAssType(stepAssertionType(step));
     setSecAct(stepSecondaryAction(step));
+    setAltLocs(formatLocators(stepLocators(step, pageRepo, isDesktop)));
     setEnabled(step.is_enabled);
   }, [isDesktop, pageRepoSignature, step.id]);
 
@@ -373,6 +434,7 @@ function StepRow({
       value,
       assertionType,
       secondaryAction,
+      locators: parseLocators(altLocs),
       isEnabled: enabled,
       ...overrides,
     });
@@ -383,9 +445,11 @@ function StepRow({
     const matchingElement = findRepoElement(nextPage, element);
     const nextElement = matchingElement ? matchingElement.name : '';
     const nextLocator = matchingElement ? resolvePathFromRepo(matchingElement, isDesktop) : '';
+    const nextLocators = matchingElement ? locatorCandidatesForElement(matchingElement, isDesktop) : [];
     setPage(nextPageName);
     setElement(nextElement);
     setLocator(nextLocator);
+    setAltLocs(formatLocators(nextLocators));
     onUpdate({
       description: desc,
       action,
@@ -397,6 +461,7 @@ function StepRow({
       value,
       assertionType,
       secondaryAction,
+      locators: nextLocators,
       isEnabled: enabled,
     });
   }
@@ -404,8 +469,10 @@ function StepRow({
   function handleElementChange(nextElementName: string) {
     const repoEl = findRepoElement(repoPage, nextElementName);
     const nextLocator = repoEl ? resolvePathFromRepo(repoEl, isDesktop) : locatorByElement.get(nextElementName) || '';
+    const nextLocators = repoEl ? locatorCandidatesForElement(repoEl, isDesktop) : [];
     setElement(nextElementName);
     setLocator(nextLocator);
+    setAltLocs(formatLocators(nextLocators));
     onUpdate({
       description: desc,
       action,
@@ -417,6 +484,7 @@ function StepRow({
       value,
       assertionType,
       secondaryAction,
+      locators: nextLocators,
       isEnabled: enabled,
     });
   }
@@ -425,7 +493,9 @@ function StepRow({
     const repoEl = findRepoElement(repoPage, element);
     if (repoEl) {
       const repoLoc = resolvePathFromRepo(repoEl, isDesktop);
+      const repoLocators = locatorCandidatesForElement(repoEl, isDesktop);
       if (repoLoc && !locator) setLocator(repoLoc);
+      setAltLocs(formatLocators(repoLocators));
       onUpdate({
         description: desc,
         action,
@@ -437,6 +507,7 @@ function StepRow({
         value,
         assertionType,
         secondaryAction,
+        locators: repoLocators,
         isEnabled: enabled,
       });
       return;
@@ -454,6 +525,7 @@ function StepRow({
       value,
       assertionType,
       secondaryAction,
+      locators: parseLocators(altLocs),
       isEnabled: enabled,
     });
   }
@@ -533,6 +605,17 @@ function StepRow({
         />
       </td>
       {/* Value — or assertion type dropdown when action is ASSERTION */}
+      {/* Alternative locators */}
+      <td className={`${bd} min-w-[220px]`}>
+        <textarea
+          value={altLocs}
+          onChange={(e) => setAltLocs(e.target.value)}
+          onBlur={() => save()}
+          className={`${ic} min-h-12 resize-y text-[10px] leading-4 text-[var(--color-fg-muted)]`}
+          placeholder="xpath=//label[...]&#10;css=input[name='email']"
+          title={altLocs}
+        />
+      </td>
       <td className={`${bd} min-w-[120px]`}>
         {isAssertionAction ? (
           <div className="space-y-0.5">
@@ -837,8 +920,8 @@ export default function TestConfigurationPage() {
   const filteredCases = selModule?.test_cases.filter((c) => !caseSearch || c.name.toLowerCase().includes(caseSearch.toLowerCase())) ?? [];
   const sortedSteps   = selCase ? [...selCase.test_steps].sort((a, b) => a.step_order - b.step_order) : [];
   const stepHeaders = selectedIsDesktop
-    ? ['#','Description','Action','Screen / Window','Desktop Object','Automation ID / UIA Path','Value / Assertion','2nd','','']
-    : ['#','Description','Action','Page','Element','Paths / Location','Value / Assertion','2nd','',''];
+    ? ['#','Description','Action','Screen / Window','Desktop Object','Automation ID / UIA Path','Alt Locators','Value / Assertion','2nd','','']
+    : ['#','Description','Action','Page','Element','Paths / Location','Alt Locators','Value / Assertion','2nd','',''];
 
   const INP = 'w-full rounded-lg border border-[var(--color-line-default)] bg-[var(--color-surface-2)] px-3 py-2 text-sm text-[var(--color-fg-default)] outline-none transition-colors focus:border-[var(--color-accent-default)] placeholder:text-[var(--color-fg-subtle)]';
   const LBL = 'text-[10px] font-mono uppercase tracking-[0.14em] text-[var(--color-fg-subtle)] mb-1.5 block';
@@ -1079,7 +1162,7 @@ export default function TestConfigurationPage() {
                     </div>
                   )
                   : (
-                    <table className="w-full border-collapse" style={{ minWidth: 1180 }}>
+                    <table className="w-full border-collapse" style={{ minWidth: 1400 }}>
                       <thead className="sticky top-0 z-10" style={{ background: 'var(--color-surface-1)' }}>
                         <tr className="border-b border-[var(--color-line-default)]">
                           {stepHeaders.map((h, i) => (
@@ -1105,7 +1188,7 @@ export default function TestConfigurationPage() {
                           />
                         ))}
                         <tr>
-                          <td colSpan={10} className="py-2 px-3">
+                          <td colSpan={11} className="py-2 px-3">
                             <button onClick={() => addStep(sortedSteps[sortedSteps.length - 1])}
                               className="flex items-center gap-1.5 text-[10px] font-mono text-[var(--color-fg-subtle)] hover:text-[var(--color-fg-default)] transition-colors">
                               <Plus size={9} /> Add step

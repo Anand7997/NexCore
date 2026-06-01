@@ -28,6 +28,7 @@ from app.ai_workflow.providers.null_provider import NullProvider
 from app.ai_workflow.providers.openai_provider import OpenAIProvider
 from app.ai_workflow.schemas import (
     GeneratedTestCase,
+    LocatorEnhancementList,
     ReviewResponse,
     ScenarioList,
     ScenarioPreview,
@@ -35,7 +36,7 @@ from app.ai_workflow.schemas import (
     WorkflowStateResponse,
 )
 from app.ai_workflow.state import STATE_PROGRESS, WorkflowState
-from app.config import settings
+from app.config import DEFAULT_CLAUDE_MODEL, DEFAULT_OPENAI_MODEL, settings
 from app.database.models import PageElementModel, TestCaseModel, TestStepModel
 from app.database.session import AsyncSessionLocal
 from app.page_discovery.schemas import DiscoveredElement as DiscoveryElement
@@ -82,6 +83,8 @@ _MODEL_TIER_HINTS: tuple[tuple[str, str], ...] = (
 )
 _NULL_PROVIDER_ALIASES = {"", "null", "test", "ci"}
 _NULL_MODEL_ALIASES = {"", "null", "test", "ci"}
+_AI_LOCATOR_ENHANCEMENT_LIMIT = 120
+_AI_LOCATOR_ALTERNATIVE_LIMIT = 10
 
 
 def _parse_streamed_json(raw: str, schema: type[T]) -> T:
@@ -109,7 +112,16 @@ def _model_generation_profile(ai_model: str) -> dict[str, str]:
 
 def _default_ai_selection() -> tuple[str, str]:
     provider = (settings.default_ai_provider or "openai").strip().lower()
-    model = (settings.default_ai_model or "gpt-5.5").strip()
+    default_model = (
+        str(settings.default_claude_model or DEFAULT_CLAUDE_MODEL).strip() or DEFAULT_CLAUDE_MODEL
+        if provider in ("claude", "anthropic")
+        else DEFAULT_OPENAI_MODEL
+    )
+    model = (settings.default_ai_model or default_model).strip()
+    if provider in ("claude", "anthropic") and "claude" not in model.lower():
+        model = default_model
+    elif provider == "openai" and not model.lower().startswith("gpt"):
+        model = DEFAULT_OPENAI_MODEL
     return provider, model
 
 
@@ -119,6 +131,10 @@ def _normalize_ai_selection(ai_provider: str | None, ai_model: str | None) -> tu
     model = (ai_model or default_model).strip()
     if provider in _NULL_PROVIDER_ALIASES or model.lower() in _NULL_MODEL_ALIASES:
         return default_provider, default_model
+    if provider in ("claude", "anthropic") and "claude" not in model.lower():
+        model = str(settings.default_claude_model or DEFAULT_CLAUDE_MODEL).strip() or DEFAULT_CLAUDE_MODEL
+    elif provider == "openai" and not model.lower().startswith("gpt"):
+        model = DEFAULT_OPENAI_MODEL
     return provider, model
 
 
@@ -509,6 +525,194 @@ def _candidate_from_discovered(element: DiscoveryElement, index: int) -> dict[st
     }
 
 
+def _compact_locator_alternatives(candidate: dict[str, Any]) -> list[dict[str, Any]]:
+    alternatives: list[dict[str, Any]] = []
+    for item in candidate.get("alternative_locators") or []:
+        if not isinstance(item, dict) or not item.get("locator"):
+            continue
+        alternatives.append({
+            "strategy": str(item.get("strategy") or ""),
+            "locator": str(item.get("locator") or ""),
+            "verified": bool(item.get("verified", False)),
+            "element_count": int(item.get("element_count") or 0),
+            "score": float(item.get("score") or 0.0),
+            "reason": str(item.get("reason") or "")[:160],
+        })
+        if len(alternatives) >= _AI_LOCATOR_ALTERNATIVE_LIMIT:
+            break
+    return alternatives
+
+
+def _locator_enhancement_prompt(candidates: list[dict[str, Any]]) -> str:
+    payload = [
+        {
+            "candidate_id": candidate.get("candidate_id"),
+            "name": candidate.get("name"),
+            "element_type": candidate.get("element_type"),
+            "description": candidate.get("description"),
+            "label": candidate.get("label"),
+            "placeholder": candidate.get("placeholder"),
+            "id_attr": candidate.get("id_attr"),
+            "name_attr": candidate.get("name_attr"),
+            "best_locator": candidate.get("best_locator"),
+            "xpath": candidate.get("xpath"),
+            "css_selector": candidate.get("css_selector"),
+            "alternative_locators": _compact_locator_alternatives(candidate),
+        }
+        for candidate in candidates[:_AI_LOCATOR_ENHANCEMENT_LIMIT]
+    ]
+    return (
+        "You are improving web automation locators during page scraping.\n"
+        "For each candidate, choose the most stable locator already present in "
+        "alternative_locators, xpath, css_selector, or best_locator. Prefer verified "
+        "unique locators. Prefer test ids, role/name locators, stable CSS, id/name "
+        "attributes, and label-relative XPath before absolute XPath. Keep absolute "
+        "XPath only as a last-resort fallback. Return one item per candidate_id you "
+        "can improve. recommended_locator should be copied exactly from the provided "
+        "locator values unless it can be directly derived from the visible attributes.\n\n"
+        f"Candidates JSON:\n{json.dumps(payload, ensure_ascii=True)}"
+    )
+
+
+def _same_locator(left: Any, right: Any) -> bool:
+    return str(left or "").strip() == str(right or "").strip()
+
+
+def _known_locator(candidate: dict[str, Any], strategy: str, locator: str) -> tuple[bool, bool]:
+    normalized_strategy = strategy.lower()
+    for item in candidate.get("alternative_locators") or []:
+        if not isinstance(item, dict):
+            continue
+        if _same_locator(item.get("locator"), locator):
+            item_strategy = str(item.get("strategy") or normalized_strategy).lower()
+            verified = bool(item.get("verified")) and int(item.get("element_count") or 0) == 1
+            return item_strategy == normalized_strategy or not normalized_strategy, verified
+    for field in ("best_locator", "xpath", "css_selector"):
+        if _same_locator(candidate.get(field), locator):
+            return True, True
+    return False, False
+
+
+def _append_locator_if_missing(
+    candidate: dict[str, Any],
+    strategy: str,
+    locator: str,
+    *,
+    verified: bool,
+    reason: str,
+) -> None:
+    if not locator:
+        return
+    alternatives = candidate.setdefault("alternative_locators", [])
+    for item in alternatives:
+        if isinstance(item, dict) and _same_locator(item.get("locator"), locator):
+            item.setdefault("strategy", strategy)
+            item["reason"] = reason or item.get("reason") or "AI-ranked locator from scrape"
+            return
+    alternatives.append({
+        "strategy": strategy or "css",
+        "locator": locator,
+        "verified": verified,
+        "element_count": 1 if verified else 0,
+        "score": 0.72 if verified else 0.38,
+        "reason": reason or "AI-generated scrape-time locator candidate",
+    })
+
+
+def _promote_ai_locator(
+    candidate: dict[str, Any],
+    strategy: str,
+    locator: str,
+    locator_order: list[str],
+    rationale: str,
+    ai_model: str,
+) -> dict[str, Any]:
+    updated = {**candidate}
+    updated["alternative_locators"] = [
+        dict(item)
+        for item in candidate.get("alternative_locators") or []
+        if isinstance(item, dict) and item.get("locator")
+    ]
+
+    known, verified = _known_locator(updated, strategy, locator)
+    if locator:
+        _append_locator_if_missing(
+            updated,
+            strategy,
+            locator,
+            verified=verified,
+            reason=f"AI scrape-time recommendation: {rationale}"[:220],
+        )
+
+    order = {name.lower(): index for index, name in enumerate(locator_order or [])}
+    recommended = locator.strip()
+
+    def sort_key(item: dict[str, Any]) -> tuple[int, int, int, float]:
+        loc = str(item.get("locator") or "")
+        item_strategy = str(item.get("strategy") or "").lower()
+        is_recommended = 0 if recommended and loc == recommended else 1
+        strategy_rank = order.get(item_strategy, 99)
+        verified_rank = 0 if item.get("verified") and int(item.get("element_count") or 0) == 1 else 1
+        absolute_rank = 1 if loc.startswith(("/html", "/body", "html/")) else 0
+        return is_recommended, strategy_rank + absolute_rank, verified_rank, -float(item.get("score") or 0.0)
+
+    updated["alternative_locators"].sort(key=sort_key)
+
+    if known and verified and locator:
+        updated["locator_strategy"] = strategy or updated.get("locator_strategy") or "css"
+        updated["best_locator"] = locator
+        if strategy.lower() == "xpath":
+            updated["xpath"] = locator
+        elif strategy.lower() in {"css", "testid", "id", "name"}:
+            updated["css_selector"] = locator
+
+    tags = set(updated.get("tags") or [])
+    tags.add("ai-locator-ranked")
+    updated["tags"] = sorted(tags)
+    updated["ai_locator_model"] = ai_model
+    updated["ai_locator_rationale"] = rationale
+    updated["ai_locator_order"] = locator_order
+    updated["locator_quality"] = _locator_quality(updated)
+    return updated
+
+
+async def _enhance_scraped_candidates_with_ai(
+    provider: AbstractAIProvider,
+    ai_model: str,
+    candidates: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    if not candidates:
+        return candidates
+    try:
+        result = await provider.generate(
+            _locator_enhancement_prompt(candidates),
+            LocatorEnhancementList,
+        )
+    except Exception as exc:
+        logger.warning("AI locator enhancement skipped for %s: %s", ai_model, _format_provider_error(exc))
+        return candidates
+
+    enhancements = {item.candidate_id: item for item in result.items}
+    if not enhancements:
+        return candidates
+
+    enhanced: list[dict[str, Any]] = []
+    for candidate in candidates:
+        item = enhancements.get(str(candidate.get("candidate_id") or ""))
+        if item is None:
+            enhanced.append(candidate)
+            continue
+        enhanced.append(_promote_ai_locator(
+            candidate,
+            item.recommended_strategy,
+            item.recommended_locator,
+            item.locator_order,
+            item.rationale,
+            ai_model,
+        ))
+    return enhanced
+
+
 def _locator_quality(element: DiscoveryElement | dict[str, Any]) -> float:
     if isinstance(element, dict):
         confidence = float(element.get("confidence_score") or 0.0)
@@ -821,6 +1025,9 @@ async def _save_selected_candidates(
                 "label": candidate.get("label") or "",
                 "test_data_hints": candidate.get("test_data_hints") or {},
                 "locator_quality": candidate.get("locator_quality") or candidate.get("confidence_score"),
+                "ai_locator_model": candidate.get("ai_locator_model") or "",
+                "ai_locator_rationale": candidate.get("ai_locator_rationale") or "",
+                "ai_locator_order": candidate.get("ai_locator_order") or [],
             }
             element.updated_at = now
         else:
@@ -848,6 +1055,9 @@ async def _save_selected_candidates(
                     "label": candidate.get("label") or "",
                     "test_data_hints": candidate.get("test_data_hints") or {},
                     "locator_quality": candidate.get("locator_quality") or candidate.get("confidence_score"),
+                    "ai_locator_model": candidate.get("ai_locator_model") or "",
+                    "ai_locator_rationale": candidate.get("ai_locator_rationale") or "",
+                    "ai_locator_order": candidate.get("ai_locator_order") or [],
                 },
             )
             db.add(element)
@@ -1347,8 +1557,22 @@ async def _run_testcase_generation(workflow_id: str) -> None:
                 for index, element in enumerate(discovery_result.elements)
             ]
             await _update_state(
+                db, workflow_id, WorkflowState.DISCOVERY_RUNNING,
+                f"AI is ranking scrape-time locator fallbacks with {wf.ai_provider}/{wf.ai_model}...",
+                detail=(
+                    "The model is choosing the strongest selector and preserving CSS, "
+                    "relative XPath, and absolute XPath alternatives for runtime healing."
+                ),
+                scraped_candidates=scraped_candidates,
+            )
+            scraped_candidates = await _enhance_scraped_candidates_with_ai(
+                provider,
+                wf.ai_model,
+                scraped_candidates,
+            )
+            await _update_state(
                 db, workflow_id, WorkflowState.DISCOVERY_DONE,
-                f"Scraped {len(scraped_candidates)} raw candidates into the MCP panel",
+                f"Scraped and AI-ranked {len(scraped_candidates)} raw candidates into the MCP panel",
                 detail="These candidates are not Page Repository records yet.",
                 scraped_candidates=scraped_candidates,
             )

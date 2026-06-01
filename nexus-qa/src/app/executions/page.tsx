@@ -382,13 +382,11 @@ function DetailPanel({ execId, workflowName, onDeleted }: { execId: string; work
               variant="neon"
               size="xs"
               disabled={fixesLoading}
-              onClick={() => {
-                window.location.href = `/ai-analysis?executionId=${encodeURIComponent(exec.id)}`;
-              }}
-              title="Open AI Inspect to review and apply fixes"
+              onClick={() => openInspectorFor(exec.id)}
+              title="Open Mini AI Bot to scan this execution"
             >
               <Brain size={10} />
-              Review
+              Mini Bot
             </Button>
           </div>
         </div>
@@ -411,7 +409,7 @@ function DetailPanel({ execId, workflowName, onDeleted }: { execId: string; work
       {/* Actions */}
       <div className="shrink-0 flex gap-2 border-t border-[var(--color-line-subtle)] p-3">
         <Button variant="neon" size="sm" className="flex-1 justify-center" onClick={() => openInspectorFor(exec.id)}>
-          <Brain size={11} /> AI Inspector
+          <Brain size={11} /> Mini AI Bot
         </Button>
         {['created', 'queued', 'running'].includes(exec.status) && (
           <Button variant="danger" size="sm" onClick={() => cancel(exec.id)} disabled={cancelling}>

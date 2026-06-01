@@ -236,3 +236,15 @@ class ElementClassification(BaseModel):
     ai_suggested_action: str
     confidence: float
     locator_order: list[str]
+
+
+class LocatorEnhancementItem(BaseModel):
+    candidate_id: str
+    recommended_strategy: str
+    recommended_locator: str
+    locator_order: list[str]
+    rationale: str
+
+
+class LocatorEnhancementList(BaseModel):
+    items: list[LocatorEnhancementItem]

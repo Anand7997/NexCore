@@ -886,15 +886,12 @@ class WebExecutionPlugin(ExecutionPlugin):
         t0 = time.perf_counter()
 
         async def fill(locator, timeout):
-            await locator.fill("", timeout=timeout)
             delay = max(0, int(settings.web_plugin_type_delay_ms))
-            if delay > 0:
-                try:
-                    await locator.press_sequentially(str(value), delay=delay, timeout=timeout)
-                except AttributeError:
-                    await locator.fill(value, timeout=timeout)
-            else:
+            if delay <= 0 or not hasattr(locator, "press_sequentially"):
                 await locator.fill(value, timeout=timeout)
+                return
+            await locator.fill("", timeout=timeout)
+            await locator.press_sequentially(str(value), delay=delay, timeout=timeout)
 
         sel, _, attempts = await self._with_locator_healing(envelope, page, cfg, "fill", fill)
         dur = int((time.perf_counter() - t0) * 1000)

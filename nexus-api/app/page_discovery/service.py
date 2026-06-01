@@ -81,9 +81,7 @@ def _get_extraction_script() -> str:
         if (!value.includes("'")) return "'" + value + "'";
         return 'concat("' + value.split('"').join('", ' + "'" + '"' + "'" + ', "') + '")';
     }
-    function getXPath(el) {
-        const id = el.getAttribute('id');
-        if (id) return '//*[@id=' + xpathLiteral(id) + ']';
+    function getAbsoluteXPath(el) {
         const parts = [];
         while (el && el.nodeType === Node.ELEMENT_NODE && el !== document.documentElement) {
             const tag = el.tagName.toLowerCase();
@@ -97,6 +95,11 @@ def _get_extraction_script() -> str:
             el = el.parentElement;
         }
         return '/' + ['html'].concat(parts).join('/');
+    }
+    function getXPath(el) {
+        const id = el.getAttribute('id');
+        if (id) return '//*[@id=' + xpathLiteral(id) + ']';
+        return getAbsoluteXPath(el);
     }
     function getCssPath(el) {
         const id = el.getAttribute('id');
@@ -163,6 +166,7 @@ def _get_extraction_script() -> str:
         a.visible = s.display !== 'none' && s.visibility !== 'hidden' && s.opacity !== '0' && el.getClientRects().length > 0;
         a.enabled = !el.disabled && el.getAttribute('aria-disabled') !== 'true';
         a.xpath = getXPath(el);
+        a.absolute_xpath = getAbsoluteXPath(el);
         a.css_path = getCssPath(el);
         return a;
     }

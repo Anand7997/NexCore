@@ -10,7 +10,7 @@ def build_async_http_client() -> httpx.AsyncClient:
     try:
         import truststore  # type: ignore[import]
     except ImportError:
-        return httpx.AsyncClient(timeout=None)
+        return httpx.AsyncClient(timeout=None, trust_env=False)
 
     context = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-    return httpx.AsyncClient(verify=context, timeout=None)
+    return httpx.AsyncClient(verify=context, timeout=None, trust_env=False)

@@ -109,6 +109,7 @@ def _generate_locator_candidates(tag: str, attrs: dict[str, Any], roles: list[st
         val = str(attrs.get(attr_name) or "")
         if val:
             candidates.append(_candidate("testid", f'[{attr_name}="{_quote_attr(val)}"]', 100))
+            candidates.append(_candidate("xpath", f"//{tag}[@{attr_name}={_xpath_literal(val)}]", 92))
 
     aria_role = str(attrs.get("role") or (roles[0] if roles else ""))
     accessible_name = str(attrs.get("aria-label") or attrs.get("text_content") or "").strip()[:80]
@@ -159,16 +160,25 @@ def _generate_locator_candidates(tag: str, attrs: dict[str, Any], roles: list[st
     label_text = str(attrs.get("label_text") or "").strip()
     if label_text and tag in ("input", "textarea", "select"):
         candidates.append(_candidate("xpath", f"//label[contains(normalize-space(.), {_xpath_literal(label_text)})]/following::{tag}[1]", 90))
+        candidates.append(_candidate("xpath", f"//*[self::label or @aria-label][contains(normalize-space(.), {_xpath_literal(label_text)})]/following::{tag}[1]", 82))
         if id_val:
             candidates.append(_candidate("xpath", f"//label[@for={_xpath_literal(id_val)}]/following::{tag}[1]", 84))
 
     if text_content and tag in ("button", "a", "span"):
         candidates.append(_candidate("xpath", f"//{tag}[normalize-space()={_xpath_literal(text_content)}]", 32))
 
+    css_path = str(attrs.get("css_path") or "")
+    if css_path:
+        candidates.append(_candidate("css", css_path, 18))
+
     original_xpath = str(attrs.get("xpath") or "")
     if original_xpath:
         weight = 12 if _is_absolute_xpath(original_xpath) else 28
         candidates.append(_candidate("xpath", original_xpath, weight))
+
+    absolute_xpath = str(attrs.get("absolute_xpath") or "")
+    if absolute_xpath and absolute_xpath != original_xpath:
+        candidates.append(_candidate("xpath", absolute_xpath, 10))
 
     seen: set[tuple[str, str]] = set()
     unique: list[dict[str, Any]] = []
