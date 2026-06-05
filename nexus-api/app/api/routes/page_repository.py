@@ -1,6 +1,7 @@
 """Page Object Repository — CRUD for application pages and their UI elements."""
 from __future__ import annotations
 
+import re
 from typing import Any, Optional
 from datetime import UTC, datetime
 
@@ -15,6 +16,8 @@ from app.ai_workflow.models import AIWorkflowModel
 from app.database.models import (
     DesktopObjectHealingSuggestionModel,
     DesktopObjectHistoryModel,
+    DesktopRecordedActionModel,
+    DesktopRecordingSessionModel,
     ExecutionStepResultModel,
     PageElementModel,
     PageRepositoryModel,
@@ -332,6 +335,38 @@ class DesktopObjectResponse(BaseModel):
 
 
 # ── Converters ────────────────────────────────────────────────────────────────
+
+class DesktopWorkflowSyncRequest(BaseModel):
+    workflow_id: Optional[str] = None
+    include_archived: bool = False
+    include_recording_sessions: bool = True
+    update_existing: bool = True
+
+
+class DesktopWorkflowSyncItem(BaseModel):
+    object_key: str
+    name: str
+    application: str
+    action: str
+    reason: str = ""
+    source: str = ""
+    workflow_id: str = ""
+    workflow_name: str = ""
+    node_key: str = ""
+    session_id: str = ""
+    object: Optional[DesktopObjectResponse] = None
+
+
+class DesktopWorkflowSyncResponse(BaseModel):
+    source: str = "desktop_workflow_sync"
+    scanned_workflows: int = 0
+    scanned_recording_sessions: int = 0
+    created: int = 0
+    updated: int = 0
+    skipped: int = 0
+    pages_created: int = 0
+    objects: list[DesktopWorkflowSyncItem] = []
+
 
 def _elem(e: PageElementModel) -> PageElementResponse:
     return PageElementResponse(
@@ -1433,6 +1468,404 @@ def _apply_desktop_object_values(
 
 # ── Page routes ───────────────────────────────────────────────────────────────
 
+def _text_value(*values: Any) -> str:
+    for value in values:
+        text = str(value or "").strip()
+        if text:
+            return text
+    return ""
+
+
+def _desktop_sync_key(value: Any, fallback: str = "desktop_object") -> str:
+    slug = re.sub(r"[^a-z0-9]+", "_", str(value or "").strip().lower()).strip("_")
+    return slug or fallback
+
+
+def _is_placeholder_window_name(value: Any) -> bool:
+    text = re.sub(r"\s+", "", str(value or "").strip().lower())
+    return bool(re.fullmatch(r"untitled\d*", text))
+
+
+def _locator_candidates_indicate_window(locators: list[dict[str, Any]]) -> bool:
+    for locator in locators:
+        value = _locator_text(locator).strip().lower()
+        strategy = str(locator.get("strategy") or locator.get("locator_strategy") or "").strip().lower()
+        if value.startswith("window:") or "window[" in value or "@controltype='window'" in value:
+            return True
+        if strategy == "class name" and value in {"sunawtframe", "wndclass_desked_gsk", "cabinetwclass"}:
+            return True
+    return False
+
+
+def _desktop_repository_identity(
+    *,
+    application: Any,
+    raw_key: Any,
+    raw_name: Any,
+    primary_locator: Any,
+    control_type: Any = "",
+    locators: list[dict[str, Any]] | None = None,
+) -> tuple[str, str]:
+    app_name = _text_value(application)
+    object_name = _text_value(raw_name, raw_key, primary_locator, "Desktop Object")
+    object_key_source = _text_value(raw_key, object_name)
+    locator_value = _text_value(primary_locator, raw_key, raw_name)
+    is_window = str(control_type or "").strip().lower() == "window" or _locator_candidates_indicate_window(locators or [])
+    if app_name and is_window and (
+        _is_placeholder_window_name(object_name)
+        or _is_placeholder_window_name(object_key_source)
+        or _is_placeholder_window_name(locator_value)
+    ):
+        return _desktop_sync_key(f"{app_name}_window"), f"{app_name} Window"
+    return _desktop_sync_key(object_key_source), object_name
+
+
+def _clean_desktop_process_name(value: Any) -> str:
+    process_name = _text_value(value)
+    return "" if process_name.isdigit() else process_name
+
+
+def _locator_text(locator: dict[str, Any]) -> str:
+    return _text_value(locator.get("locator"), locator.get("selector"), locator.get("value"))
+
+
+def _locator_score(locator: dict[str, Any]) -> float:
+    try:
+        return float(locator.get("score") if locator.get("score") is not None else locator.get("confidence") or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _desktop_locator_details(
+    *,
+    strategy: Any = "",
+    locator: Any = "",
+    locators: Any = None,
+) -> dict[str, Any]:
+    candidates = [dict(item) for item in (locators or []) if isinstance(item, dict)]
+    fields = {"automation_id": "", "name_text": "", "uia_path": "", "class_name": ""}
+    confidence: float | None = None
+
+    for candidate in candidates:
+        candidate_strategy = _canonical_desktop_strategy(candidate.get("strategy") or candidate.get("locator_strategy"))
+        candidate_locator = _locator_text(candidate)
+        if not candidate_locator:
+            continue
+        score = max(0.0, min(_locator_score(candidate) or 1.0, 1.0))
+        confidence = max(confidence or 0.0, score)
+        if candidate_strategy == "accessibility id" and not fields["automation_id"]:
+            fields["automation_id"] = candidate_locator
+        elif candidate_strategy == "name" and not fields["name_text"]:
+            fields["name_text"] = candidate_locator
+        elif candidate_strategy == "xpath" and not fields["uia_path"]:
+            fields["uia_path"] = candidate_locator
+        elif candidate_strategy == "class name" and not fields["class_name"]:
+            fields["class_name"] = candidate_locator
+
+    primary_strategy = _canonical_desktop_strategy(strategy)
+    primary_locator = _text_value(locator)
+    if not primary_locator and candidates:
+        sorted_candidates = sorted(candidates, key=lambda item: (_locator_score(item), _locator_text(item)), reverse=True)
+        for candidate in sorted_candidates:
+            candidate_locator = _locator_text(candidate)
+            if candidate_locator:
+                primary_strategy = _canonical_desktop_strategy(candidate.get("strategy") or candidate.get("locator_strategy"))
+                primary_locator = candidate_locator
+                break
+
+    if primary_strategy == "accessibility id" and primary_locator and not fields["automation_id"]:
+        fields["automation_id"] = primary_locator
+    elif primary_strategy == "name" and primary_locator and not fields["name_text"]:
+        fields["name_text"] = primary_locator
+    elif primary_strategy == "xpath" and primary_locator and not fields["uia_path"]:
+        fields["uia_path"] = primary_locator
+    elif primary_strategy == "class name" and primary_locator and not fields["class_name"]:
+        fields["class_name"] = primary_locator
+
+    return {
+        **fields,
+        "locator_strategy": primary_strategy or "accessibility id",
+        "primary_locator": primary_locator,
+        "alternative_locators": candidates,
+        "confidence_score": confidence,
+    }
+
+
+def _find_desktop_element(page: PageRepositoryModel | None, object_key: Any) -> PageElementModel | None:
+    if page is None:
+        return None
+    needle = str(object_key or "").strip().lower()
+    if not needle:
+        return None
+    for element in page.elements or []:
+        keys = {
+            str(element.id or "").strip().lower(),
+            str(element.name or "").strip().lower(),
+            str(element.id_attr or "").strip().lower(),
+            str(element.name_attr or "").strip().lower(),
+            _desktop_object_key(element).strip().lower(),
+        }
+        if needle in keys:
+            return element
+    return None
+
+
+async def _upsert_desktop_object_from_sync(
+    db: AsyncSession,
+    values: dict[str, Any],
+    *,
+    source: str,
+    update_existing: bool,
+    impact_summary: dict[str, Any] | None = None,
+) -> tuple[str, str, bool, PageRepositoryModel | None, PageElementModel | None]:
+    object_key = _text_value(values.get("object_key"))
+    if not object_key:
+        return "skipped", "No object key", False, None, None
+    if not _text_value(values.get("primary_locator"), values.get("automation_id"), values.get("name_text"), values.get("uia_path"), values.get("class_name")):
+        return "skipped", "No usable locator", False, None, None
+
+    body = DesktopObjectCreateSchema(**values)
+    existing_page_result = await db.execute(
+        select(PageRepositoryModel)
+        .where(PageRepositoryModel.platform == "desktop")
+        .where(PageRepositoryModel.name == (body.application.strip() or "Desktop Application"))
+        .options(selectinload(PageRepositoryModel.elements))
+        .limit(1)
+    )
+    existing_page = existing_page_result.scalar_one_or_none()
+    page = await _desktop_page_for_body(body, db)
+    page_created = existing_page is None
+    element = None if page_created else _find_desktop_element(page, body.object_key)
+
+    if element is None:
+        metadata = _desktop_object_metadata(page, body.model_dump())
+        element = PageElementModel(
+            page_id=page.id,
+            name=body.name,
+            element_type=body.control_type or "element",
+            description=body.metadata.get("description", "") if isinstance(body.metadata, dict) else "",
+            xpath=body.uia_path,
+            css_selector=body.class_name,
+            id_attr=body.automation_id,
+            name_attr=body.name_text,
+            locator_strategy=body.locator_strategy or "accessibility id",
+            tags=body.tags,
+            confidence_score=body.confidence_score,
+            alternative_locators=body.alternative_locators,
+            source_url=body.screenshot_url,
+            discovery_metadata=metadata,
+        )
+        db.add(element)
+        await db.flush()
+        _record_desktop_object_history(
+            db,
+            page,
+            element,
+            action="created",
+            source=source,
+            before=None,
+            after=_desktop_object_snapshot(page, element),
+            impact_summary=impact_summary,
+        )
+        return "created", "", page_created, page, element
+
+    if not update_existing:
+        return "skipped", "Object already exists", page_created, page, element
+
+    before = _desktop_object_snapshot(page, element)
+    _apply_desktop_object_values(page, element, body.model_dump())
+    await db.flush()
+    after = _desktop_object_snapshot(page, element)
+    if not _changed_fields(before, after):
+        return "skipped", "Object already up to date", page_created, page, element
+    _record_desktop_object_history(
+        db,
+        page,
+        element,
+        action="updated",
+        source=source,
+        before=before,
+        after=after,
+        impact_summary=impact_summary,
+    )
+    return "updated", "", page_created, page, element
+
+
+def _workflow_launch_context(workflow: WorkflowModel) -> dict[str, Any]:
+    variables = _dict_value(getattr(workflow, "variables", None))
+    launch_config: dict[str, Any] = {}
+    for node in getattr(workflow, "nodes", []) or []:
+        if str(getattr(node, "type", "") or "") in {"desktop.launch", "desktop.attach"}:
+            launch_config = _dict_value(getattr(node, "config", None))
+            break
+
+    workflow_name = str(getattr(workflow, "name", "") or "Desktop Workflow")
+    application = _text_value(
+        variables.get("application"),
+        variables.get("application_name"),
+        variables.get("desktop_recorder_session_name"),
+        workflow_name.removesuffix(" Workflow"),
+        workflow_name,
+    )
+    return {
+        "application": application or "Desktop Application",
+        "application_path": _text_value(variables.get("application_path"), launch_config.get("app")),
+        "window": _text_value(variables.get("window_title"), launch_config.get("window_title")),
+        "process_name": _clean_desktop_process_name(_text_value(variables.get("process_name"), launch_config.get("process_name"))),
+        "session_id": _text_value(variables.get("desktop_recorder_session_id")),
+    }
+
+
+def _node_object_name(node: WorkflowNodeModel, config: dict[str, Any], object_key: str, primary_locator: str) -> str:
+    for key in ("object_name", "name", "label", "target"):
+        value = _text_value(config.get(key))
+        if value:
+            return value
+    label = _text_value(getattr(node, "label", ""))
+    if " - " in label:
+        return label.split(" - ", 1)[1].strip() or label
+    return _text_value(object_key, primary_locator, label, "Desktop Object")
+
+
+def _desktop_values_from_workflow_node(
+    workflow: WorkflowModel,
+    node: WorkflowNodeModel,
+    context: dict[str, Any],
+) -> dict[str, Any] | None:
+    node_type = str(getattr(node, "type", "") or "")
+    if not node_type.startswith("desktop."):
+        return None
+    if node_type in {"desktop.launch", "desktop.attach", "desktop.wait", "desktop.wait_for_window", "desktop.close"}:
+        return None
+
+    config = _dict_value(getattr(node, "config", None))
+    locators = [dict(item) for item in (config.get("locators") or []) if isinstance(item, dict)]
+    locator_details = _desktop_locator_details(
+        strategy=config.get("locator_strategy") or config.get("strategy"),
+        locator=config.get("primary_locator") or config.get("selector") or config.get("locator"),
+        locators=locators,
+    )
+    primary_locator = _text_value(locator_details.get("primary_locator"))
+    raw_key = _text_value(
+        config.get("object_key"),
+        config.get("repository_key"),
+        config.get("element_key"),
+        config.get("selector"),
+        primary_locator,
+        getattr(node, "node_key", ""),
+    )
+    inferred_control_type = _text_value(config.get("control_type"), config.get("element_type"))
+    object_key, name = _desktop_repository_identity(
+        application=context["application"],
+        raw_key=raw_key,
+        raw_name=_node_object_name(node, config, raw_key, primary_locator),
+        primary_locator=primary_locator,
+        control_type=inferred_control_type,
+        locators=locators,
+    )
+    metadata = {
+        "source": "desktop_workflow_sync",
+        "workflow_id": str(getattr(workflow, "id", "") or ""),
+        "workflow_name": str(getattr(workflow, "name", "") or ""),
+        "node_key": str(getattr(node, "node_key", "") or ""),
+        "node_type": node_type,
+        "selector": config.get("selector"),
+        "strategy": config.get("strategy"),
+        "locators": locators,
+    }
+    if config.get("coordinate_fallback") is not None:
+        metadata["coordinate_fallback"] = bool(config.get("coordinate_fallback"))
+    if config.get("x") is not None or config.get("y") is not None:
+        metadata["coordinates"] = {"x": config.get("x"), "y": config.get("y")}
+
+    return {
+        "application": context["application"],
+        "application_path": context["application_path"],
+        "repository_scope": "shared",
+        "object_key": object_key,
+        "name": name,
+        "control_type": _text_value(inferred_control_type, "element"),
+        "automation_id": _text_value(config.get("automation_id"), locator_details.get("automation_id")),
+        "name_text": _text_value(config.get("name_text"), locator_details.get("name_text"), name),
+        "class_name": _text_value(config.get("class_name"), locator_details.get("class_name")),
+        "uia_path": _text_value(config.get("uia_path"), locator_details.get("uia_path")),
+        "locator_strategy": locator_details["locator_strategy"],
+        "primary_locator": primary_locator,
+        "alternative_locators": locator_details["alternative_locators"],
+        "window": _text_value(config.get("window"), config.get("window_title"), context["window"]),
+        "screen": _text_value(config.get("screen"), config.get("window"), context["window"]),
+        "process_name": _clean_desktop_process_name(_text_value(config.get("process_name"), context["process_name"])),
+        "confidence_score": locator_details["confidence_score"],
+        "tags": ["desktop", "recorded", "workflow-sync"],
+        "metadata": metadata,
+    }
+
+
+def _desktop_values_from_recorded_action(
+    session: DesktopRecordingSessionModel,
+    action: DesktopRecordedActionModel,
+) -> dict[str, Any] | None:
+    locators = [dict(item) for item in (getattr(action, "locators", None) or []) if isinstance(item, dict)]
+    locator_details = _desktop_locator_details(
+        strategy=getattr(action, "locator_strategy", ""),
+        locator=None,
+        locators=locators,
+    )
+    primary_locator = _text_value(
+        locator_details.get("primary_locator"),
+        getattr(action, "automation_id", ""),
+        getattr(action, "name_text", ""),
+        getattr(action, "uia_path", ""),
+        getattr(action, "class_name", ""),
+    )
+    application = _text_value(getattr(session, "application", ""), getattr(session, "name", ""), "Desktop Application")
+    raw_name = _text_value(getattr(action, "object_name", ""), getattr(action, "object_key", ""), primary_locator, "Desktop Object")
+    control_type = _text_value(getattr(action, "control_type", ""), "element")
+    object_key, name = _desktop_repository_identity(
+        application=application,
+        raw_key=getattr(action, "object_key", ""),
+        raw_name=raw_name,
+        primary_locator=primary_locator,
+        control_type=control_type,
+        locators=locators,
+    )
+    metadata = dict(getattr(action, "action_metadata", None) or {})
+    metadata.update({
+        "source": "desktop_recorder_sync",
+        "recording_session_id": str(getattr(session, "id", "") or ""),
+        "recorded_action_id": str(getattr(action, "id", "") or ""),
+        "action_order": getattr(action, "action_order", None),
+        "action_type": str(getattr(action, "action_type", "") or ""),
+        "locators": locators,
+    })
+    if getattr(action, "x", None) is not None or getattr(action, "y", None) is not None:
+        metadata["coordinates"] = {"x": getattr(action, "x", None), "y": getattr(action, "y", None)}
+
+    return {
+        "page_id": str(getattr(session, "repository_page_id", "") or "") or None,
+        "application": application,
+        "application_path": _text_value(getattr(session, "application_path", "")),
+        "repository_scope": "shared",
+        "object_key": object_key,
+        "name": name,
+        "control_type": control_type,
+        "automation_id": _text_value(getattr(action, "automation_id", ""), locator_details.get("automation_id")),
+        "name_text": _text_value(getattr(action, "name_text", ""), locator_details.get("name_text"), raw_name),
+        "class_name": _text_value(getattr(action, "class_name", ""), locator_details.get("class_name")),
+        "uia_path": _text_value(getattr(action, "uia_path", ""), locator_details.get("uia_path")),
+        "locator_strategy": locator_details["locator_strategy"],
+        "primary_locator": primary_locator,
+        "alternative_locators": locator_details["alternative_locators"],
+        "window": _text_value(getattr(action, "window_title", ""), getattr(session, "window_title", "")),
+        "screen": _text_value(getattr(action, "screen", ""), getattr(action, "window_title", ""), getattr(session, "window_title", "")),
+        "process_name": _clean_desktop_process_name(getattr(session, "process_name", "")),
+        "bounding_box": metadata.get("bounding_box") if isinstance(metadata.get("bounding_box"), dict) else None,
+        "confidence_score": locator_details["confidence_score"],
+        "tags": ["desktop", "recorded", "recorder-sync"],
+        "metadata": metadata,
+    }
+
+
 @router.get("/pages", response_model=list[PageListItem])
 async def list_pages(platform: Optional[str] = None, db: AsyncSession = Depends(get_db)):
     q = select(PageRepositoryModel).options(selectinload(PageRepositoryModel.elements))
@@ -1550,6 +1983,147 @@ async def delete_element(element_id: str, db: AsyncSession = Depends(get_db)):
 
 
 # ── All-in-one for autocomplete ───────────────────────────────────────────────
+
+@router.post("/desktop/sync-workflows", response_model=DesktopWorkflowSyncResponse)
+async def sync_desktop_workflows_to_repository(
+    body: DesktopWorkflowSyncRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    workflow_query = (
+        select(WorkflowModel)
+        .options(selectinload(WorkflowModel.nodes))
+        .order_by(WorkflowModel.created_at.desc())
+    )
+    if body.workflow_id:
+        workflow_query = workflow_query.where(WorkflowModel.id == body.workflow_id)
+    if not body.include_archived:
+        workflow_query = workflow_query.where(WorkflowModel.status != "archived")
+    workflow_result = await db.execute(workflow_query)
+    workflows = []
+    for workflow in workflow_result.scalars().all():
+        platforms = {str(item).lower() for item in (getattr(workflow, "platforms", None) or [])}
+        tags = {str(item).lower() for item in (getattr(workflow, "tags", None) or [])}
+        has_desktop_node = any(
+            str(getattr(node, "type", "") or "").startswith("desktop.")
+            for node in (getattr(workflow, "nodes", None) or [])
+        )
+        if "desktop" in platforms or "desktop" in tags or has_desktop_node:
+            workflows.append(workflow)
+
+    session_query = (
+        select(DesktopRecordingSessionModel)
+        .options(selectinload(DesktopRecordingSessionModel.actions))
+        .order_by(DesktopRecordingSessionModel.created_at.desc())
+    )
+    session_ids = {_text_value(_dict_value(getattr(workflow, "variables", None)).get("desktop_recorder_session_id")) for workflow in workflows}
+    session_ids.discard("")
+    if body.include_recording_sessions:
+        if body.workflow_id and session_ids:
+            session_query = session_query.where(DesktopRecordingSessionModel.id.in_(list(session_ids)))
+        elif body.workflow_id:
+            session_query = session_query.where(DesktopRecordingSessionModel.id == "__no_session__")
+    else:
+        session_query = session_query.where(DesktopRecordingSessionModel.id == "__no_session__")
+    session_result = await db.execute(session_query)
+    sessions = list(session_result.scalars().all())
+
+    created = updated = skipped = pages_created = 0
+    items: list[DesktopWorkflowSyncItem] = []
+    seen: set[tuple[str, str]] = set()
+
+    async def apply_values(
+        values: dict[str, Any] | None,
+        *,
+        source: str,
+        workflow: WorkflowModel | None = None,
+        node: WorkflowNodeModel | None = None,
+        session: DesktopRecordingSessionModel | None = None,
+    ) -> None:
+        nonlocal created, updated, skipped, pages_created
+        if values is None:
+            return
+        object_key = _text_value(values.get("object_key"))
+        application = _text_value(values.get("application"), "Desktop Application")
+        dedupe_key = (application.lower(), object_key.lower())
+        if dedupe_key in seen:
+            skipped += 1
+            items.append(DesktopWorkflowSyncItem(
+                object_key=object_key,
+                name=_text_value(values.get("name"), object_key),
+                application=application,
+                action="skipped",
+                reason="Duplicate object in sync source",
+                source=source,
+                workflow_id=str(getattr(workflow, "id", "") or ""),
+                workflow_name=str(getattr(workflow, "name", "") or ""),
+                node_key=str(getattr(node, "node_key", "") or ""),
+                session_id=str(getattr(session, "id", "") or ""),
+            ))
+            return
+        seen.add(dedupe_key)
+
+        action, reason, did_create_page, page, element = await _upsert_desktop_object_from_sync(
+            db,
+            values,
+            source=source,
+            update_existing=body.update_existing,
+            impact_summary={
+                "workflow_id": str(getattr(workflow, "id", "") or ""),
+                "node_key": str(getattr(node, "node_key", "") or ""),
+                "recording_session_id": str(getattr(session, "id", "") or ""),
+            },
+        )
+        if action == "created":
+            created += 1
+        elif action == "updated":
+            updated += 1
+        else:
+            skipped += 1
+        if did_create_page:
+            pages_created += 1
+        items.append(DesktopWorkflowSyncItem(
+            object_key=object_key,
+            name=_text_value(values.get("name"), object_key),
+            application=application,
+            action=action,
+            reason=reason,
+            source=source,
+            workflow_id=str(getattr(workflow, "id", "") or ""),
+            workflow_name=str(getattr(workflow, "name", "") or ""),
+            node_key=str(getattr(node, "node_key", "") or ""),
+            session_id=str(getattr(session, "id", "") or ""),
+            object=_desktop_object_response(page, element) if page is not None and element is not None else None,
+        ))
+
+    for session in sessions:
+        for action in session.actions or []:
+            await apply_values(
+                _desktop_values_from_recorded_action(session, action),
+                source="desktop_recorder_sync",
+                session=session,
+            )
+
+    for workflow in workflows:
+        context = _workflow_launch_context(workflow)
+        for node in workflow.nodes or []:
+            await apply_values(
+                _desktop_values_from_workflow_node(workflow, node, context),
+                source="desktop_workflow_sync",
+                workflow=workflow,
+                node=node,
+            )
+
+    await db.commit()
+    return DesktopWorkflowSyncResponse(
+        scanned_workflows=len(workflows),
+        scanned_recording_sessions=len(sessions),
+        created=created,
+        updated=updated,
+        skipped=skipped,
+        pages_created=pages_created,
+        objects=items,
+    )
+
 
 @router.get("/desktop/objects", response_model=list[DesktopObjectResponse])
 async def list_desktop_objects(

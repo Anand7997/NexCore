@@ -1,6 +1,7 @@
 'use client';
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000/api';
+const DIRECT_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000/api';
+const REQUEST_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? '/api/proxy';
 
 class ApiError extends Error {
   constructor(public status: number, message: string) {
@@ -11,7 +12,7 @@ class ApiError extends Error {
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const isFormData = init?.body instanceof FormData;
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const res = await fetch(`${REQUEST_BASE_URL}${path}`, {
     headers: isFormData ? init?.headers : { 'Content-Type': 'application/json', ...init?.headers },
     ...init,
   });
@@ -36,4 +37,4 @@ export const api = {
   delete: <T = void>(path: string) => request<T>(path, { method: 'DELETE' }),
 };
 
-export { ApiError, BASE_URL as API_BASE_URL };
+export { ApiError, DIRECT_BASE_URL as API_BASE_URL };

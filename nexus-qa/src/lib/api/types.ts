@@ -649,6 +649,38 @@ export interface DesktopObjectCreateInput {
 
 export type DesktopObjectUpdateInput = Partial<DesktopObjectCreateInput>;
 
+export interface DesktopWorkflowSyncInput {
+  workflow_id?: string | null;
+  include_archived?: boolean;
+  include_recording_sessions?: boolean;
+  update_existing?: boolean;
+}
+
+export interface DesktopWorkflowSyncItem {
+  object_key: string;
+  name: string;
+  application: string;
+  action: string;
+  reason: string;
+  source: string;
+  workflow_id: string;
+  workflow_name: string;
+  node_key: string;
+  session_id: string;
+  object?: DesktopObject | null;
+}
+
+export interface DesktopWorkflowSyncResponse {
+  source: string;
+  scanned_workflows: number;
+  scanned_recording_sessions: number;
+  created: number;
+  updated: number;
+  skipped: number;
+  pages_created: number;
+  objects: DesktopWorkflowSyncItem[];
+}
+
 export interface DesktopSpyCandidate {
   object_key: string;
   name: string;

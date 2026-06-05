@@ -82,6 +82,9 @@ def test_node_specs_expose_driver_selection_and_locator_candidates():
 
     assert launch_schema["driver_type"]["enum"] == ["winappdriver", "uia3", "computer_vision", "auto"]
     assert "server_url" in launch_schema
+    assert "window_title" in launch_schema
+    assert "process_name" in launch_schema
+    assert "window_required" in launch_schema
     assert "locators" in click_schema
     assert "x" in click_schema
     assert "y" in click_schema
@@ -244,6 +247,35 @@ async def test_launch_attaches_by_title_after_delegating_app_starts_without_wind
             "app": r"C:\Users\VAnand\AppData\Local\Programs\Microsoft VS Code\Code.exe",
             "driver_type": "uia3",
             "window_title": "Visual Studio Code",
+            "attach_if_running": True,
+            "timeout_ms": 3000,
+        },
+    )
+
+    with patch("app.execution.plugins.desktop.plugin.get_driver", return_value=driver):
+        plugin = DesktopExecutionPlugin()
+        result = await plugin.execute(envelope)
+
+    assert result.success is True
+    driver.launch.assert_awaited_once()
+    assert driver.attach.await_count == 2
+    assert plugin._sessions["exec1"] is driver
+
+
+@pytest.mark.asyncio
+async def test_launch_waits_for_scoped_window_after_successful_start():
+    driver = _mock_driver()
+    driver.attach = AsyncMock(side_effect=[
+        DriverResult(success=False, error="Window not found: IDE"),
+        DriverResult(success=True, metadata={"window_title": "IntelliJ IDEA"}),
+    ])
+    driver.launch = AsyncMock(return_value=DriverResult(success=True, metadata={"window_title": "Splash"}))
+    envelope = _envelope(
+        "desktop.launch",
+        {
+            "app": r"C:\Users\VAnand\AppData\Local\JetBrains\IntelliJ IDEA Community Edition 2024.3.5\bin\idea64.exe",
+            "driver_type": "uia3",
+            "window_title": "IDE",
             "attach_if_running": True,
             "timeout_ms": 3000,
         },

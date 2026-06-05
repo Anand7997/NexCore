@@ -7,6 +7,7 @@ import type {
   DesktopObjectHealingSuggestionCreateInput, DesktopObjectHealingSuggestionDecisionInput,
   DesktopObjectHistoryItem, DesktopObjectImpactResponse,
   DesktopObjectLocatorProfileResponse, DesktopObjectUpdateInput,
+  DesktopWorkflowSyncInput, DesktopWorkflowSyncResponse,
   DesktopSpySnapshot, DesktopSpySnapshotInput,
   DiscoverRequestInput, DiscoverResponse,
   ElementCreateInput, ElementUpdateInput,
@@ -159,6 +160,15 @@ export function useDeleteDesktopObject() {
   return useMutation({
     mutationFn: (objectKey: string) =>
       api.delete(`/page-repository/desktop/objects/${encodeURIComponent(objectKey)}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: KEYS.all }),
+  });
+}
+
+export function useSyncDesktopWorkflows() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input?: DesktopWorkflowSyncInput) =>
+      api.post<DesktopWorkflowSyncResponse>('/page-repository/desktop/sync-workflows', input ?? {}),
     onSuccess: () => qc.invalidateQueries({ queryKey: KEYS.all }),
   });
 }

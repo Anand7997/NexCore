@@ -36,6 +36,34 @@ async def test_launch_starts_application():
 
 
 @pytest.mark.asyncio
+async def test_launch_waits_for_window_ready_state():
+    pw, mock_app, mock_window = _make_mock_pywinauto()
+    with patch.dict("sys.modules", {"pywinauto": pw}):
+        from importlib import reload
+        import app.execution.plugins.desktop.drivers.uia3 as mod
+        reload(mod)
+        adapter = mod.UIA3Adapter(timeout=12)
+        result = await adapter.launch("idea64.exe")
+
+    assert result.success is True
+    mock_window.wait.assert_called_once_with("exists visible enabled ready", timeout=12)
+
+
+@pytest.mark.asyncio
+async def test_launch_can_skip_ready_wait():
+    pw, mock_app, mock_window = _make_mock_pywinauto()
+    with patch.dict("sys.modules", {"pywinauto": pw}):
+        from importlib import reload
+        import app.execution.plugins.desktop.drivers.uia3 as mod
+        reload(mod)
+        adapter = mod.UIA3Adapter(timeout=12)
+        result = await adapter.launch("idea64.exe", capabilities={"wait_for_ready": False})
+
+    assert result.success is True
+    mock_window.wait.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_launch_returns_failure_on_exception():
     pw, mock_app, _ = _make_mock_pywinauto()
     mock_app.start.side_effect = Exception("Access denied")

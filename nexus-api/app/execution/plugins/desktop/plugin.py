@@ -126,6 +126,10 @@ class DesktopExecutionPlugin(ExecutionPlugin):
                     "app": {"type": "string", "required": True, "supports_template": True},
                     "args": {"type": "array"},
                     "capabilities": {"type": "object"},
+                    "window_title": {"type": "string", "supports_template": True},
+                    "process_name": {"type": "string", "supports_template": True},
+                    "attach_if_running": {"type": "boolean", "default": True},
+                    "window_required": {"type": "boolean", "default": True},
                     "timeout_ms": {"type": "number", "default": 30000},
                 },
             ),
@@ -1065,17 +1069,42 @@ class DesktopExecutionPlugin(ExecutionPlugin):
                         ),
                     ),
                 )
+            scoped_attach_checked = False
             result = await driver.launch(
                 str(cfg["app"]),
                 args=_coerce_args(cfg.get("args") or cfg.get("appArguments")),
                 capabilities=dict(cfg.get("capabilities") or {}),
             )
-            if not result.success and (window_title or stable_process_name):
+            if result.success and (window_title or stable_process_name):
+                scoped_attach_checked = True
                 attach_result = await self._wait_for_scoped_attach(
                     driver,
                     window_title=window_title or None,
                     process_name=stable_process_name or None,
-                    timeout=min(max(self._timeout(cfg, 30000), 3.0), 30.0),
+                    timeout=min(max(self._timeout(cfg, 30000), 3.0), 60.0),
+                )
+                if attach_result.success:
+                    self._sessions[envelope.execution_id] = driver
+                    await envelope.log("success", "Desktop launch scope is ready", source="desktop")
+                    return driver
+                if cfg.get("window_required", True):
+                    result.error = (
+                        "Desktop app launched, but the configured window/process was not ready: "
+                        f"{attach_result.error or 'Window not found'}"
+                    )
+                    result.success = False
+                else:
+                    await envelope.log(
+                        "warning",
+                        "Desktop launch scope was not found; continuing with the first launched window",
+                        source="desktop",
+                    )
+            if not result.success and (window_title or stable_process_name) and not scoped_attach_checked:
+                attach_result = await self._wait_for_scoped_attach(
+                    driver,
+                    window_title=window_title or None,
+                    process_name=stable_process_name or None,
+                    timeout=min(max(self._timeout(cfg, 30000), 3.0), 60.0),
                 )
                 if attach_result.success:
                     self._sessions[envelope.execution_id] = driver

@@ -12,6 +12,31 @@ from typing import Any
 from .base import DesktopDriver, DriverResult, LocatorCandidate
 
 
+def _capability_bool(capabilities: dict[str, Any] | None, key: str, default: bool) -> bool:
+    if not capabilities or key not in capabilities:
+        return default
+    value = capabilities.get(key)
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() not in {"0", "false", "no", "off"}
+
+
+def _capability_seconds(
+    capabilities: dict[str, Any] | None,
+    key: str,
+    default: float,
+    *,
+    value_is_ms: bool = True,
+) -> float:
+    if not capabilities or capabilities.get(key) in (None, ""):
+        return default
+    try:
+        value = float(capabilities[key])
+    except (TypeError, ValueError):
+        return default
+    return max(0.0, value / 1000 if value_is_ms else value)
+
+
 class UIA3Adapter(DesktopDriver):
     """Drives Windows applications directly via the UI Automation API (pywinauto)."""
 
@@ -37,12 +62,17 @@ class UIA3Adapter(DesktopDriver):
     ) -> DriverResult:
         def _do():
             pw = self._import_pywinauto()
+            caps = dict(capabilities or {})
             app = str(app_path or "").strip().strip('"')
             cmd_parts = [app, *(args or [])]
             cmd = subprocess.list2cmdline(cmd_parts) if os.name == "nt" else shlex.join(cmd_parts)
             app = pw.Application(backend="uia").start(cmd)
             self._app = app
-            deadline = time.monotonic() + min(max(self._timeout, 1.0), 5.0)
+            launch_timeout = _capability_seconds(caps, "launch_window_timeout_ms", self._timeout)
+            ready_timeout = _capability_seconds(caps, "ready_timeout_ms", self._timeout)
+            wait_for_ready = _capability_bool(caps, "wait_for_ready", True)
+            post_launch_delay = _capability_seconds(caps, "post_launch_delay_ms", 0.0)
+            deadline = time.monotonic() + max(launch_timeout, 1.0)
             last_error: Exception | None = None
             while time.monotonic() <= deadline:
                 try:
@@ -55,6 +85,13 @@ class UIA3Adapter(DesktopDriver):
                 if last_error:
                     raise last_error
                 raise RuntimeError("No application window was found after launch")
+            if wait_for_ready:
+                self._top_window.wait(
+                    "exists visible enabled ready",
+                    timeout=max(ready_timeout, 1.0),
+                )
+            if post_launch_delay > 0:
+                time.sleep(post_launch_delay)
             return self._top_window.window_text()
 
         try:
