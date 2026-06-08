@@ -17,7 +17,15 @@ from app.domain.executions.schemas import (
 from app.domain.test_configuration.repository import TestConfigurationRepository
 from app.domain.workflows.schemas import WorkflowCreateSchema, WorkflowEdgeSchema, WorkflowNodePositionSchema, WorkflowNodeSchema
 from app.domain.workflows.repository import WorkflowRepository
-from app.database.models import TestCaseModel, TestModuleModel, TestProjectModel, TestStepModel, WorkflowModel, WorkflowNodeModel
+from app.database.models import (
+    ExecutionTestCaseResultModel,
+    TestCaseModel,
+    TestModuleModel,
+    TestProjectModel,
+    TestStepModel,
+    WorkflowModel,
+    WorkflowNodeModel,
+)
 from app.distributed.scheduler import DistributedScheduler
 from app.enterprise.audit import record_audit
 from app.enterprise.auth import AuthContext, get_auth_context
@@ -38,8 +46,10 @@ def _display_slug(value: str) -> str:
     return "_".join(part for part in text.split("_") if part)
 
 
-async def _execution_display_context(db: AsyncSession, execution) -> dict[str, str]:
+async def _execution_display_context(db: AsyncSession, execution) -> dict[str, str | int]:
     workflow_name = ""
+    result_id = ""
+    result_count = 0
     project_name = ""
     module_name = ""
     test_case_name = ""
@@ -57,6 +67,28 @@ async def _execution_display_context(db: AsyncSession, execution) -> dict[str, s
             select(TestModuleModel.name).where(TestModuleModel.id == execution.module_id)
         ) or ""
 
+    result = await db.execute(
+        select(
+            ExecutionTestCaseResultModel.id,
+            TestCaseModel.name,
+            TestModuleModel.name,
+            TestProjectModel.name,
+        )
+        .join(TestCaseModel, ExecutionTestCaseResultModel.test_case_id == TestCaseModel.id)
+        .join(TestModuleModel, TestCaseModel.module_id == TestModuleModel.id)
+        .join(TestProjectModel, TestModuleModel.project_id == TestProjectModel.id)
+        .where(ExecutionTestCaseResultModel.execution_id == execution.id)
+        .order_by(ExecutionTestCaseResultModel.created_at)
+    )
+    result_rows = result.all()
+    if result_rows:
+        result_count = len(result_rows)
+        result_id = str(result_rows[0][0] or "")
+        case_names = [row[1] for row in result_rows if row[1]]
+        test_case_name = case_names[0] if len(case_names) <= 1 else f"{case_names[0]} + {len(case_names) - 1} more"
+        module_name = module_name or str(result_rows[0][2] or "")
+        project_name = project_name or str(result_rows[0][3] or "")
+
     variables = execution.variables or {}
     raw_case_ids = variables.get("test_case_ids", []) if isinstance(variables, dict) else []
     if isinstance(raw_case_ids, str):
@@ -73,7 +105,7 @@ async def _execution_display_context(db: AsyncSession, execution) -> dict[str, s
         )
         test_case_ids = [str(item) for item in node_result.scalars().all() if item]
 
-    if test_case_ids:
+    if test_case_ids and not test_case_name:
         result = await db.execute(
             select(TestCaseModel.name, TestModuleModel.name, TestProjectModel.name)
             .join(TestModuleModel, TestCaseModel.module_id == TestModuleModel.id)
@@ -95,6 +127,8 @@ async def _execution_display_context(db: AsyncSession, execution) -> dict[str, s
 
     return {
         "workflow_name": workflow_name,
+        "result_id": result_id,
+        "result_count": result_count,
         "project_name": project_name,
         "module_name": module_name,
         "test_case_name": test_case_name,
@@ -1171,6 +1205,7 @@ async def get_execution(execution_id: str, db: AsyncSession = Depends(get_db)):
     nodes = await repo.get_nodes(execution_id)
     timeline = await repo.get_timeline(execution_id)
     context = await _execution_display_context(db, execution)
+    total, completed = await repo.node_counts(execution_id)
 
     return ExecutionResponse(
         id=execution.id,
@@ -1185,6 +1220,8 @@ async def get_execution(execution_id: str, db: AsyncSession = Depends(get_db)):
         started_at=execution.started_at,
         completed_at=execution.completed_at,
         created_at=execution.created_at,
+        node_count=total,
+        completed_nodes=completed,
         nodes=[_node_to_response(n) for n in nodes],
         timeline=[
             TimelineEntryResponse(

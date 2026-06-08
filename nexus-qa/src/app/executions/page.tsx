@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, Brain, Terminal, Download, ChevronRight, RefreshCw, Play,
   Square, Activity, CheckCircle2, XCircle, Clock, Filter, Zap,
-  ArrowUpRight, Wrench, Trash2,
+  ArrowUpRight, Wrench, Trash2, Hash, FileText, Layers,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { NodeHealthIndicator } from '@/components/ui/NodeHealthIndicator';
@@ -19,7 +19,7 @@ import { useExecutions, useExecution, useCancelExecution, useDeleteExecution, us
 import { useFixSuggestions } from '@/lib/api/intelligence';
 import { useTestConfigurationTree } from '@/lib/api/testConfiguration';
 import { useWorkflows } from '@/lib/api/workflows';
-import { formatDuration, timeAgo } from '@/lib/utils';
+import { cn, formatDuration, timeAgo } from '@/lib/utils';
 import type { ExecutionStatus, WorkflowNode } from '@/types';
 import type { ExecutionListItem, ExecutionDetail, WorkflowListItem, TestCase } from '@/lib/api/types';
 
@@ -54,7 +54,15 @@ const STATUS_ICON: Record<ExecutionStatus, React.ElementType> = {
 };
 
 const PLATFORM_LABEL: Record<string, string> = {
-  web: 'Web', android: 'Android', ios: 'iOS', desktop: 'Desktop',
+  web: 'Web', android: 'Android', ios: 'iOS', desktop: 'Desktop', api: 'API',
+};
+
+const AUTOMATION_STYLE: Record<string, string> = {
+  web: 'border-sky-500/25 bg-sky-500/10 text-sky-300',
+  desktop: 'border-fuchsia-500/25 bg-fuchsia-500/10 text-fuchsia-300',
+  api: 'border-amber-500/25 bg-amber-500/10 text-amber-300',
+  android: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300',
+  ios: 'border-indigo-500/25 bg-indigo-500/10 text-indigo-300',
 };
 
 const TRIGGER_LABEL: Record<string, string> = {
@@ -98,6 +106,43 @@ function inferPlatformFromValues(values: unknown[] | undefined): string {
     if (platform) return platform;
   }
   return '';
+}
+
+function shortId(value: string | null | undefined, chars = 8): string {
+  if (!value) return 'pending';
+  return value.length > chars ? `${value.slice(0, chars)}...` : value;
+}
+
+function valueOrDash(value: string | null | undefined): string {
+  return value?.trim() || '-';
+}
+
+function automationLabel(platform: string | null | undefined): string {
+  const key = String(platform ?? '').trim().toLowerCase();
+  return PLATFORM_LABEL[key] ?? valueOrDash(platform);
+}
+
+function resultTitle(exec: ExecutionListItem, workflowName: string): string {
+  return (
+    exec.test_case_name?.trim()
+    || exec.display_name?.trim()
+    || workflowName
+    || exec.workflow_name?.trim()
+    || 'Execution result'
+  );
+}
+
+function AutomationBadge({ platform }: { platform: string }) {
+  const key = platform.trim().toLowerCase();
+  return (
+    <span className={cn(
+      'inline-flex w-fit items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-mono font-semibold uppercase tracking-[0.12em]',
+      AUTOMATION_STYLE[key] ?? 'border-[var(--color-line-default)] bg-[var(--color-surface-2)] text-[var(--color-fg-muted)]',
+    )}>
+      <Zap size={10} />
+      {automationLabel(platform)}
+    </span>
+  );
 }
 
 // ── Stat Card ─────────────────────────────────────────────────────────────────
@@ -195,59 +240,73 @@ function StatCard({ label, value, icon: Icon, color }: { label: string; value: n
 
 // ── Execution Row ─────────────────────────────────────────────────────────────
 
-function ExecutionRow({
+function ExecutionResultRow({
   exec, selected, onClick, workflowName,
 }: {
   exec: ExecutionListItem; selected: boolean; onClick: () => void; workflowName: string;
 }) {
-  const status   = mapStatus(exec.status);
+  const status = mapStatus(exec.status);
   const progress = exec.node_count > 0 ? exec.completed_nodes / exec.node_count : 0;
-  const StatusIcon = STATUS_ICON[status] ?? Activity;
+  const title = resultTitle(exec, workflowName);
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
       onClick={onClick}
-      className={[
+      className={cn(
         'group flex cursor-pointer items-center gap-4 border-b px-5 py-3.5 transition-all',
         selected
-          ? 'border-l-2 border-l-[var(--color-accent-default)] bg-[rgba(91,140,255,0.06)] border-b-[var(--color-line-subtle)]'
+          ? 'border-l-2 border-l-[var(--color-accent-default)] border-b-[var(--color-line-subtle)] bg-[rgba(91,140,255,0.06)]'
           : 'border-b-[var(--color-line-subtle)] hover:bg-[rgba(255,255,255,0.02)]',
-      ].join(' ')}
+      )}
     >
       <div className="shrink-0">
         <NodeHealthIndicator status={status} progress={progress} size={36} strokeWidth={2.5} />
       </div>
 
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2 mb-0.5">
-          <span className="truncate text-[12px] font-medium text-[var(--color-fg-default)]">
-            {workflowName || exec.workflow_id.slice(0, 12) + '…'}
-          </span>
-          <span className="shrink-0 text-[10px] font-mono text-[var(--color-fg-subtle)]">
-            {PLATFORM_LABEL[exec.platform] ?? exec.platform}
-          </span>
+      <div className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] items-center gap-4 lg:grid-cols-[minmax(210px,1.45fr)_minmax(112px,0.65fr)_auto] xl:grid-cols-[minmax(210px,1.45fr)_minmax(145px,0.9fr)_minmax(112px,0.65fr)_auto] 2xl:grid-cols-[minmax(210px,1.45fr)_minmax(145px,0.9fr)_minmax(112px,0.65fr)_minmax(150px,0.85fr)_auto]">
+        <div className="min-w-0">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="truncate text-[12px] font-semibold text-[var(--color-fg-default)]">{title}</span>
+            {exec.result_count > 1 && (
+              <span className="shrink-0 rounded border border-[var(--color-line-default)] px-1.5 py-0.5 text-[9px] font-mono text-[var(--color-fg-subtle)]">
+                +{exec.result_count - 1}
+              </span>
+            )}
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-mono text-[var(--color-fg-subtle)]">
+            <span className="text-[var(--color-fg-muted)]">Result {shortId(exec.result_id, 10)}</span>
+            <span className="opacity-40">/</span>
+            <span>Workflow {shortId(exec.workflow_id, 8)}</span>
+          </div>
         </div>
-        <div className="flex items-center gap-2 text-[10px] font-mono text-[var(--color-fg-subtle)]">
-          <span>{exec.id.slice(0, 10)}…</span>
-          <span className="opacity-40">·</span>
-          <span>{exec.environment}</span>
-          <span className="opacity-40">·</span>
-          <span>{TRIGGER_LABEL[exec.trigger] ?? exec.trigger}</span>
-        </div>
-      </div>
 
-      <div className="flex shrink-0 items-center gap-4">
-        <div className="hidden text-right lg:block">
-          <div className="text-[11px] font-mono text-[var(--color-fg-muted)]">{exec.completed_nodes}/{exec.node_count} nodes</div>
-          <div className="text-[10px] text-[var(--color-fg-subtle)]">{formatDuration(durationMs(exec))}</div>
+        <div className="hidden min-w-0 xl:block">
+          <div className="truncate text-[11px] font-medium text-[var(--color-fg-muted)]">{valueOrDash(exec.module_name)}</div>
+          <div className="mt-1 truncate text-[10px] text-[var(--color-fg-subtle)]">{valueOrDash(exec.project_name)}</div>
         </div>
-        <div className="hidden text-right lg:block">
-          <div className="text-[10px] font-mono text-[var(--color-fg-subtle)]">{exec.started_at ? timeAgo(exec.started_at) : '—'}</div>
+
+        <div className="hidden min-w-0 lg:block">
+          <AutomationBadge platform={exec.platform} />
+          <div className="mt-1 truncate text-[10px] font-mono text-[var(--color-fg-subtle)]">
+            {exec.environment} / {TRIGGER_LABEL[exec.trigger] ?? exec.trigger}
+          </div>
         </div>
-        <Badge status={status} size="sm" glow={status === 'running' || status === 'failed'} />
-        <ChevronRight size={12} className={`text-[var(--color-fg-subtle)] transition-transform ${selected ? 'rotate-90' : ''}`} />
+
+        <div className="hidden min-w-0 2xl:block">
+          <div className="break-all font-mono text-[10px] text-[var(--color-fg-muted)]">{exec.id}</div>
+          <div className="mt-1 text-[10px] text-[var(--color-fg-subtle)]">{exec.started_at ? timeAgo(exec.started_at) : '-'}</div>
+        </div>
+
+        <div className="flex shrink-0 items-center justify-end gap-4">
+          <div className="hidden text-right lg:block">
+            <div className="text-[11px] font-mono text-[var(--color-fg-muted)]">{exec.completed_nodes}/{exec.node_count} nodes</div>
+            <div className="text-[10px] text-[var(--color-fg-subtle)]">{formatDuration(durationMs(exec))}</div>
+          </div>
+          <Badge status={status} size="sm" glow={status === 'running' || status === 'failed'} />
+          <ChevronRight size={12} className={`text-[var(--color-fg-subtle)] transition-transform ${selected ? 'rotate-90' : ''}`} />
+        </div>
       </div>
     </motion.div>
   );
@@ -281,6 +340,15 @@ function DetailPanel({ execId, workflowName, onDeleted }: { execId: string; work
   const failedFix = failedNode ? fixSuggestions.find((fix) => fix.node_key === failedNode.node_key) : undefined;
   const fixCount = failedFix ? 1 : fixSuggestions.length;
   const liveNode = activeNode ? exec.nodes.find((n) => n.node_key === activeNode) : undefined;
+  const detailTitle = resultTitle(exec, workflowName);
+  const identityItems: Array<{ label: string; value: string; icon: React.ElementType; mono?: boolean }> = [
+    { label: 'Execution ID', value: exec.id, icon: Hash, mono: true },
+    { label: 'Result ID', value: exec.result_id || 'Result pending', icon: FileText, mono: true },
+    { label: 'Testcase', value: valueOrDash(exec.test_case_name), icon: FileText },
+    { label: 'Module', value: valueOrDash(exec.module_name), icon: Layers },
+    { label: 'Automation', value: automationLabel(exec.platform), icon: Zap },
+    { label: 'Project', value: valueOrDash(exec.project_name), icon: Layers },
+  ];
 
   const tlExec = {
     id: exec.id, workflowId: exec.workflow_id,
@@ -305,7 +373,7 @@ function DetailPanel({ execId, workflowName, onDeleted }: { execId: string; work
         <div className="flex items-start justify-between gap-3 mb-3">
           <div className="min-w-0">
             <h2 className="text-[13px] font-semibold text-[var(--color-fg-default)] truncate">
-              {workflowName || 'Execution'}
+              {detailTitle}
             </h2>
             <p className="mt-0.5 font-mono text-[10px] text-[var(--color-fg-subtle)]">{exec.id.slice(0, 16)}… · {exec.trigger} · {exec.environment}</p>
           </div>
@@ -329,6 +397,23 @@ function DetailPanel({ execId, workflowName, onDeleted }: { execId: string; work
               </div>
             ))}
           </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          {identityItems.map(({ label, value, icon: Icon, mono }) => (
+            <div key={label} className="min-w-0 rounded-lg border border-[var(--color-line-subtle)] bg-[var(--color-surface-2)] px-2.5 py-2">
+              <div className="mb-1 flex items-center gap-1.5 text-[9px] font-mono uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
+                <Icon size={10} />
+                {label}
+              </div>
+              <p className={cn(
+                'text-[11px] text-[var(--color-fg-muted)]',
+                mono ? 'break-all font-mono tabular-nums' : 'truncate font-medium',
+              )}>
+                {value}
+              </p>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -753,7 +838,13 @@ export default function ExecutionsPage() {
       const q = search.toLowerCase();
       list = list.filter((e) =>
         e.id.toLowerCase().includes(q) ||
+        (e.result_id ?? '').toLowerCase().includes(q) ||
+        (e.test_case_name ?? '').toLowerCase().includes(q) ||
+        (e.module_name ?? '').toLowerCase().includes(q) ||
+        (e.project_name ?? '').toLowerCase().includes(q) ||
+        e.platform.toLowerCase().includes(q) ||
         (wfNameMap[e.workflow_id] ?? '').toLowerCase().includes(q) ||
+        (e.workflow_name ?? '').toLowerCase().includes(q) ||
         e.environment.toLowerCase().includes(q)
       );
     }
@@ -781,8 +872,8 @@ export default function ExecutionsPage() {
         >
           <div className="flex items-center justify-between gap-4 mb-4">
             <div>
-              <p className="text-[10px] font-mono uppercase tracking-[0.16em] text-[var(--color-fg-subtle)]">Mode 2 — Execution Engine</p>
-              <h1 className="mt-0.5 text-xl font-semibold tracking-tight text-[var(--color-fg-default)]">Run Executions</h1>
+              <p className="text-[10px] font-mono uppercase tracking-[0.16em] text-[var(--color-fg-subtle)]">Mode 2 / Execution Results</p>
+              <h1 className="mt-0.5 text-xl font-semibold tracking-tight text-[var(--color-fg-default)]">Execution Results Dashboard</h1>
             </div>
             <div className="relative">
               <Button variant="neon" size="sm" onClick={() => setTriggerOpen((v) => !v)}>
@@ -814,7 +905,7 @@ export default function ExecutionsPage() {
             <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-fg-subtle)]" />
             <input
               value={search} onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by ID, workflow, env…"
+              placeholder="Search result, execution, testcase, module, automation..."
               className="w-full rounded-lg border border-[var(--color-line-default)] bg-[var(--color-surface-2)] pl-8 pr-3 py-1.5 text-xs text-[var(--color-fg-default)] placeholder:text-[var(--color-fg-subtle)] outline-none transition-colors focus:border-[var(--color-accent-default)]"
             />
           </div>
@@ -842,12 +933,13 @@ export default function ExecutionsPage() {
         {/* Column headers */}
         <div className="flex shrink-0 items-center border-b border-[var(--color-line-subtle)] px-5 py-2 text-[9px] font-mono uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]">
           <div className="mr-4 w-9 shrink-0" />
-          <div className="flex-1">Workflow / ID</div>
-          <div className="mr-4 hidden items-center gap-8 lg:flex shrink-0">
-            <span>Nodes</span>
-            <span>Started</span>
+          <div className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] items-center gap-4 lg:grid-cols-[minmax(210px,1.45fr)_minmax(112px,0.65fr)_auto] xl:grid-cols-[minmax(210px,1.45fr)_minmax(145px,0.9fr)_minmax(112px,0.65fr)_auto] 2xl:grid-cols-[minmax(210px,1.45fr)_minmax(145px,0.9fr)_minmax(112px,0.65fr)_minmax(150px,0.85fr)_auto]">
+            <span>Result / Testcase</span>
+            <span className="hidden xl:block">Module</span>
+            <span className="hidden lg:block">Automation</span>
+            <span className="hidden 2xl:block">Execution ID</span>
+            <span className="text-right">Status</span>
           </div>
-          <span className="w-20 text-right">Status</span>
         </div>
 
         {/* List */}
@@ -869,10 +961,10 @@ export default function ExecutionsPage() {
           )}
           {filtered.map((exec, i) => (
             <motion.div key={exec.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.02 }}>
-              <ExecutionRow
+              <ExecutionResultRow
                 exec={exec}
                 selected={selected === exec.id}
-                workflowName={wfNameMap[exec.workflow_id] ?? ''}
+                workflowName={wfNameMap[exec.workflow_id] ?? exec.workflow_name ?? ''}
                 onClick={() => setSelected(selected === exec.id ? null : exec.id)}
               />
             </motion.div>
@@ -893,7 +985,11 @@ export default function ExecutionsPage() {
           >
             <DetailPanel
               execId={selected}
-              workflowName={wfNameMap[executions.find((e) => e.id === selected)?.workflow_id ?? ''] ?? ''}
+              workflowName={
+                wfNameMap[executions.find((e) => e.id === selected)?.workflow_id ?? '']
+                ?? executions.find((e) => e.id === selected)?.workflow_name
+                ?? ''
+              }
               onDeleted={() => setSelected(null)}
             />
           </motion.div>

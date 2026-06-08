@@ -69,6 +69,8 @@ class ExecutionResponse(BaseModel):
     id: str
     workflow_id: str
     workflow_name: str = ""
+    result_id: str = ""
+    result_count: int = 0
     project_name: str = ""
     module_name: str = ""
     test_case_name: str = ""
@@ -82,6 +84,8 @@ class ExecutionResponse(BaseModel):
     started_at: datetime | None
     completed_at: datetime | None
     created_at: datetime
+    node_count: int = 0
+    completed_nodes: int = 0
     nodes: list[ExecutionNodeResponse] = Field(default_factory=list)
     timeline: list[TimelineEntryResponse] = Field(default_factory=list)
 
@@ -92,6 +96,8 @@ class ExecutionListItem(BaseModel):
     id: str
     workflow_id: str
     workflow_name: str = ""
+    result_id: str = ""
+    result_count: int = 0
     project_name: str = ""
     module_name: str = ""
     test_case_name: str = ""

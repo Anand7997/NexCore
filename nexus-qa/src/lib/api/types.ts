@@ -120,6 +120,8 @@ export interface ExecutionListItem {
   id: string;
   workflow_id: string;
   workflow_name?: string;
+  result_id: string;
+  result_count: number;
   project_name?: string;
   module_name?: string;
   test_case_name?: string;
