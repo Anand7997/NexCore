@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import importlib.util
 from io import BytesIO
+import logging
 from xml.etree import ElementTree
 import zipfile
 
@@ -24,6 +25,7 @@ from app.config import settings
 from app.database.session import get_db
 
 router = APIRouter(prefix="/ai-workflows", tags=["ai-workflow"])
+logger = logging.getLogger(__name__)
 
 _WORD_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 _MAX_BRD_FILE_BYTES = 5 * 1024 * 1024
@@ -156,6 +158,12 @@ async def extract_brd_file(file: UploadFile = File(...)) -> BrdExtractResponse:
     try:
         text = _extract_brd_text(filename, content)
     except ValueError as exc:
+        logger.warning(
+            "BRD extraction rejected filename=%r size=%d reason=%s",
+            filename,
+            len(content),
+            str(exc),
+        )
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return BrdExtractResponse(filename=filename, text=text, characters=len(text))
 
