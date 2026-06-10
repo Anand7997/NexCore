@@ -82,7 +82,7 @@ class DesktopExecutionPlugin(ExecutionPlugin):
             "driver_type": {
                 "type": "string",
                 "enum": ["winappdriver", "uia3", "computer_vision", "auto"],
-                "default": "winappdriver",
+                "default": "uia3",
             },
             "server_url": {"type": "string", "default": settings.winappdriver_url},
             "recovery_rules": {"type": "array"},
@@ -1031,7 +1031,7 @@ class DesktopExecutionPlugin(ExecutionPlugin):
         if timeout <= 0:
             timeout = float(cfg.get("timeout_ms") or 30000) / 1000
         return get_driver(
-            str(cfg.get("driver_type") or "winappdriver"),
+            str(cfg.get("driver_type") or "uia3"),
             server_url=str(cfg.get("server_url") or os.getenv("WINAPPDRIVER_URL") or settings.winappdriver_url),
             timeout=timeout,
         )
@@ -2337,7 +2337,7 @@ class DesktopExecutionPlugin(ExecutionPlugin):
         for item in node_chain:
             node_type = str(item.get("node_type") or "")
             node_cfg = dict(item.get("config") or {})
-            node_cfg.setdefault("driver_type", cfg.get("driver_type", "winappdriver"))
+            node_cfg.setdefault("driver_type", cfg.get("driver_type", "uia3"))
             node_cfg.setdefault("server_url", cfg.get("server_url", ""))
             node_cfg.setdefault("app", cfg.get("app", ""))
             handler = handlers.get(node_type)

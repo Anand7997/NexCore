@@ -22,9 +22,19 @@ class AppDiscoveryAgent:
         save_mode: str,
         page_id: str | None,
         db: AsyncSession,
+        *,
+        step_intents: list[dict] | None = None,
     ) -> DiscoveryResponse:
         logger.info("AppDiscoveryAgent: discovering %s", url)
-        result = await self._adapter.discover(url, page_name, platform, save_mode, page_id, db)
+        result = await self._adapter.discover(
+            url,
+            page_name,
+            platform,
+            save_mode,
+            page_id,
+            db,
+            step_intents=step_intents,
+        )
         logger.info(
             "AppDiscoveryAgent: %d elements found, %d saved",
             result.summary.elements_found,

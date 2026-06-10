@@ -143,9 +143,13 @@ class MCPPlaywrightAdapter:
         except Exception:
             return False
 
-    async def discover(self, url: str) -> dict:
+    async def discover(self, url: str, *, step_intents: list[dict] | None = None) -> dict:
         async with httpx.AsyncClient(timeout=60.0) as client:
-            payload = {"url": url, "collect_accessibility": True}
+            payload = {
+                "url": url,
+                "collect_accessibility": True,
+                "step_intents": step_intents or [],
+            }
             resp = await client.post(f"{self._mcp_url}/discover", json=payload)
             resp.raise_for_status()
             return resp.json()

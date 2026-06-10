@@ -17,6 +17,9 @@ def _make_mock_pywinauto():
     mock_app.connect.return_value = mock_app
     mock_app.kill.return_value = None
     pw.Application.return_value = mock_app
+    mock_desktop = MagicMock()
+    mock_desktop.windows.return_value = [mock_window]
+    pw.Desktop.return_value = mock_desktop
     return pw, mock_app, mock_window
 
 
@@ -61,6 +64,45 @@ async def test_launch_can_skip_ready_wait():
 
     assert result.success is True
     mock_window.wait.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_launch_falls_back_to_visible_desktop_window_for_hosted_apps():
+    pw, mock_app, _ = _make_mock_pywinauto()
+
+    class Info:
+        name = "Calculator"
+        class_name = "ApplicationFrameWindow"
+        process_id = 2020
+        runtime_id = "calc-window"
+
+    hosted_window = MagicMock()
+    hosted_window.window_text.return_value = "Calculator"
+    hosted_window.element_info = Info()
+    hosted_window.descendants.return_value = []
+    mock_app.top_window.side_effect = Exception("No windows for that process could be found")
+    desktop = MagicMock()
+    desktop.windows.side_effect = [[], [hosted_window]]
+    pw.Desktop.return_value = desktop
+
+    with patch.dict("sys.modules", {"pywinauto": pw}):
+        from importlib import reload
+        import app.execution.plugins.desktop.drivers.uia3 as mod
+        reload(mod)
+        adapter = mod.UIA3Adapter(timeout=1)
+        result = await adapter.launch(
+            "calc.exe",
+            capabilities={
+                "launch_window_timeout_ms": 1200,
+                "ready_timeout_ms": 1200,
+                "window_title": "Calculator",
+            },
+        )
+
+    assert result.success is True
+    assert result.metadata["window_title"] == "Calculator"
+    assert adapter._top_window is hosted_window
+    hosted_window.wait.assert_called_once_with("exists visible enabled ready", timeout=1.2)
 
 
 @pytest.mark.asyncio
@@ -235,3 +277,43 @@ async def test_close_kills_app():
     assert result.success is True
     mock_app.kill.assert_called_once()
     assert adapter._app is None
+
+
+@pytest.mark.asyncio
+async def test_get_ui_tree_includes_top_window_and_rich_uia_attributes():
+    from importlib import reload
+    import app.execution.plugins.desktop.drivers.uia3 as mod
+
+    reload(mod)
+
+    class Info:
+        def __init__(self, control_type, name, automation_id="", class_name=""):
+            self.control_type = control_type
+            self.name = name
+            self.automation_id = automation_id
+            self.class_name = class_name
+            self.framework_id = "Java"
+            self.process_id = 1234
+            self.rectangle = None
+
+    window = MagicMock()
+    window.element_info = Info("Window", "untitled2", class_name="SunAwtFrame")
+    window.parent.side_effect = Exception("root")
+    button = MagicMock()
+    button.element_info = Info("Button", "Run", "RunButton", "ActionButton")
+    button.parent.return_value = window
+    window.descendants.return_value = [button]
+
+    app = MagicMock()
+    app.top_window.return_value = window
+    adapter = mod.UIA3Adapter()
+    adapter._app = app
+    adapter._top_window = window
+
+    result = await adapter.get_ui_tree()
+
+    assert result.success is True
+    assert 'type="Window"' in result.ui_tree
+    assert 'class_name="SunAwtFrame"' in result.ui_tree
+    assert 'auto_id="RunButton"' in result.ui_tree
+    assert "uia_path=" in result.ui_tree

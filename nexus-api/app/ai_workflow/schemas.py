@@ -94,6 +94,7 @@ class WorkflowStateResponse(BaseModel):
     module_id: str | None = None
     page_id: str | None = None
     page_name: str | None = None
+    platform: str = "web"
     elements_saved: int = 0
     scenarios: list[ScenarioPreview] = []
     testcases_created: int = 0
@@ -248,3 +249,20 @@ class LocatorEnhancementItem(BaseModel):
 
 class LocatorEnhancementList(BaseModel):
     items: list[LocatorEnhancementItem]
+
+
+class StepElementBindingDecision(BaseModel):
+    test_case_title: str
+    step_number: int
+    candidate_id: str | None = None
+    action_type: str
+    input_value: str | None = None
+    assertion_type: str | None = None
+    expected_result: str | None = None
+    confidence: float = 0.0
+    needs_review: bool = False
+    reason: str = ""
+
+
+class StepElementBindingDecisionList(BaseModel):
+    items: list[StepElementBindingDecision]

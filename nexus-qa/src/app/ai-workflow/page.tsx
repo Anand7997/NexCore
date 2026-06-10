@@ -57,6 +57,8 @@ import type {
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
+type WorkflowPlatform = 'web' | 'mobile' | 'api' | 'desktop';
+
 const WORKFLOW_STEPS = [
   { id: 'input', label: 'Input', icon: FileText, desc: 'BRD + Target' },
   { id: 'model', label: 'Model', icon: Bot, desc: 'Select AI' },
@@ -68,7 +70,32 @@ const WORKFLOW_STEPS = [
 
 type StepId = (typeof WORKFLOW_STEPS)[number]['id'];
 
-const PIPELINE_STAGES = [
+function workflowStepLabel(step: (typeof WORKFLOW_STEPS)[number], platform: WorkflowPlatform): string {
+  if (platform === 'desktop' && step.id === 'discovery') return 'Object Binding';
+  return step.label;
+}
+type PipelineStageId =
+  | 'project'
+  | 'module'
+  | 'model'
+  | 'testcases'
+  | 'teststeps'
+  | 'page'
+  | 'mcp'
+  | 'appLaunch'
+  | 'scrape'
+  | 'pageConfig'
+  | 'stepConfig';
+type PipelineStatus = 'queued' | 'active' | 'complete' | 'failed';
+type PipelineStageConfig = {
+  id: PipelineStageId;
+  no: number;
+  label: string;
+  icon: React.ElementType;
+  desc: string;
+};
+
+const WEB_PIPELINE_STAGES: PipelineStageConfig[] = [
   { id: 'project', no: 1, label: 'Creating Project', icon: BookOpen, desc: 'Prepare project workspace' },
   { id: 'module', no: 2, label: 'Creating Module', icon: ClipboardList, desc: 'Attach module context' },
   { id: 'model', no: 3, label: 'Selecting LLM', icon: Bot, desc: 'Choose provider and model' },
@@ -79,10 +106,21 @@ const PIPELINE_STAGES = [
   { id: 'scrape', no: 8, label: 'Scrape Candidate Panel', icon: Search, desc: 'Store raw candidates first' },
   { id: 'pageConfig', no: 9, label: 'Configuring Page', icon: Target, desc: 'Save useful elements and XPath' },
   { id: 'stepConfig', no: 10, label: 'Configuring Test Steps', icon: Settings2, desc: 'Bind page, element, action' },
-] as const;
+];
 
-type PipelineStageId = (typeof PIPELINE_STAGES)[number]['id'];
-type PipelineStatus = 'queued' | 'active' | 'complete' | 'failed';
+const DESKTOP_PIPELINE_STAGES: PipelineStageConfig[] = [
+  { id: 'project', no: 1, label: 'Creating Project', icon: BookOpen, desc: 'Prepare desktop app workspace' },
+  { id: 'module', no: 2, label: 'Creating Module', icon: ClipboardList, desc: 'Attach desktop module context' },
+  { id: 'model', no: 3, label: 'Selecting LLM', icon: Bot, desc: 'Choose provider and model' },
+  { id: 'testcases', no: 4, label: 'Generating Test Cases', icon: FileText, desc: 'Build scenario test coverage' },
+  { id: 'teststeps', no: 5, label: 'Generating Test Steps', icon: Play, desc: 'Draft executable desktop actions' },
+  { id: 'page', no: 6, label: 'Creating Screen', icon: Monitor, desc: 'Create Page Repository screen entry' },
+  { id: 'mcp', no: 7, label: 'Triggering Desktop MCP', icon: Sparkles, desc: 'Start UIA scanner session' },
+  { id: 'appLaunch', no: 8, label: 'Launching Application', icon: Monitor, desc: 'Open target desktop app' },
+  { id: 'scrape', no: 9, label: 'UID Capture Panel', icon: Search, desc: 'Store raw object candidates first' },
+  { id: 'pageConfig', no: 10, label: 'Configuring Objects', icon: Target, desc: 'Save useful objects and UIA paths' },
+  { id: 'stepConfig', no: 11, label: 'Configuring Test Steps', icon: Settings2, desc: 'Bind screen, object, action' },
+];
 
 const PRIORITY_COLOR: Record<string, string> = {
   high: 'text-red-400 bg-red-500/10 border-red-500/25',
@@ -115,16 +153,33 @@ const ORCHESTRATOR_STATUSES = [
   { label: 'Bind', tone: 'emerald' },
 ] as const;
 
-const MCP_PHASES = [
+type McpPhaseId = 'trigger' | 'launch' | 'scrape' | 'xpaths' | 'rank' | 'save' | 'configure';
+type McpPhaseConfig = {
+  id: McpPhaseId;
+  no: string;
+  label: string;
+  desc: string;
+  icon: React.ElementType;
+};
+
+const WEB_MCP_PHASES: McpPhaseConfig[] = [
   { id: 'trigger', no: '01', label: 'Panel Live', desc: 'Open MCP telemetry', icon: Radio },
   { id: 'scrape', no: '02', label: 'Scraping', desc: 'Collect raw elements', icon: Activity },
   { id: 'xpaths', no: '03', label: 'XPath Sweep', desc: 'Extract locator paths', icon: Route },
   { id: 'rank', no: '04', label: 'Best Pick', desc: 'Match steps to elements', icon: SlidersHorizontal },
   { id: 'save', no: '05', label: 'Page Config', desc: 'Save useful elements', icon: Database },
   { id: 'configure', no: '06', label: 'Step Bind', desc: 'Wire actions and XPath', icon: ListChecks },
-] as const;
+];
 
-type McpPhaseId = (typeof MCP_PHASES)[number]['id'];
+const DESKTOP_MCP_PHASES: McpPhaseConfig[] = [
+  { id: 'trigger', no: '01', label: 'Desktop MCP', desc: 'Open UIA scanner telemetry', icon: Radio },
+  { id: 'launch', no: '02', label: 'Launch App', desc: 'Start target application', icon: Monitor },
+  { id: 'scrape', no: '03', label: 'UID Capture', desc: 'Collect raw desktop objects', icon: Activity },
+  { id: 'xpaths', no: '04', label: 'UIA Paths', desc: 'Extract fallback locator paths', icon: Route },
+  { id: 'rank', no: '05', label: 'Best Object', desc: 'Match steps to objects', icon: SlidersHorizontal },
+  { id: 'save', no: '06', label: 'Page Object', desc: 'Save useful desktop objects', icon: Database },
+  { id: 'configure', no: '07', label: 'Step Bind', desc: 'Wire actions and UIA paths', icon: ListChecks },
+];
 
 const MCP_WAITING_SIGNALS = [
   'Opening MCP browser context and warming the page session',
@@ -132,6 +187,14 @@ const MCP_WAITING_SIGNALS = [
   'Extracting XPath, CSS, IDs, placeholders, and text anchors',
   'Scoring locator stability before anything reaches Page Repository',
   'Holding raw scrape candidates in preview while test steps decide what matters',
+] as const;
+
+const DESKTOP_MCP_WAITING_SIGNALS = [
+  'Waiting for the desktop app window and UIA tree to stabilize',
+  'Reading Automation IDs, names, control types, and class names',
+  'Capturing parent, child, and nearby object context for fallback healing',
+  'Bundling UIA paths, object keys, OCR hints, and visual anchors',
+  'Holding raw desktop object candidates until generated steps decide what matters',
 ] as const;
 
 const MODEL_CAPABILITIES: Record<string, { speed: number; quality: number; cost: number }> = {
@@ -169,6 +232,42 @@ function isPollingState(state: AIWorkflowState): boolean {
     'SCENARIOS_GENERATING', 'TESTCASES_GENERATING'].includes(state);
 }
 
+function normalizeWorkflowPlatform(platform: string | null | undefined): WorkflowPlatform {
+  const value = (platform || '').trim().toLowerCase();
+  if (value === 'desktop' || value === 'windows') return 'desktop';
+  if (value === 'mobile') return 'mobile';
+  if (value === 'api') return 'api';
+  return 'web';
+}
+
+function workflowPlatformFor(
+  wf: AIWorkflowStateResponse | undefined,
+  selectedPlatform: WorkflowPlatform = 'web',
+): WorkflowPlatform {
+  return normalizeWorkflowPlatform(wf?.platform || selectedPlatform);
+}
+
+function isDesktopWorkflow(
+  wf: AIWorkflowStateResponse | undefined,
+  selectedPlatform: WorkflowPlatform = 'web',
+): boolean {
+  return workflowPlatformFor(wf, selectedPlatform) === 'desktop';
+}
+
+function pipelineStagesFor(
+  wf: AIWorkflowStateResponse | undefined,
+  selectedPlatform: WorkflowPlatform = 'web',
+): PipelineStageConfig[] {
+  return isDesktopWorkflow(wf, selectedPlatform) ? DESKTOP_PIPELINE_STAGES : WEB_PIPELINE_STAGES;
+}
+
+function mcpPhasesFor(
+  wf: AIWorkflowStateResponse | undefined,
+  selectedPlatform: WorkflowPlatform = 'web',
+): McpPhaseConfig[] {
+  return isDesktopWorkflow(wf, selectedPlatform) ? DESKTOP_MCP_PHASES : WEB_MCP_PHASES;
+}
+
 function hasDiscoveryPanelActivity(wf: AIWorkflowStateResponse | undefined): boolean {
   if (!wf) return false;
   return [
@@ -182,9 +281,13 @@ function hasDiscoveryPanelActivity(wf: AIWorkflowStateResponse | undefined): boo
   ].includes(wf.state) || (wf.scraped_candidates?.length ?? 0) > 0 || (wf.selected_elements?.length ?? 0) > 0;
 }
 
-function activePipelineStage(wf: AIWorkflowStateResponse | undefined): PipelineStageId {
+function activePipelineStage(
+  wf: AIWorkflowStateResponse | undefined,
+  selectedPlatform: WorkflowPlatform = 'web',
+): PipelineStageId {
   if (!wf) return 'project';
   const message = (wf.current_message || '').toLowerCase();
+  const desktop = isDesktopWorkflow(wf, selectedPlatform);
   if (wf.state === 'CREATED') return 'project';
   if (wf.state === 'PROJECT_READY') return 'module';
   if (['MODULE_READY', 'SCENARIOS_GENERATING', 'SCENARIOS_READY', 'AWAITING_CONFIRMATION'].includes(wf.state)) {
@@ -195,7 +298,12 @@ function activePipelineStage(wf: AIWorkflowStateResponse | undefined): PipelineS
   }
   if (wf.state === 'TESTCASES_READY') return 'teststeps';
   if (wf.state === 'PAGE_CREATED') return 'page';
-  if (wf.state === 'DISCOVERY_RUNNING') return 'mcp';
+  if (wf.state === 'DISCOVERY_RUNNING') {
+    if (!desktop) return 'mcp';
+    if (message.includes('launching desktop application') || message.includes('application target')) return 'appLaunch';
+    if (message.includes('captured') || message.includes('uid') || message.includes('uia') || message.includes('ranking')) return 'scrape';
+    return 'mcp';
+  }
   if (wf.state === 'DISCOVERY_DONE') return 'scrape';
   if (wf.state === 'LOCATORS_RANKED') return 'pageConfig';
   if (wf.state === 'PAGE_SAVED') {
@@ -205,11 +313,16 @@ function activePipelineStage(wf: AIWorkflowStateResponse | undefined): PipelineS
   return 'project';
 }
 
-function pipelineStageStatus(stageId: PipelineStageId, wf: AIWorkflowStateResponse | undefined): PipelineStatus {
+function pipelineStageStatus(
+  stageId: PipelineStageId,
+  wf: AIWorkflowStateResponse | undefined,
+  selectedPlatform: WorkflowPlatform = 'web',
+): PipelineStatus {
   if (!wf) return 'queued';
-  const active = activePipelineStage(wf);
-  const activeIdx = PIPELINE_STAGES.findIndex((stage) => stage.id === active);
-  const stageIdx = PIPELINE_STAGES.findIndex((stage) => stage.id === stageId);
+  const stages = pipelineStagesFor(wf, selectedPlatform);
+  const active = activePipelineStage(wf, selectedPlatform);
+  const activeIdx = stages.findIndex((stage) => stage.id === active);
+  const stageIdx = stages.findIndex((stage) => stage.id === stageId);
   if (wf.state === 'FAILED') {
     if (stageId === active) return 'failed';
     return stageIdx < activeIdx ? 'complete' : 'queued';
@@ -223,9 +336,15 @@ function pipelineStageDetail(
   stageId: PipelineStageId,
   wf: AIWorkflowStateResponse | undefined,
   selectedModel: AIModelInfo | null,
+  selectedPlatform: WorkflowPlatform = 'web',
 ): string {
+  const desktop = isDesktopWorkflow(wf, selectedPlatform);
   if (!wf) {
-    return stageId === 'project' ? 'Waiting for BRD, URL, project, module, and page name' : 'Queued';
+    return stageId === 'project'
+      ? desktop
+        ? 'Waiting for BRD, application target, project, module, and screen name'
+        : 'Waiting for BRD, URL, project, module, and page name'
+      : 'Queued';
   }
   switch (stageId) {
     case 'project':
@@ -241,22 +360,44 @@ function pipelineStageDetail(
     case 'testcases':
       return wf.testcases_created > 0 ? `${wf.testcases_created} test case draft(s)` : 'Converting selected scenarios';
     case 'teststeps':
-      return wf.teststeps_created > 0 ? `${wf.teststeps_created} test step draft(s)` : 'Creating action-by-action steps';
+      return wf.teststeps_created > 0
+        ? `${wf.teststeps_created} test step draft(s)`
+        : desktop
+          ? 'Creating action-by-action desktop steps'
+          : 'Creating action-by-action steps';
     case 'page':
-      return wf.page_id ? `${wf.page_name || 'Page'} created` : 'Page Repository entry pending';
+      return wf.page_id
+        ? `${wf.page_name || (desktop ? 'Screen' : 'Page')} created`
+        : desktop
+          ? 'Screen repository entry pending'
+          : 'Page Repository entry pending';
     case 'mcp':
-      return wf.state === 'DISCOVERY_RUNNING' ? wf.current_message : 'Browser scraping trigger queued';
+      return wf.state === 'DISCOVERY_RUNNING'
+        ? wf.current_message
+        : desktop
+          ? 'Desktop MCP scanner queued'
+          : 'Browser scraping trigger queued';
+    case 'appLaunch':
+      return wf.state === 'DISCOVERY_RUNNING'
+        ? wf.current_message
+        : 'Desktop app launch waits for Desktop MCP';
     case 'scrape':
-      return `${wf.scraped_candidates.length} raw scraped candidate(s) in panel`;
+      return desktop
+        ? `${wf.scraped_candidates.length} raw UID/UIA object candidate(s) in panel`
+        : `${wf.scraped_candidates.length} raw scraped candidate(s) in panel`;
     case 'pageConfig':
       return wf.elements_saved > 0
-        ? `${wf.elements_saved} useful element(s) saved with XPath`
+        ? desktop
+          ? `${wf.elements_saved} useful object(s) saved with UIA paths`
+          : `${wf.elements_saved} useful element(s) saved with XPath`
         : `${wf.selected_elements.length} useful candidate(s) selected`;
     case 'stepConfig': {
       const mapped = Math.max((wf.teststeps_created ?? 0) - (wf.unmapped_steps ?? 0), 0);
       return wf.teststeps_created > 0
         ? `${mapped}/${wf.teststeps_created} step(s) configured`
-        : 'Selecting page, element, action, and XPath';
+        : desktop
+          ? 'Selecting screen, object, action, and UIA path'
+          : 'Selecting page, element, action, and XPath';
     }
   }
 }
@@ -266,11 +407,22 @@ function shouldShowMcpMissionPanel(wf: AIWorkflowStateResponse | undefined): boo
   return hasDiscoveryPanelActivity(wf);
 }
 
-function activeMcpPhase(wf: AIWorkflowStateResponse | undefined): McpPhaseId {
+function activeMcpPhase(
+  wf: AIWorkflowStateResponse | undefined,
+  selectedPlatform: WorkflowPlatform = 'web',
+): McpPhaseId {
   if (!wf) return 'trigger';
   const message = (wf.current_message || '').toLowerCase();
+  const desktop = isDesktopWorkflow(wf, selectedPlatform);
   if (wf.state === 'PAGE_CREATED') return 'trigger';
-  if (wf.state === 'DISCOVERY_RUNNING') return 'scrape';
+  if (wf.state === 'DISCOVERY_RUNNING') {
+    if (desktop) {
+      if (message.includes('launching desktop application') || message.includes('application target')) return 'launch';
+      if (message.includes('captured') || message.includes('uid') || message.includes('uia')) return 'scrape';
+      if (message.includes('ranking')) return 'xpaths';
+    }
+    return 'scrape';
+  }
   if (wf.state === 'DISCOVERY_DONE') return 'xpaths';
   if (wf.state === 'LOCATORS_RANKED') return 'rank';
   if (wf.state === 'PAGE_SAVED') return message.includes('configur') || message.includes('bound') ? 'configure' : 'save';
@@ -278,11 +430,16 @@ function activeMcpPhase(wf: AIWorkflowStateResponse | undefined): McpPhaseId {
   return 'trigger';
 }
 
-function mcpPhaseStatus(phaseId: McpPhaseId, wf: AIWorkflowStateResponse | undefined): PipelineStatus {
+function mcpPhaseStatus(
+  phaseId: McpPhaseId,
+  wf: AIWorkflowStateResponse | undefined,
+  selectedPlatform: WorkflowPlatform = 'web',
+): PipelineStatus {
   if (!shouldShowMcpMissionPanel(wf)) return 'queued';
-  const active = activeMcpPhase(wf);
-  const activeIdx = MCP_PHASES.findIndex((phase) => phase.id === active);
-  const phaseIdx = MCP_PHASES.findIndex((phase) => phase.id === phaseId);
+  const phases = mcpPhasesFor(wf, selectedPlatform);
+  const active = activeMcpPhase(wf, selectedPlatform);
+  const activeIdx = phases.findIndex((phase) => phase.id === active);
+  const phaseIdx = phases.findIndex((phase) => phase.id === phaseId);
   if (wf?.state === 'FAILED') return phaseId === active ? 'failed' : phaseIdx < activeIdx ? 'complete' : 'queued';
   if (['REVIEW_READY', 'COMPLETED'].includes(wf?.state ?? '') || (wf?.state === 'PAGE_SAVED' && active === 'configure')) {
     return phaseIdx <= activeIdx ? 'complete' : 'queued';
@@ -291,10 +448,15 @@ function mcpPhaseStatus(phaseId: McpPhaseId, wf: AIWorkflowStateResponse | undef
   return phaseIdx < activeIdx ? 'complete' : 'queued';
 }
 
-function workflowStateReachedMcpPhase(wf: AIWorkflowStateResponse | undefined, phaseId: McpPhaseId): boolean {
+function workflowStateReachedMcpPhase(
+  wf: AIWorkflowStateResponse | undefined,
+  phaseId: McpPhaseId,
+  selectedPlatform: WorkflowPlatform = 'web',
+): boolean {
   if (!wf) return false;
-  const phaseIdx = MCP_PHASES.findIndex((phase) => phase.id === phaseId);
-  const activeIdx = MCP_PHASES.findIndex((phase) => phase.id === activeMcpPhase(wf));
+  const phases = mcpPhasesFor(wf, selectedPlatform);
+  const phaseIdx = phases.findIndex((phase) => phase.id === phaseId);
+  const activeIdx = phases.findIndex((phase) => phase.id === activeMcpPhase(wf, selectedPlatform));
   return activeIdx >= phaseIdx;
 }
 
@@ -317,10 +479,14 @@ function compactLocator(locator: string, max = 116): string {
   return `${locator.slice(0, Math.max(max - 16, 12))}...${locator.slice(-12)}`;
 }
 
-function mcpPanelProgress(wf: AIWorkflowStateResponse | undefined): number {
+function mcpPanelProgress(
+  wf: AIWorkflowStateResponse | undefined,
+  selectedPlatform: WorkflowPlatform = 'web',
+): number {
   if (!shouldShowMcpMissionPanel(wf)) return 0;
-  const activeIdx = MCP_PHASES.findIndex((phase) => phase.id === activeMcpPhase(wf));
-  return Math.round(((activeIdx + 1) / MCP_PHASES.length) * 100);
+  const phases = mcpPhasesFor(wf, selectedPlatform);
+  const activeIdx = phases.findIndex((phase) => phase.id === activeMcpPhase(wf, selectedPlatform));
+  return Math.round(((activeIdx + 1) / phases.length) * 100);
 }
 
 function confColor(conf: number): string {
@@ -524,7 +690,9 @@ type McpNarrationRow = {
 function buildMcpNarrationRows(
   wf: AIWorkflowStateResponse | undefined,
   pulseIndex: number,
+  selectedPlatform: WorkflowPlatform = 'web',
 ): McpNarrationRow[] {
+  const desktop = isDesktopWorkflow(wf, selectedPlatform);
   const candidates = wf?.scraped_candidates ?? [];
   const selected = wf?.selected_elements ?? [];
   const raw = candidates.length;
@@ -533,64 +701,112 @@ function buildMcpNarrationRows(
   const topLocator = candidates
     .map(locatorText)
     .find((locator) => locator !== 'locator pending');
-  const waitingSignal = MCP_WAITING_SIGNALS[pulseIndex % MCP_WAITING_SIGNALS.length];
-  const pageName = wf?.page_name || 'target page';
+  const waitingSignals = desktop ? DESKTOP_MCP_WAITING_SIGNALS : MCP_WAITING_SIGNALS;
+  const waitingSignal = waitingSignals[pulseIndex % waitingSignals.length];
+  const pageName = wf?.page_name || (desktop ? 'target screen' : 'target page');
 
   return [
     {
       id: 'panel-open',
-      label: 'MCP panel opened',
-      detail: workflowStateReachedMcpPhase(wf, 'trigger')
+      label: desktop ? 'Desktop MCP panel opened' : 'MCP panel opened',
+      detail: workflowStateReachedMcpPhase(wf, 'trigger', selectedPlatform)
         ? `Binding telemetry is live for ${pageName}.`
-        : 'Waiting for page creation before MCP starts.',
-      status: workflowStateReachedMcpPhase(wf, 'trigger') ? 'complete' : 'queued',
+        : desktop
+          ? 'Waiting for screen creation before Desktop MCP starts.'
+          : 'Waiting for page creation before MCP starts.',
+      status: workflowStateReachedMcpPhase(wf, 'trigger', selectedPlatform) ? 'complete' : 'queued',
       icon: Radio,
     },
+    ...(desktop ? [{
+      id: 'app-launch',
+      label: 'Launching desktop application',
+      detail: wf?.current_message?.toLowerCase().includes('launching desktop application')
+        ? wf.current_message
+        : raw > 0
+          ? 'The app was launched and its UIA tree is available for capture.'
+          : 'Desktop MCP will start the target app before UID capture.',
+      status: raw > 0 ? 'complete' : mcpPhaseStatus('launch', wf, selectedPlatform),
+      icon: Monitor,
+    } as McpNarrationRow] : []),
     {
       id: 'scrape-started',
-      label: raw > 0 ? `Scraped ${raw} element candidates` : 'Scraping started',
+      label: raw > 0
+        ? desktop
+          ? `Captured ${raw} desktop object candidates`
+          : `Scraped ${raw} element candidates`
+        : desktop
+          ? 'UID capture started'
+          : 'Scraping started',
       detail: wf?.state === 'DISCOVERY_RUNNING'
         ? waitingSignal
         : raw > 0
-          ? 'Raw candidates are parked in preview mode until step matching is done.'
+          ? desktop
+            ? 'Raw desktop objects are parked in preview mode until step matching is done.'
+            : 'Raw candidates are parked in preview mode until step matching is done.'
           : wf?.current_message || 'MCP trigger is queued.',
-      status: raw > 0 ? 'complete' : mcpPhaseStatus('scrape', wf),
+      status: raw > 0 ? 'complete' : mcpPhaseStatus('scrape', wf, selectedPlatform),
       icon: Search,
     },
     {
       id: 'xpath-sweep',
-      label: xpathCandidates > 0 ? `${xpathCandidates} locator paths captured` : 'Extracting XPath paths',
+      label: xpathCandidates > 0
+        ? `${xpathCandidates} locator paths captured`
+        : desktop
+          ? 'Extracting UIA fallback paths'
+          : 'Extracting XPath paths',
       detail: topLocator
         ? `Strongest visible path: ${compactLocator(topLocator, 96)}`
-        : 'XPath and CSS candidates will appear as soon as scraping returns.',
-      status: xpathCandidates > 0 ? 'complete' : mcpPhaseStatus('xpaths', wf),
+        : desktop
+          ? 'Automation IDs, UIA paths, names, classes, and nearby labels will appear after capture.'
+          : 'XPath and CSS candidates will appear as soon as scraping returns.',
+      status: xpathCandidates > 0 ? 'complete' : mcpPhaseStatus('xpaths', wf, selectedPlatform),
       icon: Route,
     },
     {
       id: 'best-pick',
-      label: picked > 0 ? `Picked ${picked} best-fit elements` : 'Picking the best elements',
+      label: picked > 0
+        ? desktop
+          ? `Picked ${picked} best-fit objects`
+          : `Picked ${picked} best-fit elements`
+        : desktop
+          ? 'Picking the best desktop objects'
+          : 'Picking the best elements',
       detail: picked > 0
-        ? 'Generated test steps were compared against labels, roles, text, IDs, and locators.'
-        : 'The selector ranker will choose only elements required by generated test steps.',
-      status: picked > 0 ? 'complete' : mcpPhaseStatus('rank', wf),
+        ? desktop
+          ? 'Generated test steps were compared against Automation IDs, names, classes, control types, and UIA context.'
+          : 'Generated test steps were compared against labels, roles, text, IDs, and locators.'
+        : desktop
+          ? 'The selector ranker will choose only desktop objects required by generated test steps.'
+          : 'The selector ranker will choose only elements required by generated test steps.',
+      status: picked > 0 ? 'complete' : mcpPhaseStatus('rank', wf, selectedPlatform),
       icon: MousePointerClick,
     },
     {
       id: 'page-config',
-      label: (wf?.elements_saved ?? 0) > 0 ? `${wf?.elements_saved} elements saved` : 'Configuring page now',
+      label: (wf?.elements_saved ?? 0) > 0
+        ? desktop
+          ? `${wf?.elements_saved} objects saved`
+          : `${wf?.elements_saved} elements saved`
+        : desktop
+          ? 'Configuring desktop objects'
+          : 'Configuring page now',
       detail: (wf?.elements_saved ?? 0) > 0
-        ? `${Math.max(raw - (wf?.elements_saved ?? 0), 0)} noisy scrape candidates skipped.`
-        : 'Useful elements are being prepared for Page Repository.',
-      status: (wf?.elements_saved ?? 0) > 0 ? 'complete' : mcpPhaseStatus('save', wf),
+        ? `${Math.max(raw - (wf?.elements_saved ?? 0), 0)} noisy ${desktop ? 'desktop object' : 'scrape'} candidates skipped.`
+        : desktop
+          ? 'Useful desktop objects are being prepared for Page Repository.'
+          : 'Useful elements are being prepared for Page Repository.',
+      status: (wf?.elements_saved ?? 0) > 0 ? 'complete' : mcpPhaseStatus('save', wf, selectedPlatform),
       icon: Database,
     },
     {
       id: 'step-config',
       label: 'Configuring test steps',
       detail: wf?.teststeps_created
-        ? `${Math.max(wf.teststeps_created - wf.unmapped_steps, 0)}/${wf.teststeps_created} steps mapped to page, element, action, and XPath.`
-        : 'Step bindings will lock in after the selected elements are saved.',
-      status: mcpPhaseStatus('configure', wf),
+        ? `${Math.max(wf.teststeps_created - wf.unmapped_steps, 0)}/${wf.teststeps_created} steps mapped to ${desktop ? 'screen, object, action, and UIA path' : 'page, element, action, and XPath'}.`
+        : desktop
+          ? 'Step bindings will lock in after the selected desktop objects are saved.'
+          : 'Step bindings will lock in after the selected elements are saved.',
+      status: mcpPhaseStatus('configure', wf, selectedPlatform),
       icon: ListChecks,
     },
   ];
@@ -599,22 +815,26 @@ function buildMcpNarrationRows(
 function McpMissionControlPanel({
   wf,
   compact = false,
+  selectedPlatform = 'web',
 }: {
   wf: AIWorkflowStateResponse | undefined;
   compact?: boolean;
+  selectedPlatform?: WorkflowPlatform;
 }) {
   const reducedMotion = useReducedMotion();
   const [pulseIndex, setPulseIndex] = useState(0);
+  const desktop = isDesktopWorkflow(wf, selectedPlatform);
+  const phases = mcpPhasesFor(wf, selectedPlatform);
   const candidates = wf?.scraped_candidates ?? [];
   const selected = wf?.selected_elements ?? [];
   const selectedIds = new Set(selected.map((item) => item.candidate_id));
   const isLive = !!wf && isPollingState(wf.state) && wf.state !== 'FAILED';
-  const activePhaseId = activeMcpPhase(wf);
-  const activePhase = MCP_PHASES.find((phase) => phase.id === activePhaseId) ?? MCP_PHASES[0];
-  const panelProgress = mcpPanelProgress(wf);
+  const activePhaseId = activeMcpPhase(wf, selectedPlatform);
+  const activePhase = phases.find((phase) => phase.id === activePhaseId) ?? phases[0];
+  const panelProgress = mcpPanelProgress(wf, selectedPlatform);
   const xpathCount = candidates.filter((candidate) => candidate.xpath || candidate.best_locator).length;
   const highQuality = candidates.filter((candidate) => locatorQualityNumber(candidate) >= 0.78).length;
-  const latestRows = buildMcpNarrationRows(wf, pulseIndex);
+  const latestRows = buildMcpNarrationRows(wf, pulseIndex, selectedPlatform);
   const rankedCandidates = [...candidates].sort((a, b) => {
     const aSelected = selectedIds.has(a.candidate_id) || a.selected ? 1 : 0;
     const bSelected = selectedIds.has(b.candidate_id) || b.selected ? 1 : 0;
@@ -689,7 +909,7 @@ function McpMissionControlPanel({
             <div className="mb-2 flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-1.5 rounded-full border border-cyan-300/25 bg-cyan-300/10 px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.16em] text-cyan-100">
                 <Zap size={11} />
-                MCP Mission Control
+                {desktop ? 'Desktop MCP Mission Control' : 'MCP Mission Control'}
               </span>
               <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-[10px] ${
                 isLive
@@ -697,7 +917,9 @@ function McpMissionControlPanel({
                   : 'border-white/[0.08] bg-white/[0.035] text-(--color-fg-subtle)'
               }`}>
                 <span className={`h-1.5 w-1.5 rounded-full ${isLive ? 'bg-emerald-300 animate-pulse' : 'bg-white/30'}`} />
-                {isLive ? 'Live scrape telemetry' : wf.state === 'FAILED' ? 'Stopped' : 'Telemetry captured'}
+                {isLive
+                  ? desktop ? 'Live object telemetry' : 'Live scrape telemetry'
+                  : wf.state === 'FAILED' ? 'Stopped' : 'Telemetry captured'}
               </span>
             </div>
             <div className="flex items-center gap-3">
@@ -705,7 +927,9 @@ function McpMissionControlPanel({
                 {isLive ? <Loader2 size={17} className="animate-spin" /> : <ActiveIcon size={17} />}
               </div>
               <div className="min-w-0">
-                <h2 className="text-lg font-semibold leading-tight text-white md:text-xl">MCP is doing the boring scrape work in public</h2>
+                <h2 className="text-lg font-semibold leading-tight text-white md:text-xl">
+                  {desktop ? 'Desktop MCP is capturing object paths in public' : 'MCP is doing the boring scrape work in public'}
+                </h2>
                 <p className="mt-1 text-[12px] leading-relaxed text-(--color-fg-subtle)">
                   {wf.current_message || `Standing by for ${activePhase.label.toLowerCase()}.`}
                 </p>
@@ -715,9 +939,9 @@ function McpMissionControlPanel({
 
           <div className="grid grid-cols-4 gap-1.5 lg:w-[360px]">
             {[
-              { label: 'Scraped', value: candidates.length, icon: Search, tone: 'text-cyan-200' },
-              { label: 'XPath', value: xpathCount, icon: Route, tone: 'text-blue-200' },
-              { label: 'Picked', value: selected.length, icon: MousePointerClick, tone: 'text-emerald-200' },
+              { label: desktop ? 'Objects' : 'Scraped', value: candidates.length, icon: Search, tone: 'text-cyan-200' },
+              { label: desktop ? 'Paths' : 'XPath', value: xpathCount, icon: Route, tone: 'text-blue-200' },
+              { label: desktop ? 'Matched' : 'Picked', value: selected.length, icon: MousePointerClick, tone: 'text-emerald-200' },
               { label: 'Saved', value: wf.elements_saved ?? 0, icon: Database, tone: 'text-violet-200' },
             ].map((metric) => {
               const Icon = metric.icon;
@@ -743,9 +967,9 @@ function McpMissionControlPanel({
           <span className="font-mono text-[10px] tabular-nums text-cyan-100">{panelProgress}%</span>
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-1.5 md:grid-cols-3 xl:grid-cols-6">
-          {MCP_PHASES.map((phase) => {
-            const status = mcpPhaseStatus(phase.id, wf);
+        <div className={`mt-4 grid grid-cols-2 gap-1.5 md:grid-cols-3 ${desktop ? 'xl:grid-cols-7' : 'xl:grid-cols-6'}`}>
+          {phases.map((phase) => {
+            const status = mcpPhaseStatus(phase.id, wf, selectedPlatform);
             const Icon = phase.icon;
             const statusClass =
               status === 'complete' ? 'border-emerald-300/25 bg-emerald-300/[0.07] text-emerald-100' :
@@ -930,27 +1154,29 @@ const PIPELINE_STATUS_STYLE: Record<PipelineStatus, string> = {
 };
 
 function WorkflowTimeline({
-  wf, selectedModel,
+  wf, selectedModel, selectedPlatform,
 }: {
   wf: AIWorkflowStateResponse | undefined; selectedModel: AIModelInfo | null;
+  selectedPlatform: WorkflowPlatform;
 }) {
-  const activeId = activePipelineStage(wf);
-  const activeIdx = PIPELINE_STAGES.findIndex((s) => s.id === activeId);
+  const stages = pipelineStagesFor(wf, selectedPlatform);
+  const activeId = activePipelineStage(wf, selectedPlatform);
+  const activeIdx = stages.findIndex((s) => s.id === activeId);
   return (
     <div className="relative flex flex-col gap-1.5 py-1">
       <div className="absolute left-6 top-8 bottom-8 w-px bg-white/[0.08] z-0" />
       <motion.div
         className="absolute left-6 top-8 w-px bg-linear-to-b from-cyan-300 via-violet-300 to-emerald-300 z-0 origin-top shadow-[0_0_14px_rgba(34,211,238,0.45)]"
-        animate={{ height: `${(Math.max(activeIdx, 0) / (PIPELINE_STAGES.length - 1)) * 100}%` }}
+        animate={{ height: `${(Math.max(activeIdx, 0) / (stages.length - 1)) * 100}%` }}
         transition={{ duration: 0.4 }}
       />
-      {PIPELINE_STAGES.map((step) => {
-        const status = pipelineStageStatus(step.id, wf);
+      {stages.map((step) => {
+        const status = pipelineStageStatus(step.id, wf, selectedPlatform);
         const isActive = status === 'active';
         const isDone = status === 'complete';
         const isError = status === 'failed';
         const Icon = step.icon;
-        const detail = pipelineStageDetail(step.id, wf, selectedModel);
+        const detail = pipelineStageDetail(step.id, wf, selectedModel, selectedPlatform);
         return (
           <div key={step.id} className="relative z-10">
             <motion.div
@@ -1104,9 +1330,10 @@ function WorkflowActivityFeed({ wf, limit = 10 }: {
   );
 }
 
-function PipelineFocusCard({ wf, selectedModel }: {
-  wf: AIWorkflowStateResponse | undefined; selectedModel: AIModelInfo | null;
+function PipelineFocusCard({ wf, selectedModel, selectedPlatform }: {
+  wf: AIWorkflowStateResponse | undefined; selectedModel: AIModelInfo | null; selectedPlatform: WorkflowPlatform;
 }) {
+  const desktop = isDesktopWorkflow(wf, selectedPlatform);
   if (!wf) {
     return (
       <div className="relative overflow-hidden rounded-2xl border border-cyan-400/15 bg-cyan-400/[0.035] p-3">
@@ -1114,17 +1341,20 @@ function PipelineFocusCard({ wf, selectedModel }: {
         <div className="text-[9px] uppercase tracking-[0.18em] text-cyan-200/70">Ready State</div>
         <div className="mt-1 text-[12px] font-semibold text-(--color-fg-default)">Awaiting BRD intake</div>
         <div className="mt-2 text-[10px] leading-relaxed text-(--color-fg-subtle)">
-          Drop a requirement document and URL to arm discovery, scenario planning, and locator binding.
+          {desktop
+            ? 'Drop a requirement document and app target to arm desktop discovery, scenario planning, and object binding.'
+            : 'Drop a requirement document and URL to arm discovery, scenario planning, and locator binding.'}
         </div>
       </div>
     );
   }
-  const activeId = activePipelineStage(wf);
-  const activeIndex = PIPELINE_STAGES.findIndex((stage) => stage.id === activeId);
-  const activeStage = PIPELINE_STAGES[activeIndex] ?? PIPELINE_STAGES[0];
-  const nextStage = PIPELINE_STAGES[activeIndex + 1];
+  const stages = pipelineStagesFor(wf, selectedPlatform);
+  const activeId = activePipelineStage(wf, selectedPlatform);
+  const activeIndex = stages.findIndex((stage) => stage.id === activeId);
+  const activeStage = stages[activeIndex] ?? stages[0];
+  const nextStage = stages[activeIndex + 1];
   const Icon = activeStage.icon;
-  const detail = pipelineStageDetail(activeStage.id, wf, selectedModel);
+  const detail = pipelineStageDetail(activeStage.id, wf, selectedModel, selectedPlatform);
 
   return (
     <div className="rounded-2xl bg-white/[0.035] border border-cyan-400/20 p-3 overflow-hidden relative">
@@ -1157,8 +1387,8 @@ function PipelineFocusCard({ wf, selectedModel }: {
   );
 }
 
-function LiveIntelligence({ wf, selectedModel }: {
-  wf: AIWorkflowStateResponse | undefined; selectedModel: AIModelInfo | null;
+function LiveIntelligence({ wf, selectedModel, selectedPlatform }: {
+  wf: AIWorkflowStateResponse | undefined; selectedModel: AIModelInfo | null; selectedPlatform: WorkflowPlatform;
 }) {
   return (
     <div className="flex flex-col gap-3">
@@ -1178,7 +1408,7 @@ function LiveIntelligence({ wf, selectedModel }: {
           <CapabilityBars tier={selectedModel.tier} />
         </div>
       )}
-      <PipelineFocusCard wf={wf} selectedModel={selectedModel} />
+      <PipelineFocusCard wf={wf} selectedModel={selectedModel} selectedPlatform={selectedPlatform} />
       <div className="grid grid-cols-2 gap-1.5">
         <MetricCard label="Scraped" value={wf?.scraped_candidates?.length ?? 0} icon={Search} />
         <MetricCard label="Saved" value={wf?.elements_saved ?? 0} icon={Target} />
@@ -1224,14 +1454,12 @@ function LiveIntelligence({ wf, selectedModel }: {
 
 // ── Step 1: Input Form ────────────────────────────────────────────────────────
 
-const PLATFORMS = [
+const PLATFORMS: { id: WorkflowPlatform; label: string; icon: React.ElementType }[] = [
   { id: 'web', label: 'Web', icon: Globe },
   { id: 'mobile', label: 'Mobile', icon: Smartphone },
   { id: 'api', label: 'API', icon: Code2 },
   { id: 'desktop', label: 'Desktop', icon: Monitor },
-] as const;
-
-type WorkflowPlatform = (typeof PLATFORMS)[number]['id'];
+];
 
 function useFavicon(url: string) {
   const [favicon, setFavicon] = useState<string | null>(null);
@@ -1245,21 +1473,23 @@ function useFavicon(url: string) {
   return favicon;
 }
 
-function InputStep({ onStart, isPending }: {
+function InputStep({ onStart, isPending, selectedPlatform, onPlatformChange }: {
   onStart: (data: { brd_text: string; webpage_url: string; project_name: string; module_name: string; page_name: string; platform: string; ai_provider: string; ai_model: string }) => void;
   isPending: boolean;
+  selectedPlatform: WorkflowPlatform;
+  onPlatformChange: (platform: WorkflowPlatform) => void;
 }) {
   const [brd, setBrd] = useState('');
   const [url, setUrl] = useState('');
   const [projectName, setProjectName] = useState('');
   const [moduleName, setModuleName] = useState('');
   const [pageName, setPageName] = useState('');
-  const [platform, setPlatform] = useState<WorkflowPlatform>('web');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isDragging, setIsDragging] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const favicon = useFavicon(url);
+  const platform = selectedPlatform;
 
   function validate() {
     const e: Record<string, string> = {};
@@ -1450,7 +1680,7 @@ function InputStep({ onStart, isPending }: {
         <label className={labelCls}>Platform</label>
         <div className="flex gap-2">
           {PLATFORMS.map(({ id, label: lbl, icon: Icon }) => (
-            <button key={id} onClick={() => setPlatform(id)}
+            <button key={id} onClick={() => onPlatformChange(id)}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium transition-all ${platform === id ? 'border-violet-500/50 bg-violet-500/10 text-violet-300' : 'border-(--color-line-default) text-(--color-fg-muted) hover:border-line-strong hover:bg-(--color-surface-2)'}`}>
               <Icon size={14} />{lbl}
             </button>
@@ -1573,17 +1803,28 @@ function ModelSelectionStep({ onSelectModel, isPending }: {
 
 // ── Step 3: Discovery ─────────────────────────────────────────────────────────
 
-function DiscoveryStep({ wf }: { wf: AIWorkflowStateResponse | undefined }) {
+function DiscoveryStep({
+  wf,
+  selectedPlatform,
+}: {
+  wf: AIWorkflowStateResponse | undefined;
+  selectedPlatform: WorkflowPlatform;
+}) {
   const isDone = wf?.state === 'PAGE_SAVED';
+  const desktop = isDesktopWorkflow(wf, selectedPlatform);
   return (
     <div className="space-y-5">
-      <McpMissionControlPanel wf={wf} />
+      <McpMissionControlPanel wf={wf} selectedPlatform={selectedPlatform} />
       <WorkflowActivityFeed wf={wf} limit={12} />
       {isDone && (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
           className="flex items-center gap-2 rounded-lg bg-emerald-500/5 border border-emerald-500/20 px-4 py-3">
           <CheckCircle2 size={14} className="text-emerald-400 shrink-0" />
-          <span className="text-sm text-emerald-300">Page saved with {wf?.elements_saved} necessary elements selected from the scrape</span>
+          <span className="text-sm text-emerald-300">
+            {desktop
+              ? `Screen saved with ${wf?.elements_saved} necessary objects selected from the UID capture`
+              : `Page saved with ${wf?.elements_saved} necessary elements selected from the scrape`}
+          </span>
         </motion.div>
       )}
       <div className="rounded-xl bg-(--color-surface-1) border border-(--color-line-subtle) p-4">
@@ -1722,7 +1963,15 @@ function TestGenerationStep({ wf }: { wf: AIWorkflowStateResponse | undefined })
 
 // ── Step 6: Review ────────────────────────────────────────────────────────────
 
-function ReviewStep({ workflowId, wf }: { workflowId: string; wf: AIWorkflowStateResponse | undefined }) {
+function ReviewStep({
+  workflowId,
+  wf,
+  selectedPlatform,
+}: {
+  workflowId: string;
+  wf: AIWorkflowStateResponse | undefined;
+  selectedPlatform: WorkflowPlatform;
+}) {
   const { data: review, isLoading } = useAIWorkflowReview(workflowId);
   if (isLoading) return (
     <div className="flex items-center gap-2 text-sm text-(--color-fg-subtle)">
@@ -1730,6 +1979,7 @@ function ReviewStep({ workflowId, wf }: { workflowId: string; wf: AIWorkflowStat
     </div>
   );
   if (!review) return null;
+  const desktop = isDesktopWorkflow(wf, selectedPlatform);
 
   const summaryCards = [
     { label: 'Elements', value: review.elements_saved },
@@ -1746,9 +1996,9 @@ function ReviewStep({ workflowId, wf }: { workflowId: string; wf: AIWorkflowStat
         <div className="space-y-3">
           <div className="flex items-center gap-2 text-xs font-semibold text-(--color-fg-muted)">
             <Sparkles size={12} className="text-violet-400" />
-            MCP Scrape Panel
+            {desktop ? 'Desktop MCP Object Panel' : 'MCP Scrape Panel'}
           </div>
-          <McpMissionControlPanel wf={wf} compact />
+          <McpMissionControlPanel wf={wf} compact selectedPlatform={selectedPlatform} />
         </div>
       )}
       <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
@@ -1851,6 +2101,7 @@ export default function AIWorkflowPage() {
   const [completedSteps, setCompletedSteps] = useState<Set<StepId>>(new Set());
   const [selectedModel, setSelectedModel] = useState<AIModelInfo | null>(null);
   const [errorStep, setErrorStep] = useState<StepId | null>(null);
+  const [selectedPlatform, setSelectedPlatform] = useState<WorkflowPlatform>('web');
 
   const polling = !!workflowId;
   const { data: wf } = useAIWorkflow(workflowId, polling);
@@ -1862,15 +2113,17 @@ export default function AIWorkflowPage() {
 
   useEffect(() => {
     if (!wf) return;
+    if (wf.platform) setSelectedPlatform(normalizeWorkflowPlatform(wf.platform));
     const step = stateToStep(wf.state);
     setActiveStep(step);
     if (wf.state === 'FAILED') setErrorStep(step);
     const order: StepId[] = ['input', 'model', 'scenarios', 'generation', 'discovery', 'review'];
     const currentIdx = order.indexOf(step);
     setCompletedSteps(new Set(order.slice(0, currentIdx)));
-  }, [wf?.state]);
+  }, [wf?.state, wf?.platform]);
 
   async function handleStart(data: Parameters<typeof InputStep>[0]['onStart'] extends (d: infer D) => void ? D : never) {
+    setSelectedPlatform(normalizeWorkflowPlatform(data.platform));
     const result = await createWorkflow.mutateAsync(data);
     setWorkflowId(result.workflow_id);
     setActiveStep('model');
@@ -1892,16 +2145,22 @@ export default function AIWorkflowPage() {
   }
 
   const content: Record<StepId, React.ReactNode> = {
-    input: <InputStep onStart={handleStart} isPending={createWorkflow.isPending} />,
+    input: <InputStep
+      onStart={handleStart}
+      isPending={createWorkflow.isPending}
+      selectedPlatform={selectedPlatform}
+      onPlatformChange={setSelectedPlatform}
+    />,
     model: <ModelSelectionStep onSelectModel={handleModelSelected} isPending={generateScenarios.isPending} />,
-    discovery: <DiscoveryStep wf={wf} />,
+    discovery: <DiscoveryStep wf={wf} selectedPlatform={selectedPlatform} />,
     scenarios: <ScenariosStep scenarios={wf?.scenarios ?? []} onConfirm={handleConfirmScenarios}
       isPending={confirmScenarios.isPending || generateTestCases.isPending} />,
     generation: <TestGenerationStep wf={wf} />,
-    review: workflowId ? <ReviewStep workflowId={workflowId} wf={wf} /> : null,
+    review: workflowId ? <ReviewStep workflowId={workflowId} wf={wf} selectedPlatform={selectedPlatform} /> : null,
   };
   const activeStepMeta = WORKFLOW_STEPS.find((step) => step.id === activeStep) ?? WORKFLOW_STEPS[0];
-  const activeStage = PIPELINE_STAGES.find((stage) => stage.id === activePipelineStage(wf)) ?? PIPELINE_STAGES[0];
+  const stages = pipelineStagesFor(wf, selectedPlatform);
+  const activeStage = stages.find((stage) => stage.id === activePipelineStage(wf, selectedPlatform)) ?? stages[0];
   const visualProgress = wf?.progress_percent ?? Math.round((completedSteps.size / WORKFLOW_STEPS.length) * 100);
 
   return (
@@ -1929,8 +2188,12 @@ export default function AIWorkflowPage() {
         <div className="mb-3 rounded-2xl border border-white/[0.08] bg-white/[0.035] p-3">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <div className="text-[10px] font-semibold text-(--color-fg-subtle) uppercase tracking-[0.18em]">10-stage pipeline</div>
-              <div className="mt-1 text-[9px] text-(--color-fg-subtle)">Project, scenario, scrape, XPath, configured steps</div>
+              <div className="text-[10px] font-semibold text-(--color-fg-subtle) uppercase tracking-[0.18em]">{stages.length}-stage pipeline</div>
+              <div className="mt-1 text-[9px] text-(--color-fg-subtle)">
+                {selectedPlatform === 'desktop'
+                  ? 'Project, scenario, app launch, UID paths, configured steps'
+                  : 'Project, scenario, scrape, XPath, configured steps'}
+              </div>
             </div>
             <div className="grid h-10 w-10 place-items-center rounded-xl border border-cyan-400/20 bg-cyan-400/10 font-mono text-[11px] text-cyan-200">
               {String(activeStage.no).padStart(2, '0')}
@@ -1944,7 +2207,7 @@ export default function AIWorkflowPage() {
             />
           </div>
         </div>
-        <WorkflowTimeline wf={wf} selectedModel={selectedModel} />
+        <WorkflowTimeline wf={wf} selectedModel={selectedModel} selectedPlatform={selectedPlatform} />
       </div>
 
       <div className="relative z-10 flex-1 min-w-0 flex flex-col">
@@ -1962,7 +2225,7 @@ export default function AIWorkflowPage() {
                   AI Execution OS
                 </span>
                 <span className="rounded-full border border-white/[0.08] bg-black/20 px-2.5 py-1 font-mono text-[10px] text-(--color-fg-subtle)">
-                  {activeStepMeta.label} / {activeStage.label}
+                  {workflowStepLabel(activeStepMeta, selectedPlatform)} / {activeStage.label}
                 </span>
               </div>
               <h1 className="text-[22px] font-semibold tracking-tight text-white">AI Workflow Orchestrator</h1>
@@ -2047,7 +2310,7 @@ export default function AIWorkflowPage() {
       </div>
 
       <div className="relative z-10 w-60 shrink-0 border-l border-white/[0.08] bg-black/25 p-3 overflow-y-auto backdrop-blur-xl">
-        <LiveIntelligence wf={wf} selectedModel={selectedModel} />
+        <LiveIntelligence wf={wf} selectedModel={selectedModel} selectedPlatform={selectedPlatform} />
       </div>
     </div>
   );

@@ -26,7 +26,10 @@ class PlaywrightDiscoveryAdapter:
         save_mode: str,
         page_id: str | None,
         db: AsyncSession,
+        *,
+        step_intents: list[dict] | None = None,
     ) -> DiscoveryResponse:
+        del step_intents
         request = DiscoveryRequest(
             url=url,
             page_name=page_name,

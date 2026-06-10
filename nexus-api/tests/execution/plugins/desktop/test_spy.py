@@ -22,6 +22,22 @@ def test_parse_uia_tree_creates_desktop_spy_candidates():
     assert objects[0].alternative_locators[0]["strategy"] == "accessibility id"
 
 
+def test_parse_winappdriver_style_source_normalizes_attribute_names():
+    tree = """
+    <AppiumAUT>
+      <Button AutomationId="btnSubmit" Name="Submit" ClassName="Button" ControlType="ControlType.Button" />
+    </AppiumAUT>
+    """
+
+    [button] = parse_desktop_ui_tree(tree)
+
+    assert button.automation_id == "btnSubmit"
+    assert button.name_text == "Submit"
+    assert button.class_name == "Button"
+    assert button.control_type == "button"
+    assert button.primary_locator == "btnSubmit"
+
+
 def test_parse_ocr_tree_creates_ocr_candidates():
     tree = """
     <OCRTree>
@@ -46,3 +62,34 @@ def test_parse_invalid_xml_falls_back_to_regex_parser():
 
     assert len(objects) == 1
     assert objects[0].automation_id == "btnSave"
+
+
+def test_parse_appium_source_builds_uia_paths_and_bounds():
+    tree = """
+    <AppiumAUT>
+      <Window Name="untitled2" ClassName="SunAwtFrame" ControlType="ControlType.Window">
+        <Pane Name="Project" ClassName="JPanel" x="10" y="20" width="300" height="200">
+          <Button Name="Run" AutomationId="RunButton" ClassName="ActionButton" />
+        </Pane>
+      </Window>
+    </AppiumAUT>
+    """
+
+    objects = parse_desktop_ui_tree(tree)
+    run = next(obj for obj in objects if obj.automation_id == "RunButton")
+    pane = next(obj for obj in objects if obj.name_text == "Project")
+
+    assert run.control_type == "button"
+    assert run.class_name == "ActionButton"
+    assert "RunButton" in run.uia_path
+    assert pane.bounding_box == {"x": 10.0, "y": 20.0, "width": 300.0, "height": 200.0}
+
+
+def test_regex_fallback_accepts_real_uia_tags():
+    tree = '<AppiumAUT><Button Name="Run" AutomationId="RunButton"></broken>'
+
+    objects = parse_desktop_ui_tree(tree)
+
+    assert len(objects) == 1
+    assert objects[0].automation_id == "RunButton"
+    assert objects[0].locator_strategy == "accessibility id"

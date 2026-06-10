@@ -81,6 +81,7 @@ def test_node_specs_expose_driver_selection_and_locator_candidates():
     click_schema = specs["desktop.click"].config_schema
 
     assert launch_schema["driver_type"]["enum"] == ["winappdriver", "uia3", "computer_vision", "auto"]
+    assert launch_schema["driver_type"]["default"] == "uia3"
     assert "server_url" in launch_schema
     assert "window_title" in launch_schema
     assert "process_name" in launch_schema

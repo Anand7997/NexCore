@@ -20,6 +20,10 @@ def test_get_driver_uia3():
     assert isinstance(get_driver("uia3"), UIA3Adapter)
 
 
+def test_get_driver_defaults_to_uia3():
+    assert isinstance(get_driver(), UIA3Adapter)
+
+
 def test_get_driver_computer_vision():
     assert isinstance(get_driver("computer_vision"), ComputerVisionAdapter)
 
@@ -55,4 +59,3 @@ async def test_auto_driver_launch_tries_until_success_then_delegates_to_active()
     fail_driver.launch.assert_awaited_once()
     ok_driver.launch.assert_awaited_once()
     ok_driver.click.assert_awaited_once()
-

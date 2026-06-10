@@ -20,6 +20,10 @@ class ScenarioGenerationAgent:
         page_name: str,
         elements_summary: str,
         brd_analysis: BRDAnalysis,
+        *,
+        platform: str = "web",
+        app_target: str = "",
+        application_profile: str = "",
     ) -> ScenarioList:
         prompt = build_scenario_prompt(
             brd_text=brd_text,
@@ -27,6 +31,9 @@ class ScenarioGenerationAgent:
             page_name=page_name,
             elements_summary=elements_summary,
             brd_analysis_summary=brd_analysis.summary,
+            platform=platform,
+            app_target=app_target,
+            application_profile=application_profile,
         )
         logger.info("ScenarioGenerationAgent: generating scenarios for '%s'", project_name)
         result = await self._provider.generate(prompt, ScenarioList)

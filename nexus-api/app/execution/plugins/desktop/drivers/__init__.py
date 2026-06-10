@@ -19,8 +19,8 @@ class AutoDesktopDriver(DesktopDriver):
         timeout: float = 30.0,
     ) -> None:
         self._drivers: list[DesktopDriver] = [
-            WinAppDriverAdapter(server_url=server_url, timeout=timeout),
             UIA3Adapter(timeout=timeout),
+            WinAppDriverAdapter(server_url=server_url, timeout=timeout),
             ComputerVisionAdapter(),
         ]
         self._active: DesktopDriver | None = None
@@ -184,7 +184,7 @@ class AutoDesktopDriver(DesktopDriver):
         return {
             "driver": "auto",
             "active": active,
-            "order": ["winappdriver", "uia3", "computer_vision"],
+            "order": ["uia3", "winappdriver", "computer_vision"],
             "platform": "windows",
         }
 
@@ -196,7 +196,7 @@ def get_driver(
     timeout: float = 30.0,
 ) -> DesktopDriver:
     """Create a desktop driver by type."""
-    normalized = (driver_type or "winappdriver").strip().lower().replace("-", "_")
+    normalized = (driver_type or "uia3").strip().lower().replace("-", "_")
     if normalized in {"winappdriver", "appium_windows", "appium"}:
         return WinAppDriverAdapter(server_url=server_url, timeout=timeout)
     if normalized in {"uia3", "uia", "pywinauto"}:

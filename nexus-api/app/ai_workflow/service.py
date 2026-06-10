@@ -6,6 +6,7 @@ import importlib.util
 import json
 import logging
 import re as _re
+import uuid
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
 from typing import Any, TypeVar
@@ -20,6 +21,7 @@ from app.ai_workflow.agents.page_configuration import PageConfigurationAgent
 from app.ai_workflow.agents.review_validation import ReviewAndValidationAgent
 from app.ai_workflow.agents.testcase_generation import TestCaseGenerationAgent
 from app.ai_workflow.discovery.adapter import BrowserDiscoveryAdapter
+from app.ai_workflow.discovery.desktop_adapter import DesktopDiscoveryAdapter
 from app.ai_workflow.models import AIWorkflowModel
 from app.ai_workflow.prompts.scenario_prompt import build_scenario_prompt
 from app.ai_workflow.providers.base import AbstractAIProvider
@@ -32,6 +34,8 @@ from app.ai_workflow.schemas import (
     ReviewResponse,
     ScenarioList,
     ScenarioPreview,
+    StepElementBindingDecision,
+    StepElementBindingDecisionList,
     WorkflowCreateRequest,
     WorkflowStateResponse,
 )
@@ -85,6 +89,14 @@ _NULL_PROVIDER_ALIASES = {"", "null", "test", "ci"}
 _NULL_MODEL_ALIASES = {"", "null", "test", "ci"}
 _AI_LOCATOR_ENHANCEMENT_LIMIT = 120
 _AI_LOCATOR_ALTERNATIVE_LIMIT = 10
+_MIN_HEALING_LOCATOR_PATHS = 3
+_DESKTOP_REPOSITORY_PREFETCH_MIN = 12
+_DESKTOP_REPOSITORY_PREFETCH_MAX = 80
+_STEP_INTENT_STOPWORDS = {
+    "a", "an", "and", "are", "as", "be", "by", "click", "enter", "fill",
+    "for", "from", "in", "into", "is", "it", "of", "on", "open", "select",
+    "should", "submit", "the", "to", "type", "user", "verify", "with",
+}
 
 
 def _parse_streamed_json(raw: str, schema: type[T]) -> T:
@@ -191,6 +203,7 @@ def _workflow_to_response(wf: AIWorkflowModel) -> WorkflowStateResponse:
         module_id=wf.module_id,
         page_id=wf.page_id,
         page_name=wf.page_name,
+        platform=wf.platform or "web",
         elements_saved=wf.elements_saved,
         scenarios=scenarios,
         testcases_created=wf.testcases_created,
@@ -325,6 +338,238 @@ def _extract_page_name(url: str, fallback: str) -> str:
         return fallback
 
 
+def _target_basename(app_target: str | None) -> str:
+    target = str(app_target or "").strip()
+    if not target:
+        return ""
+    without_query = target.split("?", 1)[0].split("#", 1)[0]
+    normalized = without_query.replace("\\", "/").rstrip("/")
+    return normalized.split("/")[-1] or target
+
+
+def _context_has_any(text: str, terms: tuple[str, ...]) -> bool:
+    return any(term in text for term in terms)
+
+
+def _application_learning_profile(
+    *,
+    platform: str = "web",
+    app_target: str = "",
+    page_name: str = "",
+    project_name: str = "",
+    brd_text: str = "",
+    brd_summary: str = "",
+) -> str:
+    """Build a compact app profile before asking the model for scenarios/steps."""
+    platform_norm = (platform or "web").strip().lower() or "web"
+    target_name = _target_basename(app_target)
+    context = " ".join(
+        str(value or "")
+        for value in (platform_norm, app_target, target_name, page_name, project_name, brd_text, brd_summary)
+    ).lower()
+    is_desktop = _is_desktop_platform(platform_norm)
+    is_calculator = _context_has_any(
+        context,
+        ("calculator", "calc.exe", "windowscalculator", "\\calc", "/calc"),
+    ) or target_name.lower() == "calc"
+    auth_explicit = _context_has_any(
+        context,
+        ("login", "log in", "sign in", "sign-in", "signin", "authentication", "credential", "password"),
+    )
+
+    profile = [
+        "Profile source: deterministic pre-generation application learning.",
+        f"Observed platform: {platform_norm}.",
+        f"Observed target: {app_target or 'not provided'}.",
+        f"Observed screen/page: {page_name or 'not provided'}.",
+    ]
+
+    if is_calculator:
+        profile.extend([
+            "Inferred application type: Windows Calculator desktop utility.",
+            "Core capabilities: numeric digit entry, arithmetic operators, equals/result display, clear/clear-entry, decimal and negative calculations.",
+            "Likely controls: digit buttons, operator buttons, Equals, Clear, Backspace, and calculator result/display text.",
+            "Generation guidance: create direct arithmetic workflows with observable result assertions.",
+            "Scraping guidance: later desktop scraping should prioritize buttons and display elements mentioned by the generated steps.",
+            "Out of scope unless explicitly stated: sign-in, email, password, account, dashboard, web portal, checkout, and customer-management flows.",
+        ])
+    elif is_desktop and _context_has_any(context, ("intellij", "idea64", "idea.exe", "jetbrains")):
+        profile.extend([
+            "Inferred application type: IntelliJ IDEA desktop IDE.",
+            "Core capabilities: open/create projects, navigate project tree, edit files, run/debug configurations, search, settings, plugins, build output, and VCS actions.",
+            "Likely controls: menus, toolbar buttons, project tree nodes, editor tabs, dialogs, run/debug buttons, and settings/plugin inputs.",
+            "Generation guidance: create IDE workflows tied to project, editor, run/debug, search, settings, or plugin tasks.",
+            "Scraping guidance: later desktop scraping should prioritize menu items, toolbar actions, tree nodes, tabs, dialogs, and editor controls referenced by the steps.",
+            "Out of scope unless explicitly stated: customer sign-in, email/password portal login, checkout, and dashboard flows.",
+        ])
+    elif is_desktop and _context_has_any(context, ("notepad", "text editor", "editor.exe")):
+        profile.extend([
+            "Inferred application type: desktop text editor.",
+            "Core capabilities: create/edit text, save/open files, find text, replace text, and verify document content.",
+            "Likely controls: document editor area, File/Edit menus, Save/Open dialogs, Find/Replace fields, and status messages.",
+            "Generation guidance: create file and text-editing workflows with visible content assertions.",
+            "Out of scope unless explicitly stated: sign-in, email, password, account, and dashboard flows.",
+        ])
+    elif is_desktop and _context_has_any(context, ("paint", "mspaint")):
+        profile.extend([
+            "Inferred application type: desktop drawing application.",
+            "Core capabilities: canvas drawing, tool selection, color selection, shape insertion, save/open image, and undo/redo.",
+            "Likely controls: canvas, ribbon/tool buttons, color swatches, shape tools, and save/open dialogs.",
+            "Generation guidance: create drawing/tool workflows with visible canvas or file assertions.",
+            "Out of scope unless explicitly stated: sign-in, email, password, account, and dashboard flows.",
+        ])
+    elif is_desktop:
+        profile.extend([
+            "Inferred application type: desktop application.",
+            "Core capabilities: infer from executable/window title, BRD, project name, and page name before creating scenarios.",
+            "Likely controls: native buttons, menus, text fields, lists, tabs, dialogs, tree/table rows, and status text.",
+            "Generation guidance: create direct desktop workflows; avoid assuming a web login or dashboard pattern.",
+            "Scraping guidance: later desktop scraping should prioritize controls named in the generated steps and collect multiple locator paths for healing.",
+            "Out of scope unless explicitly stated: sign-in, email, password, account, and dashboard flows.",
+        ])
+    else:
+        domain = "web application"
+        capabilities = "infer business-critical navigation, form, validation, and confirmation flows from the BRD and target URL."
+        if _context_has_any(context, ("flight", "travel", "hotel", "booking", "reservation")):
+            domain = "travel or booking web application"
+            capabilities = "search, filter, select itinerary/options, passenger/details entry, pricing review, and booking confirmation."
+        elif _context_has_any(context, ("cart", "checkout", "order", "product", "shop", "ecommerce", "e-commerce")):
+            domain = "e-commerce web application"
+            capabilities = "product search/browse, cart updates, checkout validation, payment handoff, and order confirmation."
+        elif _context_has_any(context, ("invoice", "billing", "payment", "finance")):
+            domain = "finance or billing web application"
+            capabilities = "record search, invoice/payment entry, validation, approval, and confirmation/audit states."
+        elif _context_has_any(context, ("crm", "customer", "lead", "opportunity", "contact")):
+            domain = "CRM or customer-management web application"
+            capabilities = "customer/lead search, create/edit forms, status changes, validation, and record confirmation."
+        elif _context_has_any(context, ("admin", "settings", "role", "permission")):
+            domain = "administration web application"
+            capabilities = "configuration changes, user/role/permission updates, validation, audit, and confirmation states."
+
+        profile.extend([
+            f"Inferred application type: {domain}.",
+            f"Core capabilities: {capabilities}",
+            "Likely controls: navigation links, buttons, inputs, dropdowns, tables/lists, dialogs, messages, and confirmation text.",
+            "Generation guidance: create business-domain workflows from the BRD and target, not generic steps.",
+            "Scraping guidance: later scraping should prioritize elements referenced by generated steps and collect resilient locator alternatives.",
+        ])
+        if not auth_explicit:
+            profile.append(
+                "Out of scope unless explicitly stated: sign-in, email, password, authentication, account, and dashboard flows."
+            )
+        else:
+            profile.append(
+                "Authentication appears explicit in the source context; include it only where it supports the stated business flow."
+            )
+
+    return "\n".join(profile)
+
+
+_SCENARIO_AUTH_TERMS = (
+    "auth",
+    "authenticate",
+    "authenticated",
+    "credential",
+    "dashboard",
+    "email",
+    "login",
+    "log in",
+    "password",
+    "sign in",
+    "sign-in",
+    "signin",
+)
+
+
+def _is_calculator_profile(application_profile: str) -> bool:
+    profile = (application_profile or "").lower()
+    return "calculator" in profile and ("desktop" in profile or "windows" in profile)
+
+
+def _scenario_list_has_auth_leak(scenario_list: ScenarioList) -> bool:
+    for scenario in scenario_list.scenarios:
+        text = " ".join(
+            str(value or "").lower()
+            for value in (
+                scenario.title,
+                scenario.business_requirement,
+                scenario.test_type,
+                scenario.classification,
+                " ".join(scenario.pages_involved or []),
+            )
+        )
+        if _context_has_any(text, _SCENARIO_AUTH_TERMS):
+            return True
+    return False
+
+
+def _scenario_list_has_calculator_focus(scenario_list: ScenarioList) -> bool:
+    calc_terms = ("calculator", "arithmetic", "digit", "operator", "equals", "result", "clear", "decimal")
+    text = " ".join(
+        " ".join(
+            str(value or "").lower()
+            for value in (
+                scenario.title,
+                scenario.business_requirement,
+                " ".join(scenario.pages_involved or []),
+            )
+        )
+        for scenario in scenario_list.scenarios
+    )
+    return _context_has_any(text, calc_terms)
+
+
+def _calculator_scenario_list(page_name: str = "Calculator") -> ScenarioList:
+    page = page_name or "Calculator"
+    scenarios = [
+        ScenarioPreview(
+            scenario_id=str(uuid.uuid4()),
+            title="Calculator basic addition",
+            business_requirement="Calculator must add two whole numbers and display the correct result.",
+            priority="high",
+            test_type="smoke",
+            classification="positive",
+            pages_involved=[page],
+            estimated_test_cases=1,
+            confidence=0.96,
+        ),
+        ScenarioPreview(
+            scenario_id=str(uuid.uuid4()),
+            title="Calculator subtraction result",
+            business_requirement="Calculator must subtract values and support negative or lower-than-starting results when applicable.",
+            priority="medium",
+            test_type="functional",
+            classification="positive",
+            pages_involved=[page],
+            estimated_test_cases=1,
+            confidence=0.9,
+        ),
+        ScenarioPreview(
+            scenario_id=str(uuid.uuid4()),
+            title="Calculator clear entry resets input",
+            business_requirement="Calculator must clear the current entry so the next calculation starts from a clean state.",
+            priority="medium",
+            test_type="regression",
+            classification="edge",
+            pages_involved=[page],
+            estimated_test_cases=1,
+            confidence=0.88,
+        ),
+        ScenarioPreview(
+            scenario_id=str(uuid.uuid4()),
+            title="Calculator decimal calculation",
+            business_requirement="Calculator must handle decimal inputs and display the expected decimal result.",
+            priority="medium",
+            test_type="functional",
+            classification="edge",
+            pages_involved=[page],
+            estimated_test_cases=1,
+            confidence=0.86,
+        ),
+    ]
+    return ScenarioList(scenarios=scenarios)
+
+
 # ---------------------------------------------------------------------------
 # Background task: scenario generation phase
 # ---------------------------------------------------------------------------
@@ -365,6 +610,22 @@ async def _run_scenario_generation(workflow_id: str, ai_provider: str, ai_model:
             )
             page_name = wf.page_name or _extract_page_name(wf.webpage_url, wf.project_name)
             generation_profile = _model_generation_profile(ai_model)
+            application_profile = _application_learning_profile(
+                platform=wf.platform or "web",
+                app_target=wf.webpage_url or "",
+                page_name=page_name,
+                project_name=wf.project_name,
+                brd_text=wf.brd_text,
+                brd_summary=brd_analysis.summary,
+            )
+
+            await _update_state(
+                db,
+                workflow_id,
+                WorkflowState.SCENARIOS_GENERATING,
+                "Application context learned - generating test scenarios...",
+                detail=application_profile,
+            )
 
             # Build the scenario prompt (same as ScenarioGenerationAgent does internally)
             scenario_prompt = build_scenario_prompt(
@@ -375,6 +636,9 @@ async def _run_scenario_generation(workflow_id: str, ai_provider: str, ai_model:
                 brd_analysis_summary=brd_analysis.summary,
                 scenario_count=generation_profile["scenario_count"],
                 analysis_depth=generation_profile["analysis_depth"],
+                platform=wf.platform or "web",
+                app_target=wf.webpage_url or "",
+                application_profile=application_profile,
             )
 
             # Stream scenario generation — update current_message every ~50 chars
@@ -394,6 +658,14 @@ async def _run_scenario_generation(workflow_id: str, ai_provider: str, ai_model:
                     )
 
             scenario_list = _parse_streamed_json("".join(chunks), ScenarioList)
+            if _is_calculator_profile(application_profile) and (
+                _scenario_list_has_auth_leak(scenario_list)
+                or not _scenario_list_has_calculator_focus(scenario_list)
+            ):
+                logger.info(
+                    "Scenario generation returned generic/auth scenarios for Calculator; replacing with calculator scenarios"
+                )
+                scenario_list = _calculator_scenario_list(page_name)
 
             scenarios_data = [s.model_dump() for s in scenario_list.scenarios]
             await _update_state(
@@ -491,10 +763,480 @@ def _locator_candidate_payload(locator: Any) -> dict[str, Any]:
     return {}
 
 
+def _normalize_locator_strategy(strategy: Any) -> str:
+    value = str(strategy or "").strip()
+    aliases = {
+        "accessibility_id": "accessibility id",
+        "automation_id": "automation id",
+        "class_name": "class name",
+    }
+    return aliases.get(value.lower(), value)
+
+
+def _safe_locator_text(*values: Any, limit: int = 120) -> str:
+    for value in values:
+        text = " ".join(str(value or "").split())
+        if text and len(text) <= limit:
+            return text
+    return ""
+
+
+def _xpath_literal(value: Any) -> str:
+    text = str(value or "")
+    if "'" not in text:
+        return f"'{text}'"
+    if '"' not in text:
+        return f'"{text}"'
+    return "concat(" + ', "\'", '.join(f"'{part}'" for part in text.split("'")) + ")"
+
+
+def _css_attr_literal(value: Any) -> str:
+    text = str(value or "").replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{text}"'
+
+
+def _css_id_selector(value: str) -> str:
+    if _re.match(r"^[A-Za-z_][A-Za-z0-9_-]*$", value):
+        return f"#{value}"
+    return f"[id={_css_attr_literal(value)}]"
+
+
+def _web_tag_for_candidate(candidate: dict[str, Any]) -> str:
+    element_type = str(candidate.get("element_type") or "").strip().lower()
+    input_type = str(candidate.get("input_type") or "").strip().lower()
+    if element_type in {"button", "submit"} or input_type in {"button", "submit"}:
+        return "button"
+    if element_type in {"link", "anchor"}:
+        return "a"
+    if element_type in {"select", "combobox", "listbox", "option"}:
+        return "select"
+    if element_type in {"textarea"}:
+        return "textarea"
+    if element_type in {
+        "input",
+        "textbox",
+        "text",
+        "email",
+        "password",
+        "search",
+        "number",
+        "date",
+        "checkbox",
+        "radio",
+    } or input_type:
+        return "input"
+    return "*"
+
+
+def _web_role_for_candidate(candidate: dict[str, Any]) -> str:
+    role = str(candidate.get("role") or "").strip().lower()
+    if role:
+        return role
+    element_type = str(candidate.get("element_type") or "").strip().lower()
+    input_type = str(candidate.get("input_type") or "").strip().lower()
+    mapping = {
+        "button": "button",
+        "submit": "button",
+        "link": "link",
+        "anchor": "link",
+        "select": "combobox",
+        "combobox": "combobox",
+        "checkbox": "checkbox",
+        "radio": "radio",
+        "tab": "tab",
+        "switch": "switch",
+    }
+    if element_type in mapping:
+        return mapping[element_type]
+    if input_type in {"checkbox", "radio"}:
+        return input_type
+    if element_type in {"input", "textbox", "text", "email", "password", "search"} or input_type:
+        return "textbox"
+    return ""
+
+
+def _candidate_is_desktop(candidate: dict[str, Any]) -> bool:
+    metadata = candidate.get("discovery_metadata") or {}
+    if not isinstance(metadata, dict):
+        metadata = {}
+    tags = {str(tag).strip().lower() for tag in candidate.get("tags") or []}
+    platform = str(candidate.get("platform") or metadata.get("platform") or "").strip().lower()
+    source = str(metadata.get("source") or "").strip().lower()
+    return (
+        platform in {"desktop", "windows"}
+        or "desktop" in tags
+        or source.startswith("desktop")
+    )
+
+
+def _candidate_locator_paths(candidate: dict[str, Any]) -> list[dict[str, Any]]:
+    paths: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+
+    def add(
+        strategy: str,
+        locator: Any,
+        *,
+        score: float | None = None,
+        verified: bool = False,
+        element_count: int = 0,
+        reason: str = "",
+        source: str = "ai_workflow",
+    ) -> None:
+        value = str(locator or "").strip()
+        normalized_strategy = _normalize_locator_strategy(strategy)
+        if not value or not normalized_strategy:
+            return
+        key = (normalized_strategy.lower(), value)
+        if key in seen:
+            return
+        seen.add(key)
+        payload = {
+            "strategy": normalized_strategy,
+            "locator": value,
+            "verified": verified,
+            "element_count": element_count,
+            "score": float(score if score is not None else candidate.get("confidence_score") or 0.0),
+            "reason": reason or "Captured locator path from AI Workflow discovery",
+            "source": source,
+        }
+        paths.append(payload)
+
+    for item in candidate.get("alternative_locators") or []:
+        if not isinstance(item, dict):
+            continue
+        add(
+            str(item.get("strategy") or ""),
+            item.get("locator") or item.get("value") or item.get("selector"),
+            score=float(item.get("score") or item.get("confidence") or candidate.get("confidence_score") or 0.0),
+            verified=bool(item.get("verified", False)),
+            element_count=int(item.get("element_count") or item.get("count") or 0),
+            reason=str(item.get("reason") or "Captured locator path from discovery"),
+            source=str(item.get("source") or "discovery"),
+        )
+
+    strategy = str(candidate.get("locator_strategy") or "")
+    desktop_hint = _candidate_is_desktop(candidate) or _normalize_locator_strategy(strategy).lower() in {
+        "accessibility id",
+        "automation id",
+        "uia",
+    }
+    add(
+        strategy or "locator",
+        candidate.get("best_locator"),
+        verified=True,
+        element_count=1,
+        reason="Primary selected locator from AI Workflow discovery",
+        source="primary",
+    )
+    add(
+        "xpath",
+        candidate.get("xpath"),
+        verified=True,
+        element_count=1,
+        reason="UIA/XPath path saved on page object",
+        source="page_repository",
+    )
+    add(
+        "css",
+        candidate.get("css_selector"),
+        verified=True,
+        element_count=1,
+        reason="CSS/class path saved on page object",
+        source="page_repository",
+    )
+    add(
+        "accessibility id",
+        (candidate.get("automation_id") or candidate.get("id_attr")) if desktop_hint else None,
+        verified=desktop_hint,
+        element_count=1 if desktop_hint else 0,
+        score=1.0,
+        reason="Automation ID saved on desktop page object",
+        source="page_repository",
+    )
+    add(
+        "automation id",
+        (candidate.get("automation_id") or candidate.get("id_attr")) if desktop_hint else None,
+        verified=desktop_hint,
+        element_count=1 if desktop_hint else 0,
+        score=1.0,
+        reason="Automation ID alias saved on desktop page object",
+        source="page_repository",
+    )
+    add(
+        "name",
+        candidate.get("name_text") or candidate.get("name_attr") or candidate.get("label") or candidate.get("name"),
+        verified=bool(candidate.get("name_text") or candidate.get("name_attr")),
+        element_count=1 if candidate.get("name_text") or candidate.get("name_attr") else 0,
+        score=0.86,
+        reason="Name/text fallback saved on desktop page object",
+        source="page_repository",
+    )
+    add(
+        "class name",
+        candidate.get("class_name"),
+        score=0.56,
+        reason="Class-name fallback saved on desktop page object",
+        source="page_repository",
+    )
+
+    primary_locator = _safe_locator_text(candidate.get("best_locator"), limit=240)
+    id_value = _safe_locator_text(candidate.get("id_attr"), limit=100)
+    if not id_value and primary_locator.startswith("#") and len(primary_locator) > 1:
+        id_value = _safe_locator_text(primary_locator[1:], limit=100)
+    name_value = _safe_locator_text(candidate.get("name_attr"), limit=100)
+    placeholder = _safe_locator_text(candidate.get("placeholder"), limit=120)
+    label = _safe_locator_text(
+        candidate.get("label"),
+        candidate.get("name_text"),
+        candidate.get("name"),
+        limit=120,
+    )
+    element_type = _safe_locator_text(candidate.get("element_type"), limit=60)
+    web_tag = _web_tag_for_candidate(candidate)
+
+    if desktop_hint:
+        control_type = _safe_locator_text(
+            candidate.get("class_name"),
+            candidate.get("element_type"),
+            "Control",
+            limit=80,
+        )
+        automation_value = _safe_locator_text(candidate.get("automation_id"), candidate.get("id_attr"), limit=120)
+        class_value = _safe_locator_text(candidate.get("class_name"), candidate.get("css_selector"), limit=120)
+        if automation_value:
+            add(
+                "uia",
+                f"{control_type}[AutomationId={_xpath_literal(automation_value)}]",
+                verified=False,
+                score=0.78,
+                reason="UIA automation-id healing fallback",
+                source="healing",
+            )
+        if class_value:
+            add(
+                "uia",
+                f"{control_type}[ClassName={_xpath_literal(class_value)}]",
+                verified=False,
+                score=0.50,
+                reason="UIA class-name healing fallback",
+                source="healing",
+            )
+        if label:
+            add(
+                "uia",
+                f"{control_type}[Name={_xpath_literal(label)}]",
+                verified=False,
+                score=0.72,
+                reason="UIA name healing fallback",
+                source="healing",
+            )
+            locator_context = candidate.get("locator_context") or {}
+            if isinstance(locator_context, dict):
+                nearby_values = locator_context.get("nearby_siblings") or []
+                parent_values = locator_context.get("parent_chain") or []
+                if isinstance(nearby_values, str) or not isinstance(nearby_values, (list, tuple, set)):
+                    nearby_values = [nearby_values]
+                if isinstance(parent_values, str) or not isinstance(parent_values, (list, tuple, set)):
+                    parent_values = [parent_values]
+                nearby = _safe_locator_text(*nearby_values, limit=80)
+                parent = _safe_locator_text(*parent_values, limit=80)
+                if nearby:
+                    add(
+                        "relative",
+                        f"near({_xpath_literal(nearby)}) -> {control_type}[Name={_xpath_literal(label)}]",
+                        verified=False,
+                        score=0.58,
+                        reason="Relative desktop healing fallback from nearby UI text",
+                        source="healing",
+                    )
+                elif parent:
+                    add(
+                        "relative",
+                        f"{parent} -> {control_type}[Name={_xpath_literal(label)}]",
+                        verified=False,
+                        score=0.52,
+                        reason="Relative desktop healing fallback from parent chain",
+                        source="healing",
+                    )
+        locator_context = candidate.get("locator_context") or {}
+        parent = ""
+        bounding_box = candidate.get("bounding_box") or {}
+        if isinstance(locator_context, dict):
+            parent_values = locator_context.get("parent_chain") or []
+            if isinstance(parent_values, str) or not isinstance(parent_values, (list, tuple, set)):
+                parent_values = [parent_values]
+            parent = _safe_locator_text(*parent_values, limit=80)
+            bounding_box = locator_context.get("bounding_box") or bounding_box
+        xpath_value = _safe_locator_text(candidate.get("xpath"), limit=240)
+        if parent and xpath_value:
+            add(
+                "relative",
+                f"{parent} -> {xpath_value.rsplit('/', 1)[-1]}",
+                verified=False,
+                score=0.46,
+                reason="Parent-scoped UIA path healing fallback",
+                source="healing",
+            )
+        if len(paths) < _MIN_HEALING_LOCATOR_PATHS:
+            if isinstance(bounding_box, dict) and {"x", "y"} <= set(bounding_box):
+                add(
+                    "visual",
+                    f"x={bounding_box.get('x')},y={bounding_box.get('y')},w={bounding_box.get('width', '')},h={bounding_box.get('height', '')}",
+                    verified=False,
+                    score=0.34,
+                    reason="Visual bounds fallback for desktop healing",
+                    source="healing",
+                )
+    else:
+        if id_value:
+            add(
+                "id",
+                id_value,
+                verified=False,
+                score=0.84,
+                reason="HTML id healing fallback",
+                source="healing",
+            )
+            add(
+                "css",
+                _css_id_selector(id_value),
+                verified=False,
+                score=0.82,
+                reason="ID-based CSS healing fallback",
+                source="healing",
+            )
+            add(
+                "xpath",
+                f"//*[@id={_xpath_literal(id_value)}]",
+                verified=False,
+                score=0.80,
+                reason="ID-based XPath healing fallback",
+                source="healing",
+            )
+        if name_value:
+            css_name = f"[name={_css_attr_literal(name_value)}]"
+            if web_tag != "*":
+                css_name = f"{web_tag}{css_name}"
+            add(
+                "css",
+                css_name,
+                verified=False,
+                score=0.74,
+                reason="Name-attribute CSS healing fallback",
+                source="healing",
+            )
+            add(
+                "xpath",
+                f"//{web_tag}[@name={_xpath_literal(name_value)}]",
+                verified=False,
+                score=0.72,
+                reason="Name-attribute XPath healing fallback",
+                source="healing",
+            )
+        if placeholder:
+            css_placeholder = f"[placeholder={_css_attr_literal(placeholder)}]"
+            if web_tag in {"input", "textarea"}:
+                css_placeholder = f"{web_tag}{css_placeholder}"
+            add(
+                "css",
+                css_placeholder,
+                verified=False,
+                score=0.68,
+                reason="Placeholder CSS healing fallback",
+                source="healing",
+            )
+            add(
+                "xpath",
+                f"//*[@placeholder={_xpath_literal(placeholder)}]",
+                verified=False,
+                score=0.66,
+                reason="Placeholder XPath healing fallback",
+                source="healing",
+            )
+        if label:
+            role = _web_role_for_candidate(candidate)
+            if role:
+                role_name = label.replace("\\", "\\\\").replace('"', '\\"')
+                add(
+                    "role",
+                    f'role={role}[name="{role_name}"]',
+                    verified=False,
+                    score=0.70,
+                    reason="Accessible role/name healing fallback",
+                    source="healing",
+                )
+            if web_tag in {"input", "textarea", "select"}:
+                add(
+                    "xpath",
+                    (
+                        f"//label[contains(normalize-space(.), {_xpath_literal(label)})]"
+                        "/following::*[self::input or self::textarea or self::select][1]"
+                    ),
+                    verified=False,
+                    score=0.64,
+                    reason="Label-relative form-field healing fallback",
+                    source="healing",
+                )
+            add(
+                "xpath",
+                f"//*[@aria-label={_xpath_literal(label)} or normalize-space(.)={_xpath_literal(label)}]",
+                verified=False,
+                score=0.60,
+                reason="Accessible text healing fallback",
+                source="healing",
+            )
+            add(
+                "text",
+                label,
+                verified=False,
+                score=0.54,
+                reason="Visible text healing fallback",
+                source="healing",
+            )
+
+        if len(paths) < _MIN_HEALING_LOCATOR_PATHS and element_type:
+            fallback_tag = web_tag if web_tag != "*" else element_type.lower().replace(" ", "-")
+            add(
+                "css",
+                fallback_tag,
+                verified=False,
+                score=0.20,
+                reason="Broad element-type fallback for sparse scrape metadata",
+                source="healing",
+            )
+            add(
+                "xpath",
+                f"//{fallback_tag}",
+                verified=False,
+                score=0.18,
+                reason="Broad element-type XPath fallback for sparse scrape metadata",
+                source="healing",
+            )
+
+    paths.sort(
+        key=lambda item: (
+            0 if item.get("verified") and int(item.get("element_count") or 0) == 1 else 1,
+            -float(item.get("score") or 0.0),
+        )
+    )
+    return paths
+
+
 def _candidate_from_discovered(element: DiscoveryElement, index: int) -> dict[str, Any]:
     strategy, locator, xpath, css_selector = _best_locator_payload(element)
     xpath = _best_xpath(element) or xpath
-    return {
+    test_data_hints = element.test_data_hints or {}
+    discovery_metadata = test_data_hints.get("discovery_metadata")
+    if not isinstance(discovery_metadata, dict):
+        discovery_metadata = {}
+    locator_context = test_data_hints.get("locator_context") or discovery_metadata.get("locator_context") or {}
+    matched_step_intents = (
+        test_data_hints.get("matched_step_intents")
+        or discovery_metadata.get("matched_step_intents")
+        or []
+    )
+    candidate = {
         "candidate_id": f"scraped-{index + 1}",
         "name": element.name,
         "element_type": element.element_type or "element",
@@ -505,10 +1247,22 @@ def _candidate_from_discovered(element: DiscoveryElement, index: int) -> dict[st
         "css_selector": css_selector,
         "id_attr": element.id_attr or "",
         "name_attr": element.name_attr or "",
+        "automation_id": discovery_metadata.get("automation_id") or element.id_attr or "",
+        "name_text": discovery_metadata.get("name_text") or element.name_attr or "",
+        "class_name": discovery_metadata.get("class_name") or "",
+        "object_key": discovery_metadata.get("object_key") or test_data_hints.get("desktop_object_key") or "",
+        "locator_context": locator_context,
+        "discovery_metadata": discovery_metadata,
+        "matched_step_intents": matched_step_intents,
+        "best_step_intent_score": (
+            test_data_hints.get("best_step_intent_score")
+            or discovery_metadata.get("best_step_intent_score")
+            or 0.0
+        ),
         "input_type": element.input_type or "",
         "placeholder": element.placeholder or "",
         "label": element.label or "",
-        "test_data_hints": element.test_data_hints or {},
+        "test_data_hints": test_data_hints,
         "locator_quality": _locator_quality(element),
         "confidence_score": element.confidence_score or 0.0,
         "alternative_locators": [
@@ -523,6 +1277,8 @@ def _candidate_from_discovered(element: DiscoveryElement, index: int) -> dict[st
         "match_reason": None,
         "matched_steps": [],
     }
+    candidate["locator_paths"] = _candidate_locator_paths(candidate)
+    return candidate
 
 
 def _compact_locator_alternatives(candidate: dict[str, Any]) -> list[dict[str, Any]]:
@@ -554,6 +1310,10 @@ def _locator_enhancement_prompt(candidates: list[dict[str, Any]]) -> str:
             "placeholder": candidate.get("placeholder"),
             "id_attr": candidate.get("id_attr"),
             "name_attr": candidate.get("name_attr"),
+            "automation_id": candidate.get("automation_id"),
+            "class_name": candidate.get("class_name"),
+            "object_key": candidate.get("object_key"),
+            "locator_context": candidate.get("locator_context"),
             "best_locator": candidate.get("best_locator"),
             "xpath": candidate.get("xpath"),
             "css_selector": candidate.get("css_selector"),
@@ -562,14 +1322,17 @@ def _locator_enhancement_prompt(candidates: list[dict[str, Any]]) -> str:
         for candidate in candidates[:_AI_LOCATOR_ENHANCEMENT_LIMIT]
     ]
     return (
-        "You are improving web automation locators during page scraping.\n"
+        "You are improving automation locators during MCP/UI discovery.\n"
         "For each candidate, choose the most stable locator already present in "
         "alternative_locators, xpath, css_selector, or best_locator. Prefer verified "
-        "unique locators. Prefer test ids, role/name locators, stable CSS, id/name "
-        "attributes, and label-relative XPath before absolute XPath. Keep absolute "
-        "XPath only as a last-resort fallback. Return one item per candidate_id you "
-        "can improve. recommended_locator should be copied exactly from the provided "
-        "locator values unless it can be directly derived from the visible attributes.\n\n"
+        "unique locators. For web, prefer test ids, role/name locators, stable CSS, "
+        "id/name attributes, and label-relative XPath before absolute XPath. For "
+        "desktop, prefer accessibility id / Automation ID, then parent-scoped UIA "
+        "paths, then stable name/text, then class name, OCR, or visual fallbacks. "
+        "Use locator_context parent/nearby/child signals to preserve fallback chains. "
+        "Return one item per candidate_id you can improve. recommended_locator should "
+        "be copied exactly from the provided locator values unless it can be directly "
+        "derived from the visible attributes.\n\n"
         f"Candidates JSON:\n{json.dumps(payload, ensure_ascii=True)}"
     )
 
@@ -659,11 +1422,20 @@ def _promote_ai_locator(
     updated["alternative_locators"].sort(key=sort_key)
 
     if known and verified and locator:
+        tags = set(updated.get("tags") or [])
+        is_desktop = any(str(tag).lower() == "desktop" for tag in tags)
         updated["locator_strategy"] = strategy or updated.get("locator_strategy") or "css"
         updated["best_locator"] = locator
-        if strategy.lower() == "xpath":
+        normalized_strategy = strategy.lower()
+        if normalized_strategy == "xpath":
             updated["xpath"] = locator
-        elif strategy.lower() in {"css", "testid", "id", "name"}:
+        elif normalized_strategy in {"accessibility id", "automation id", "accessibility_id"}:
+            updated["id_attr"] = locator
+            updated["automation_id"] = locator
+        elif normalized_strategy == "name" and is_desktop:
+            updated["name_attr"] = locator
+            updated["name_text"] = locator
+        elif normalized_strategy in {"css", "testid", "id", "name"}:
             updated["css_selector"] = locator
 
     tags = set(updated.get("tags") or [])
@@ -673,6 +1445,7 @@ def _promote_ai_locator(
     updated["ai_locator_rationale"] = rationale
     updated["ai_locator_order"] = locator_order
     updated["locator_quality"] = _locator_quality(updated)
+    updated["locator_paths"] = _candidate_locator_paths(updated)
     return updated
 
 
@@ -725,12 +1498,17 @@ def _locator_quality(element: DiscoveryElement | dict[str, Any]) -> float:
     strategy_bonus = {
         "testid": 0.14,
         "data-testid": 0.14,
+        "accessibility id": 0.16,
+        "automation id": 0.16,
+        "accessibility_id": 0.16,
         "role": 0.12,
         "aria-label": 0.10,
         "id": 0.10,
         "name": 0.07,
+        "uia": 0.06,
         "css": 0.04,
         "xpath": 0.02,
+        "class name": 0.01,
     }.get(strategy, 0.0)
     short_locator_bonus = 0.04 if locator and len(locator) <= 100 else 0.0
     return min(1.0, confidence * 0.75 + strategy_bonus + short_locator_bonus)
@@ -746,6 +1524,10 @@ def _candidate_text(candidate: dict[str, Any]) -> str:
             " ".join(candidate.get("tags") or []),
             candidate.get("id_attr", ""),
             candidate.get("name_attr", ""),
+            candidate.get("automation_id", ""),
+            candidate.get("name_text", ""),
+            candidate.get("class_name", ""),
+            candidate.get("object_key", ""),
             candidate.get("placeholder", ""),
             candidate.get("label", ""),
             " ".join(str(v) for v in (candidate.get("test_data_hints") or {}).values()),
@@ -790,9 +1572,23 @@ def _data_type_bonus(step: GeneratedTestStep, candidate: dict[str, Any]) -> floa
     return -0.12
 
 
-_TEXT_ENTRY_ELEMENTS = {"input", "textarea", "textbox", "searchbox"}
-_CHOICE_ELEMENTS = {"button", "link", "checkbox", "radio", "tab", "toggle"}
-_DROPDOWN_ELEMENTS = {"select", "option", "combobox", "listbox"}
+_TEXT_ENTRY_ELEMENTS = {
+    "input", "textarea", "textbox", "text box", "searchbox", "search box",
+    "edit", "textedit", "text edit", "document",
+}
+_CHOICE_ELEMENTS = {
+    "button", "splitbutton", "split button", "link", "hyperlink", "checkbox",
+    "radio", "tab", "tabitem", "tab item", "toggle", "menuitem", "menu item",
+    "treeitem", "tree item", "listitem", "list item", "dataitem", "data item",
+}
+_DROPDOWN_ELEMENTS = {
+    "select", "option", "combobox", "combo box", "combo", "listbox", "list box",
+    "dropdown", "drop down",
+}
+_LOW_VALUE_DESKTOP_ELEMENTS = {
+    "window", "pane", "group", "separator", "statusbar", "status bar", "titlebar",
+    "title bar", "scrollbar", "scroll bar",
+}
 
 
 def _action_element_bonus(action_type: str, element_type: str) -> float:
@@ -800,9 +1596,11 @@ def _action_element_bonus(action_type: str, element_type: str) -> float:
     element = element_type.lower()
     if action in {"fill", "clear"}:
         if element in _TEXT_ENTRY_ELEMENTS:
-            return 0.24
+            return 0.30
         if element in _CHOICE_ELEMENTS:
             return -0.45
+        if element in _LOW_VALUE_DESKTOP_ELEMENTS:
+            return -0.40
         if element:
             return -0.18
     if action == "upload":
@@ -810,9 +1608,12 @@ def _action_element_bonus(action_type: str, element_type: str) -> float:
             return 0.22
         if element in {"button", "link"}:
             return 0.06
-    if action in {"click", "submit"} and element in _CHOICE_ELEMENTS:
-        return 0.18
-    if action.startswith("assert") and element in {"label", "text", "element", "button", "link"}:
+    if action in {"click", "submit"}:
+        if element in _CHOICE_ELEMENTS:
+            return 0.24
+        if element in _LOW_VALUE_DESKTOP_ELEMENTS:
+            return -0.16
+    if action.startswith("assert") and element in {"label", "text", "element", "button", "link", "document"}:
         return 0.10
     if action == "select" and element in _DROPDOWN_ELEMENTS:
         return 0.20
@@ -888,6 +1689,49 @@ def _infer_workflow_action(step: GeneratedTestStep, element_type: str = "") -> s
     return (step.action_type or "click").lower()
 
 
+def _step_target_hint(step: GeneratedTestStep) -> str:
+    text = " ".join(
+        part for part in (
+            step.description,
+            step.expected_result or "",
+        ) if part
+    )
+    tokens = [
+        token
+        for token in _re.findall(r"[a-z0-9]+", text.lower())
+        if len(token) > 1 and token not in _STEP_INTENT_STOPWORDS
+    ]
+    compact: list[str] = []
+    for token in tokens:
+        if token not in compact:
+            compact.append(token)
+        if len(compact) >= 8:
+            break
+    return " ".join(compact)
+
+
+def _build_step_scrape_intents(test_cases: list[GeneratedTestCase]) -> list[dict[str, Any]]:
+    intents: list[dict[str, Any]] = []
+    for test_case in test_cases:
+        for step in test_case.steps:
+            action = _infer_workflow_action(step)
+            if action in {"navigate", "wait", "scroll"}:
+                continue
+            intents.append({
+                "test_case_title": test_case.title,
+                "step_number": step.step_number,
+                "action_type": action,
+                "description": step.description,
+                "target_hint": _step_target_hint(step),
+                "input_value": step.input_value or "",
+                "expected_result": step.expected_result or "",
+                "assertion_type": step.assertion_type or "",
+                "data_intent": _step_data_intent(step),
+                "needs_element": True,
+            })
+    return intents
+
+
 def _score_candidate(step: GeneratedTestStep, candidate: dict[str, Any]) -> float:
     inferred_action = _infer_workflow_action(step, str(candidate.get("element_type") or ""))
     step_text = " ".join(
@@ -910,7 +1754,169 @@ def _score_candidate(step: GeneratedTestStep, candidate: dict[str, Any]) -> floa
     score += min(float(candidate.get("locator_quality") or 0.0), 1.0) * 0.14
     if str(candidate.get("name") or "").lower() in step_text.lower():
         score += 0.12
+    matched_intents = (
+        candidate.get("matched_step_intents")
+        or (candidate.get("test_data_hints") or {}).get("matched_step_intents")
+        or (candidate.get("discovery_metadata") or {}).get("matched_step_intents")
+        or []
+    )
+    for intent in matched_intents:
+        if not isinstance(intent, dict):
+            continue
+        same_step = int(intent.get("step_number") or 0) == int(step.step_number or 0)
+        intent_text = " ".join(
+            str(intent.get(field) or "")
+            for field in ("description", "target_hint", "action_type")
+        )
+        if same_step or _token_overlap(step.description, intent_text) >= 0.25:
+            score += min(float(intent.get("score") or 0.0), 1.0) * 0.24 + 0.10
+            break
     return min(score, 1.0)
+
+
+def _candidate_id(candidate: dict[str, Any]) -> str:
+    return str(candidate.get("candidate_id") or "").strip()
+
+
+def _actionable_case_steps(
+    test_cases: list[GeneratedTestCase],
+) -> list[tuple[GeneratedTestCase, GeneratedTestStep, str]]:
+    steps: list[tuple[GeneratedTestCase, GeneratedTestStep, str]] = []
+    for test_case in test_cases:
+        for step in test_case.steps:
+            inferred_action = _infer_workflow_action(step)
+            if inferred_action in {"navigate", "wait", "scroll"}:
+                continue
+            steps.append((test_case, step, inferred_action))
+    return steps
+
+
+def _candidate_has_locator_signal(candidate: dict[str, Any]) -> bool:
+    if any(candidate.get(field) for field in ("best_locator", "xpath", "css_selector", "id_attr", "automation_id", "name_attr", "name_text")):
+        return True
+    return any(
+        isinstance(item, dict) and item.get("locator")
+        for item in candidate.get("alternative_locators") or candidate.get("locator_paths") or []
+    )
+
+
+def _candidate_interaction_type(candidate: dict[str, Any]) -> str:
+    element_type = str(candidate.get("element_type") or "").strip().lower()
+    input_type = str(candidate.get("input_type") or "").strip().lower()
+    return input_type or element_type
+
+
+def _desktop_repository_score(candidate: dict[str, Any]) -> float:
+    element = _candidate_interaction_type(candidate)
+    score = min(float(candidate.get("locator_quality") or 0.0), 1.0) * 0.34
+    score += min(float(candidate.get("confidence_score") or 0.0), 1.0) * 0.20
+    if candidate.get("automation_id") or candidate.get("id_attr"):
+        score += 0.26
+    if candidate.get("xpath"):
+        score += 0.12
+    if candidate.get("name_text") or candidate.get("name_attr") or candidate.get("label") or candidate.get("name"):
+        score += 0.12
+    if candidate.get("class_name") or candidate.get("css_selector"):
+        score += 0.04
+    if element in _TEXT_ENTRY_ELEMENTS or element in _CHOICE_ELEMENTS or element in _DROPDOWN_ELEMENTS:
+        score += 0.22
+    elif element in {"text", "label", "document"}:
+        score += 0.06
+    elif element in _LOW_VALUE_DESKTOP_ELEMENTS:
+        score -= 0.28
+    if candidate.get("locator_context"):
+        score += 0.04
+    if not _candidate_has_locator_signal(candidate):
+        score -= 0.50
+    return max(0.0, min(score, 1.0))
+
+
+def _candidate_is_repository_worthy(candidate: dict[str, Any]) -> bool:
+    if not _candidate_has_locator_signal(candidate):
+        return False
+    if not _candidate_is_desktop(candidate):
+        return True
+    return _desktop_repository_score(candidate) >= 0.42
+
+
+def _rank_candidates_for_step(
+    step: GeneratedTestStep,
+    candidates: list[dict[str, Any]],
+    *,
+    selected_ids: set[str] | None = None,
+) -> list[tuple[dict[str, Any], float]]:
+    selected_ids = selected_ids or set()
+    ranked: list[tuple[dict[str, Any], float]] = []
+    for candidate in candidates:
+        if not _candidate_is_repository_worthy(candidate):
+            continue
+        score = _score_candidate(step, candidate)
+        if _candidate_is_desktop(candidate):
+            score += _desktop_repository_score(candidate) * 0.16
+        if _candidate_id(candidate) in selected_ids:
+            score -= 0.08
+        ranked.append((candidate, max(0.0, min(score, 1.0))))
+    ranked.sort(key=lambda item: item[1], reverse=True)
+    return ranked
+
+
+def _mark_candidate_selected(
+    selected_by_id: dict[str, dict[str, Any]],
+    candidate: dict[str, Any],
+    *,
+    test_case_title: str,
+    step_number: int,
+    action: str,
+    score: float,
+    reason: str | None = None,
+) -> None:
+    candidate_id = _candidate_id(candidate)
+    if not candidate_id:
+        return
+    existing = selected_by_id.setdefault(candidate_id, {**candidate, "matched_steps": []})
+    existing["selected"] = True
+    existing["match_reason"] = reason or f"Matched {action} step intent with {score:.0%} confidence"
+    matched = f"{test_case_title}: step {step_number}"
+    if matched not in existing.setdefault("matched_steps", []):
+        existing["matched_steps"].append(matched)
+
+
+def _add_desktop_repository_prefetch(
+    selected_by_id: dict[str, dict[str, Any]],
+    candidates: list[dict[str, Any]],
+    *,
+    actionable_step_count: int,
+) -> None:
+    if actionable_step_count <= 0:
+        return
+    desktop_candidates = [
+        candidate for candidate in candidates
+        if _candidate_is_desktop(candidate) and _candidate_is_repository_worthy(candidate)
+    ]
+    if not desktop_candidates:
+        return
+    desired = min(
+        len(desktop_candidates),
+        _DESKTOP_REPOSITORY_PREFETCH_MAX,
+        max(_DESKTOP_REPOSITORY_PREFETCH_MIN, actionable_step_count * 2, len(selected_by_id)),
+    )
+    ranked = sorted(desktop_candidates, key=_desktop_repository_score, reverse=True)
+    for candidate in ranked:
+        if len(selected_by_id) >= desired:
+            break
+        candidate_id = _candidate_id(candidate)
+        if not candidate_id or candidate_id in selected_by_id:
+            continue
+        score = _desktop_repository_score(candidate)
+        if score < 0.42:
+            continue
+        selected_by_id[candidate_id] = {
+            **candidate,
+            "selected": True,
+            "match_reason": f"Desktop MCP prefetch kept stable UID/UIA object with {score:.0%} repository score",
+            "matched_steps": ["Desktop MCP repository prefetch"],
+            "tags": sorted(set((candidate.get("tags") or []) + ["desktop-prefetch"])),
+        }
 
 
 def _select_candidates_for_steps(
@@ -918,28 +1924,350 @@ def _select_candidates_for_steps(
     candidates: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     selected_by_id: dict[str, dict[str, Any]] = {}
+    actionable_steps = _actionable_case_steps(test_cases)
+    for test_case, step, inferred_action in actionable_steps:
+        selected_ids = set(selected_by_id)
+        ranked = _rank_candidates_for_step(step, candidates, selected_ids=selected_ids)
+        if not ranked:
+            continue
+        threshold = 0.26 if any(_candidate_is_desktop(candidate) for candidate in candidates) else 0.34
+        best, best_score = ranked[0]
+        unused = next(
+            (
+                (candidate, score)
+                for candidate, score in ranked
+                if _candidate_id(candidate) not in selected_ids and score >= threshold
+            ),
+            None,
+        )
+        chosen, chosen_score = unused or (best, best_score)
+        if chosen_score >= threshold:
+            _mark_candidate_selected(
+                selected_by_id,
+                chosen,
+                test_case_title=test_case.title,
+                step_number=step.step_number,
+                action=inferred_action,
+                score=chosen_score,
+            )
+            if unused and _candidate_id(best) in selected_by_id and best is not chosen:
+                _mark_candidate_selected(
+                    selected_by_id,
+                    best,
+                    test_case_title=test_case.title,
+                    step_number=step.step_number,
+                    action=inferred_action,
+                    score=best_score,
+                    reason=f"Also matched {inferred_action} step as strongest existing candidate",
+                )
+
+    _add_desktop_repository_prefetch(
+        selected_by_id,
+        candidates,
+        actionable_step_count=len(actionable_steps),
+    )
+    return list(selected_by_id.values())
+
+
+def _compact_binding_step(test_case: GeneratedTestCase, step: GeneratedTestStep) -> dict[str, Any]:
+    return {
+        "test_case_title": test_case.title,
+        "test_case_description": test_case.description,
+        "step_number": step.step_number,
+        "description": step.description,
+        "current_action_type": step.action_type,
+        "input_value": step.input_value or "",
+        "expected_result": step.expected_result or "",
+        "assertion_type": step.assertion_type or "",
+    }
+
+
+def _compact_binding_element(candidate: dict[str, Any]) -> dict[str, Any]:
+    hints = candidate.get("test_data_hints") or {}
+    return {
+        "candidate_id": candidate.get("candidate_id"),
+        "name": candidate.get("name"),
+        "element_type": candidate.get("element_type"),
+        "description": candidate.get("description"),
+        "label": candidate.get("label"),
+        "placeholder": candidate.get("placeholder"),
+        "input_type": candidate.get("input_type") or hints.get("input_type") or "",
+        "data_type": hints.get("data_type") or "",
+        "sample_value": hints.get("sample_value") or "",
+        "object_key": candidate.get("object_key"),
+        "automation_id": candidate.get("automation_id") or candidate.get("id_attr"),
+        "name_text": candidate.get("name_text") or candidate.get("name_attr"),
+        "class_name": candidate.get("class_name"),
+        "tags": candidate.get("tags") or [],
+        "locator_strategy": candidate.get("locator_strategy"),
+        "best_locator": candidate.get("best_locator"),
+        "locator_context": candidate.get("locator_context") or {},
+        "matched_step_intents": candidate.get("matched_step_intents") or hints.get("matched_step_intents") or [],
+        "best_step_intent_score": candidate.get("best_step_intent_score") or hints.get("best_step_intent_score") or 0.0,
+    }
+
+
+def _step_binding_decision_prompt(
+    *,
+    test_cases: list[GeneratedTestCase],
+    candidates: list[dict[str, Any]],
+    platform: str,
+    page_name: str,
+) -> str:
+    steps_payload = [
+        _compact_binding_step(test_case, step)
+        for test_case in test_cases
+        for step in test_case.steps
+    ]
+    elements_payload = [
+        _compact_binding_element(candidate)
+        for candidate in candidates[:_AI_LOCATOR_ENHANCEMENT_LIMIT]
+    ]
+    return (
+        "You are configuring executable QA test steps from generated test case "
+        "descriptions, generated step descriptions, and discovered UI elements.\n"
+        "For every step, choose the correct candidate_id, final action_type, and a "
+        "suitable input_value or expected_result when needed.\n\n"
+        f"Platform: {platform}\n"
+        f"Page or screen: {page_name}\n\n"
+        "Rules:\n"
+        "- Use navigate/launch steps without a candidate_id.\n"
+        "- Use fill only for text entry controls, edit boxes, textbox/searchbox fields, or equivalent desktop Edit controls.\n"
+        "- Use select only for dropdown/listbox/combobox controls that require an option value.\n"
+        "- Use click for buttons, links, tabs, toggles, radio buttons, checkboxes, menu items, and clickable choices.\n"
+        "- Use assert_visible/assert_text/assert_enabled for verification steps and include expected_result for assert_text.\n"
+        "- For fill/select, provide a realistic input_value if the step does not already have one. Prefer element sample_value when available.\n"
+        "- Read test_case_description together with the step description before selecting a candidate.\n"
+        "- Prefer exact labels/names/object keys, then nearby parent/child context, then control type compatibility.\n"
+        "- If no discovered element matches, candidate_id must be null and needs_review must be true.\n"
+        "- Return one decision per input step. candidate_id must be copied exactly from the provided elements.\n\n"
+        f"Steps JSON:\n{json.dumps(steps_payload, ensure_ascii=True)}\n\n"
+        f"Elements JSON:\n{json.dumps(elements_payload, ensure_ascii=True)}"
+    )
+
+
+async def _ai_step_binding_decisions(
+    provider: AbstractAIProvider,
+    ai_model: str,
+    *,
+    test_cases: list[GeneratedTestCase],
+    candidates: list[dict[str, Any]],
+    platform: str,
+    page_name: str,
+) -> list[StepElementBindingDecision]:
+    if not candidates:
+        return []
+    try:
+        result = await provider.generate(
+            _step_binding_decision_prompt(
+                test_cases=test_cases,
+                candidates=candidates,
+                platform=platform,
+                page_name=page_name,
+            ),
+            StepElementBindingDecisionList,
+        )
+    except Exception as exc:
+        logger.warning("AI step binding skipped for %s: %s", ai_model, _format_provider_error(exc))
+        return []
+    return list(result.items or [])
+
+
+def _decision_key(test_case_title: str, step_number: int) -> tuple[str, int]:
+    return str(test_case_title or "").strip().lower(), int(step_number or 0)
+
+
+def _decisions_by_step(
+    decisions: list[StepElementBindingDecision],
+) -> dict[tuple[str, int], StepElementBindingDecision]:
+    result: dict[tuple[str, int], StepElementBindingDecision] = {}
+    for decision in decisions:
+        if decision.step_number <= 0:
+            continue
+        result[_decision_key(decision.test_case_title, decision.step_number)] = decision
+    return result
+
+
+def _select_candidates_from_binding_decisions(
+    test_cases: list[GeneratedTestCase],
+    candidates: list[dict[str, Any]],
+    decisions: list[StepElementBindingDecision],
+) -> list[dict[str, Any]]:
+    selected_by_id = {
+        str(candidate.get("candidate_id")): dict(candidate)
+        for candidate in _select_candidates_for_steps(test_cases, candidates)
+        if candidate.get("candidate_id")
+    }
+    candidates_by_id = {
+        str(candidate.get("candidate_id")): candidate
+        for candidate in candidates
+        if candidate.get("candidate_id")
+    }
+    for decision in decisions:
+        candidate_id = str(decision.candidate_id or "")
+        if not candidate_id or candidate_id not in candidates_by_id or decision.needs_review:
+            continue
+        candidate = selected_by_id.setdefault(candidate_id, {**candidates_by_id[candidate_id], "matched_steps": []})
+        candidate["selected"] = True
+        candidate["match_reason"] = decision.reason or f"AI selected for step {decision.step_number}"
+        matched = f"{decision.test_case_title}: step {decision.step_number}"
+        if matched not in candidate.setdefault("matched_steps", []):
+            candidate["matched_steps"].append(matched)
+    return list(selected_by_id.values())
+
+
+def _fallback_input_value_for_step(
+    step: GeneratedTestStep,
+    element: dict[str, Any] | None,
+    action_type: str,
+) -> str:
+    if step.input_value:
+        return step.input_value
+    hints = (element or {}).get("test_data_hints") or {}
+    sample = str(hints.get("sample_value") or "").strip()
+    if sample:
+        return sample
+    text = _candidate_text(element or {}).lower() + " " + step.description.lower()
+    if action_type == "fill":
+        if "email" in text:
+            return "qa.user@example.com"
+        if "password" in text:
+            return "Nexus@12345"
+        if "date" in text or "dob" in text or "birth" in text:
+            return "2000-02-10"
+        if "phone" in text or "mobile" in text:
+            return "9876543210"
+        if any(token in text for token in ("amount", "quantity", "age", "number")):
+            return "10"
+        return "test data"
+    if action_type == "select":
+        return "Default"
+    return ""
+
+
+def _coerce_ai_action(
+    action_type: str,
+    step: GeneratedTestStep,
+    element: dict[str, Any] | None,
+) -> str:
+    allowed = {
+        "navigate", "click", "fill", "select", "assert_visible", "assert_text",
+        "assert_enabled", "hover", "wait", "scroll", "clear", "upload", "submit",
+    }
+    action = str(action_type or "").strip().lower()
+    if action not in allowed:
+        action = _infer_workflow_action(step, str((element or {}).get("element_type") or ""))
+    element_type = str((element or {}).get("element_type") or "").lower()
+    if action == "select" and _is_selectable_choice_element(element_type):
+        return "click"
+    if action == "fill" and element_type and element_type not in _TEXT_ENTRY_ELEMENTS:
+        if _is_dropdown_element(element_type):
+            return "select"
+        if _is_selectable_choice_element(element_type):
+            return "click"
+    if action == "click" and element_type in _TEXT_ENTRY_ELEMENTS and (step.input_value or _step_data_intent(step)):
+        return "fill"
+    return action
+
+
+def _best_saved_element_for_step(
+    step: GeneratedTestStep,
+    saved_elements: list[dict[str, Any]],
+) -> tuple[dict[str, Any] | None, float]:
+    best: dict[str, Any] | None = None
+    best_score = 0.0
+    for element in saved_elements:
+        score = _score_candidate(step, element)
+        if score > best_score:
+            best = element
+            best_score = score
+    return best, best_score
+
+
+def _bind_cases_with_ai_decisions(
+    test_cases: list[GeneratedTestCase],
+    page_id: str,
+    saved_elements: list[dict[str, Any]],
+    decisions: list[StepElementBindingDecision],
+) -> list[GeneratedTestCase]:
+    decisions_lookup = _decisions_by_step(decisions)
+    saved_by_candidate_id = {
+        str(element.get("candidate_id")): element
+        for element in saved_elements
+        if element.get("candidate_id")
+    }
+
+    bound_cases: list[GeneratedTestCase] = []
     for test_case in test_cases:
+        bound_steps = []
         for step in test_case.steps:
+            decision = decisions_lookup.get(_decision_key(test_case.title, step.step_number))
+            element = (
+                saved_by_candidate_id.get(str(decision.candidate_id or ""))
+                if decision and decision.candidate_id
+                else None
+            )
+
+            if decision and element:
+                action = _coerce_ai_action(decision.action_type, step, element)
+                input_value = decision.input_value or _fallback_input_value_for_step(step, element, action)
+                expected_result = decision.expected_result or step.expected_result
+                bound_steps.append(step.model_copy(update={
+                    "page_id": page_id,
+                    "page_element_id": element.get("element_id"),
+                    "action_type": action,
+                    "input_value": input_value or step.input_value,
+                    "assertion_type": decision.assertion_type or step.assertion_type,
+                    "expected_result": expected_result,
+                    "needs_review": bool(decision.needs_review),
+                    "review_reason": decision.reason if decision.needs_review else None,
+                    "confidence": max(0.0, min(float(decision.confidence or 0.0), 1.0)),
+                }))
+                continue
+
+            if decision and decision.needs_review:
+                inferred_action = _infer_workflow_action(step)
+                bound_steps.append(step.model_copy(update={
+                    "page_id": page_id,
+                    "action_type": _coerce_ai_action(decision.action_type or inferred_action, step, None),
+                    "input_value": decision.input_value or step.input_value,
+                    "assertion_type": decision.assertion_type or step.assertion_type,
+                    "expected_result": decision.expected_result or step.expected_result,
+                    "needs_review": True,
+                    "review_reason": decision.reason or "AI could not match this step to a saved page element",
+                    "confidence": max(0.0, min(float(decision.confidence or 0.0), 1.0)),
+                }))
+                continue
+
             inferred_action = _infer_workflow_action(step)
             if inferred_action in {"navigate", "wait", "scroll"}:
+                bound_steps.append(step.model_copy(update={
+                    "page_id": page_id,
+                    "action_type": inferred_action,
+                }))
                 continue
-            best: dict[str, Any] | None = None
-            best_score = 0.0
-            for candidate in candidates:
-                score = _score_candidate(step, candidate)
-                if score > best_score:
-                    best = candidate
-                    best_score = score
-            if best and best_score >= 0.34:
-                candidate_id = best["candidate_id"]
-                existing = selected_by_id.setdefault(candidate_id, {**best, "matched_steps": []})
-                existing["selected"] = True
-                existing["match_reason"] = (
-                    f"Matched {inferred_action} step intent with {best_score:.0%} confidence"
-                )
-                existing["matched_steps"].append(f"{test_case.title}: step {step.step_number}")
 
-    return list(selected_by_id.values())
+            fallback, fallback_score = _best_saved_element_for_step(step, saved_elements)
+            if fallback and fallback_score >= 0.34:
+                final_action = _infer_workflow_action(step, str(fallback.get("element_type") or ""))
+                input_value = _fallback_input_value_for_step(step, fallback, final_action)
+                bound_steps.append(step.model_copy(update={
+                    "page_id": page_id,
+                    "page_element_id": fallback.get("element_id"),
+                    "action_type": final_action,
+                    "input_value": input_value or step.input_value,
+                    "confidence": fallback_score,
+                }))
+            else:
+                bound_steps.append(step.model_copy(update={
+                    "page_id": page_id,
+                    "action_type": inferred_action,
+                    "needs_review": True,
+                    "review_reason": "No saved page element matched this step",
+                    "confidence": fallback_score,
+                }))
+        bound_cases.append(test_case.model_copy(update={"steps": bound_steps}))
+    return bound_cases
 
 
 async def _save_selected_candidates(
@@ -972,11 +2300,9 @@ async def _save_selected_candidates(
         if element is None:
             element = existing_by_name.get(str(candidate.get("name") or "").strip().lower())
 
-        alt_locators = [
-            dict(locator)
-            for locator in (candidate.get("alternative_locators") or [])
-            if isinstance(locator, dict) and locator.get("locator")
-        ]
+        alt_locators = _candidate_locator_paths(candidate)
+        candidate["locator_paths"] = alt_locators
+        candidate["alternative_locators"] = alt_locators
         if candidate.get("xpath") and not any(
             locator.get("strategy") == "xpath" and locator.get("locator") == candidate["xpath"]
             for locator in alt_locators
@@ -1003,6 +2329,10 @@ async def _save_selected_candidates(
             })
 
         tags = sorted(set((candidate.get("tags") or []) + ["ai-selected", "workflow-required"]))
+        discovery_metadata = _candidate_discovery_metadata(
+            workflow_id=workflow_id,
+            candidate=candidate,
+        )
         if element:
             element.element_type = candidate.get("element_type") or element.element_type
             element.description = candidate.get("description") or element.description
@@ -1016,19 +2346,7 @@ async def _save_selected_candidates(
             element.alternative_locators = alt_locators
             element.source_url = url
             element.last_verified_at = now
-            element.discovery_metadata = {
-                "workflow_id": workflow_id,
-                "source": "post_teststep_scrape",
-                "matched_steps": candidate.get("matched_steps", []),
-                "input_type": candidate.get("input_type") or "",
-                "placeholder": candidate.get("placeholder") or "",
-                "label": candidate.get("label") or "",
-                "test_data_hints": candidate.get("test_data_hints") or {},
-                "locator_quality": candidate.get("locator_quality") or candidate.get("confidence_score"),
-                "ai_locator_model": candidate.get("ai_locator_model") or "",
-                "ai_locator_rationale": candidate.get("ai_locator_rationale") or "",
-                "ai_locator_order": candidate.get("ai_locator_order") or [],
-            }
+            element.discovery_metadata = discovery_metadata
             element.updated_at = now
         else:
             element = PageElementModel(
@@ -1046,27 +2364,106 @@ async def _save_selected_candidates(
                 alternative_locators=alt_locators,
                 source_url=url,
                 last_verified_at=now,
-                discovery_metadata={
-                    "workflow_id": workflow_id,
-                    "source": "post_teststep_scrape",
-                    "matched_steps": candidate.get("matched_steps", []),
-                    "input_type": candidate.get("input_type") or "",
-                    "placeholder": candidate.get("placeholder") or "",
-                    "label": candidate.get("label") or "",
-                    "test_data_hints": candidate.get("test_data_hints") or {},
-                    "locator_quality": candidate.get("locator_quality") or candidate.get("confidence_score"),
-                    "ai_locator_model": candidate.get("ai_locator_model") or "",
-                    "ai_locator_rationale": candidate.get("ai_locator_rationale") or "",
-                    "ai_locator_order": candidate.get("ai_locator_order") or [],
-                },
+                discovery_metadata=discovery_metadata,
             )
             db.add(element)
             await db.flush()
 
-        saved.append({**candidate, "element_id": element.id})
+        saved.append(_saved_candidate_from_page_element(candidate, element))
 
     await db.flush()
     return saved
+
+
+def _saved_candidate_from_page_element(
+    candidate: dict[str, Any],
+    element: PageElementModel,
+) -> dict[str, Any]:
+    metadata = element.discovery_metadata or {}
+    locator_paths = [
+        dict(locator)
+        for locator in (element.alternative_locators or [])
+        if isinstance(locator, dict) and locator.get("locator")
+    ]
+    automation_id = str(metadata.get("automation_id") or element.id_attr or "")
+    name_text = str(metadata.get("name_text") or element.name_attr or "")
+    class_name = str(metadata.get("class_name") or element.css_selector or "")
+    return {
+        **candidate,
+        "element_id": element.id,
+        "name": element.name,
+        "element_type": element.element_type,
+        "description": element.description,
+        "locator_strategy": element.locator_strategy,
+        "best_locator": (
+            str(metadata.get("primary_locator") or "")
+            or automation_id
+            or element.xpath
+            or element.css_selector
+            or name_text
+        ),
+        "xpath": element.xpath,
+        "css_selector": element.css_selector,
+        "id_attr": element.id_attr,
+        "name_attr": element.name_attr,
+        "automation_id": automation_id,
+        "name_text": name_text,
+        "class_name": class_name,
+        "object_key": str(metadata.get("object_key") or candidate.get("object_key") or ""),
+        "locator_context": metadata.get("locator_context") or candidate.get("locator_context") or {},
+        "discovery_metadata": metadata,
+        "confidence_score": element.confidence_score or candidate.get("confidence_score") or 0.0,
+        "alternative_locators": locator_paths,
+        "locator_paths": locator_paths,
+        "tags": element.tags or candidate.get("tags") or [],
+    }
+
+
+def _candidate_discovery_metadata(
+    *,
+    workflow_id: str,
+    candidate: dict[str, Any],
+) -> dict[str, Any]:
+    hints = candidate.get("test_data_hints") or {}
+    nested = candidate.get("discovery_metadata") or hints.get("discovery_metadata") or {}
+    metadata = dict(nested) if isinstance(nested, dict) else {}
+    tags = {str(tag).lower() for tag in candidate.get("tags") or []}
+    source = metadata.get("source") or (
+        "desktop_mcp_ai_workflow" if "desktop" in tags else "post_teststep_scrape"
+    )
+    metadata.update({
+        "workflow_id": workflow_id,
+        "source": source,
+        "matched_steps": candidate.get("matched_steps", []),
+        "input_type": candidate.get("input_type") or "",
+        "placeholder": candidate.get("placeholder") or "",
+        "label": candidate.get("label") or "",
+        "test_data_hints": hints,
+        "locator_paths": _candidate_locator_paths(candidate),
+        "locator_quality": candidate.get("locator_quality") or candidate.get("confidence_score"),
+        "ai_locator_model": candidate.get("ai_locator_model") or "",
+        "ai_locator_rationale": candidate.get("ai_locator_rationale") or "",
+        "ai_locator_order": candidate.get("ai_locator_order") or [],
+        "scrape_step_intents": hints.get("scrape_step_intents") or metadata.get("scrape_step_intents") or [],
+        "matched_step_intents": candidate.get("matched_step_intents") or hints.get("matched_step_intents") or [],
+        "best_step_intent_score": candidate.get("best_step_intent_score") or hints.get("best_step_intent_score") or 0.0,
+    })
+    for key in (
+        "object_key",
+        "automation_id",
+        "name_text",
+        "class_name",
+        "locator_context",
+    ):
+        value = candidate.get(key)
+        if value not in (None, "", [], {}):
+            metadata[key] = value
+    if "desktop" in tags:
+        metadata.setdefault("platform", "desktop")
+        metadata.setdefault("primary_locator", candidate.get("best_locator") or candidate.get("id_attr") or "")
+        metadata.setdefault("uia_path", candidate.get("xpath") or "")
+        metadata.setdefault("control_type", candidate.get("element_type") or "")
+    return metadata
 
 
 def _bind_cases_to_saved_elements(
@@ -1195,10 +2592,12 @@ def _build_step_bindings(
     if _is_desktop_platform(platform):
         desktop_action = "LAUNCH_APP" if action == "NAVIGATE_TO_URL" else action
         desktop_binding: dict[str, Any] = {
+            "page": page_name,
             "application": page_name,
             "window": page_name,
             "screen": page_name,
             "page_id": page_id or step.page_id,
+            "driver_type": "uia3",
             "action_type": desktop_action,
             "workflow_action_type": step.action_type,
             "source": "ai_workflow",
@@ -1211,26 +2610,52 @@ def _build_step_bindings(
         if element:
             locator = _resolved_locator(element)
             hints = element.get("test_data_hints") or {}
+            metadata = element.get("discovery_metadata") or hints.get("discovery_metadata") or {}
+            if not isinstance(metadata, dict):
+                metadata = {}
+            strategy = str(element.get("locator_strategy") or "accessibility id")
+            automation_id = str(
+                element.get("automation_id")
+                or metadata.get("automation_id")
+                or element.get("id_attr")
+                or (locator if strategy.lower() in {"accessibility id", "automation id", "accessibility_id"} else "")
+                or ""
+            )
+            name_text = str(element.get("name_text") or metadata.get("name_text") or element.get("name_attr") or "")
+            class_name = str(element.get("class_name") or metadata.get("class_name") or "")
+            selector = automation_id or locator or name_text or class_name
+            locator_paths = [
+                dict(item)
+                for item in (
+                    element.get("locator_paths")
+                    or metadata.get("locator_paths")
+                    or element.get("alternative_locators")
+                    or []
+                )
+                if isinstance(item, dict) and item.get("locator")
+            ]
             desktop_binding.update({
                 "page_element_id": element.get("element_id"),
                 "element_name": element.get("name"),
                 "object_name": element.get("name"),
+                "object_key": element.get("object_key") or metadata.get("object_key") or "",
                 "control_type": element.get("element_type"),
                 "input_type": element.get("input_type") or hints.get("input_type") or "",
                 "data_type": hints.get("data_type") or "",
-                "locator_strategy": element.get("locator_strategy") or "accessibility id",
-                "automation_id": locator,
-                "selector": locator,
-                "uia_path": element.get("xpath") or locator,
-                "class_name": element.get("class_name") or "",
+                "locator_strategy": strategy,
+                "automation_id": automation_id,
+                "selector": selector,
+                "uia_path": element.get("xpath") or metadata.get("uia_path") or locator,
+                "name_text": name_text,
+                "class_name": class_name,
+                "primary_locator": metadata.get("primary_locator") or locator,
+                "locator_context": element.get("locator_context") or metadata.get("locator_context") or {},
                 "locator_quality": element.get("locator_quality") or element.get("confidence_score"),
                 "match_reason": element.get("match_reason"),
-                "alternative_locators": [
-                    dict(locator)
-                    for locator in (element.get("alternative_locators") or [])
-                    if isinstance(locator, dict) and locator.get("locator")
-                ],
+                "alternative_locators": locator_paths,
+                "locator_paths": locator_paths,
             })
+            desktop_binding["locators"] = locator_paths
         if input_value:
             desktop_binding.update({
                 "value": input_value,
@@ -1252,6 +2677,19 @@ def _build_step_bindings(
     if element:
         locator = _resolved_locator(element)
         hints = element.get("test_data_hints") or {}
+        metadata = element.get("discovery_metadata") or hints.get("discovery_metadata") or {}
+        if not isinstance(metadata, dict):
+            metadata = {}
+        locator_paths = [
+            dict(item)
+            for item in (
+                element.get("locator_paths")
+                or metadata.get("locator_paths")
+                or element.get("alternative_locators")
+                or []
+            )
+            if isinstance(item, dict) and item.get("locator")
+        ]
         web_binding.update({
             "page_element_id": element.get("element_id"),
             "element_name": element.get("name"),
@@ -1265,11 +2703,8 @@ def _build_step_bindings(
             "css_selector": element.get("css_selector") or "",
             "locator_quality": element.get("locator_quality") or element.get("confidence_score"),
             "match_reason": element.get("match_reason"),
-            "alternative_locators": [
-                dict(locator)
-                for locator in (element.get("alternative_locators") or [])
-                if isinstance(locator, dict) and locator.get("locator")
-            ],
+            "alternative_locators": locator_paths,
+            "locator_paths": locator_paths,
         })
     if input_value:
         web_binding.update({
@@ -1317,6 +2752,13 @@ async def _run_testcase_generation(workflow_id: str) -> None:
                 "business-level test steps; locator binding will happen after scraping."
             )
             page_name = wf.page_name or _extract_page_name(wf.webpage_url, wf.project_name)
+            application_profile = _application_learning_profile(
+                platform=wf.platform or "web",
+                app_target=wf.webpage_url or "",
+                page_name=page_name,
+                project_name=wf.project_name,
+                brd_text=wf.brd_text,
+            )
 
             tc_agent = TestCaseGenerationAgent(provider)
             all_test_cases: list[GeneratedTestCase] = []
@@ -1329,7 +2771,14 @@ async def _run_testcase_generation(workflow_id: str) -> None:
             ) -> _GENERATED_CASE_BATCH:
                 async with semaphore:
                     try:
-                        tc_list = await tc_agent.run(scenario, page_name, elements_summary)
+                        tc_list = await tc_agent.run(
+                            scenario,
+                            page_name,
+                            elements_summary,
+                            platform=wf.platform or "web",
+                            app_target=wf.webpage_url or "",
+                            application_profile=application_profile,
+                        )
                     except Exception as exc:
                         raise ValueError(
                             f"Scenario {index}/{len(selected)} '{scenario.title}' failed: "
@@ -1374,6 +2823,7 @@ async def _run_testcase_generation(workflow_id: str) -> None:
                 for tc in test_cases
             ]
             total_steps = sum(len(tc.steps) for tc in all_test_cases)
+            scrape_step_intents = _build_step_scrape_intents(all_test_cases)
             await _update_state(
                 db,
                 workflow_id,
@@ -1389,7 +2839,10 @@ async def _run_testcase_generation(workflow_id: str) -> None:
             await _update_state(
                 db, workflow_id, WorkflowState.TESTCASES_READY,
                 f"Created {total_generated} test case drafts and {total_steps} test steps",
-                detail="Now creating the page and scraping raw element candidates for selective binding.",
+                detail=(
+                    f"Prepared {len(scrape_step_intents)} actionable step intent(s); "
+                    "MCP scraping will use these targets before candidates are saved to Pages."
+                ),
                 testcases_created=total_generated,
                 teststeps_created=total_steps,
             )
@@ -1408,7 +2861,10 @@ async def _run_testcase_generation(workflow_id: str) -> None:
                 workflow_id,
                 WorkflowState.PAGE_CREATED,
                 f"Creating page '{page_name}' after test step draft...",
-                detail=f"Page Repository entry is created only after {total_steps} drafted steps exist.",
+                detail=(
+                    f"Page Repository entry is created only after {total_steps} drafted steps exist. "
+                    f"{len(scrape_step_intents)} actionable step intent(s) will guide scraping."
+                ),
                 project_id=project.id,
                 module_id=module.id,
             )
@@ -1420,135 +2876,77 @@ async def _run_testcase_generation(workflow_id: str) -> None:
                 workflow_id,
                 WorkflowState.PAGE_CREATED,
                 f"Page '{page_name}' created",
-                detail="Scraping starts now; raw candidates will stay in the workflow panel first.",
-                page_id=page.id,
-            )
-
-            if _is_desktop_platform(wf.platform):
-                await _update_state(
-                    db,
-                    workflow_id,
-                    WorkflowState.PAGE_SAVED,
-                    f"Desktop screen '{page_name}' ready for Automation ID configuration",
-                    detail=(
-                        "Desktop workflows use application paths, windows/screens, Automation IDs, "
-                        "control types, class names, and UIA paths instead of browser URL/XPath scraping."
-                    ),
-                    page_id=page.id,
-                    elements_saved=0,
-                    scraped_candidates=[],
-                    selected_elements=[],
-                )
-                bound_cases = [
-                    tc.model_copy(update={
-                        "steps": [
-                            step.model_copy(update={
-                                "page_id": page.id,
-                                "page_element_id": None,
-                                "needs_review": True,
-                                "review_reason": "desktop Automation ID or object repository mapping required",
-                            })
-                            for step in tc.steps
-                        ],
-                    })
-                    for tc in all_test_cases
-                ]
-                total_steps = sum(len(tc.steps) for tc in bound_cases)
-                persisted = 0
-                for tc in bound_cases:
-                    await _persist_test_case(
-                        db,
-                        tc,
-                        module.id,
-                        project.id,
-                        page_name=page_name,
-                        page_url=wf.webpage_url,
-                        element_lookup={},
-                        platform=wf.platform,
-                    )
-                    persisted += 1
-                    await _update_state(
-                        db,
-                        workflow_id,
-                        WorkflowState.PAGE_SAVED,
-                        f"Configured desktop test case {persisted}/{len(bound_cases)}",
-                        detail=(
-                            f"{len(tc.steps)} desktop step(s) stored with application path, "
-                            "screen/window, and pending Automation ID fields."
-                        ),
-                        testcases_created=persisted,
-                        teststeps_created=sum(len(case.steps) for case in bound_cases[:persisted]),
-                        unmapped_steps=sum(
-                            1 for case in bound_cases[:persisted]
-                            for step in case.steps if step.needs_review
-                        ),
-                    )
-
-                reviewer = ReviewAndValidationAgent()
-                review = reviewer.build_review(
-                    workflow_id=workflow_id,
-                    project_id=project.id,
-                    module_id=module.id,
-                    page_id=page.id,
-                    elements_saved=0,
-                    scenarios_generated=len(wf.scenarios or []),
-                    scenarios_selected=len(selected),
-                    test_cases=bound_cases,
-                    page_elements=[],
-                )
-                review_update = {
-                    "testcases_created": len(bound_cases),
-                    "teststeps_created": total_steps,
-                    "unmapped_steps": total_steps,
-                    "low_confidence_locators": 0,
-                    "elements_saved": 0,
-                    "page_id": page.id,
-                    "selected_elements": [],
-                    "scraped_candidates": [],
-                    "review_data": review.model_dump(),
-                }
-                await _update_state(
-                    db,
-                    workflow_id,
-                    WorkflowState.REVIEW_READY,
-                    "Desktop test configuration ready",
-                    detail=(
-                        "Open Test Configuration to replace web locator fields with desktop "
-                        "Automation IDs, UIA paths, class names, and object repository mappings."
-                    ),
-                    **review_update,
-                )
-                await _update_state(
-                    db,
-                    workflow_id,
-                    WorkflowState.COMPLETED,
-                    f"Completed desktop draft: {len(bound_cases)} test cases, {total_steps} steps",
-                    **review_update,
-                )
-                return
-
-            discovery_engine = "MCP Playwright server" if settings.mcp_playwright_url else "local Playwright"
-            await _update_state(
-                db, workflow_id, WorkflowState.DISCOVERY_RUNNING,
-                f"{discovery_engine} is scraping raw element candidates...",
                 detail=(
-                    "The scrape is running in preview mode. Nothing is saved to the Page "
-                    "Repository until the test steps choose the necessary elements."
+                    "Scraping starts now with generated test-step intent context; raw candidates "
+                    "will stay in the workflow panel first."
                 ),
-            )
-            adapter = BrowserDiscoveryAdapter(
-                mcp_url=settings.mcp_playwright_url or None,
-                playwright_fallback=settings.playwright_fallback,
-            )
-            discovery_agent = AppDiscoveryAgent(adapter)
-            discovery_result = await discovery_agent.run(
-                url=wf.webpage_url,
-                page_name=page_name,
-                platform=wf.platform,
-                save_mode="preview",
                 page_id=page.id,
-                db=db,
             )
+
+            is_desktop = _is_desktop_platform(wf.platform)
+            discovery_engine = (
+                "Desktop MCP scanner"
+                if is_desktop
+                else "MCP Playwright server" if settings.mcp_playwright_url else "local Playwright"
+            )
+            if is_desktop:
+                await _update_state(
+                    db, workflow_id, WorkflowState.DISCOVERY_RUNNING,
+                    "Triggering Desktop MCP scanner...",
+                    detail=(
+                        f"Desktop MCP is preparing the UIA capture session with "
+                        f"{len(scrape_step_intents)} generated step intent(s). Nothing is saved "
+                        "to the Page Repository until generated steps choose the needed objects."
+                    ),
+                )
+                await _update_state(
+                    db, workflow_id, WorkflowState.DISCOVERY_RUNNING,
+                    "Launching desktop application for UID capture...",
+                    detail=f"Application target: {wf.webpage_url}. Screen/window: {page_name}.",
+                )
+                desktop_adapter = DesktopDiscoveryAdapter(
+                    driver_type="uia3",
+                    server_url=settings.winappdriver_url,
+                    timeout_ms=90000,
+                    close_after=False,
+                    poll_interval_ms=750,
+                    stability_polls=2,
+                    settle_ms=4000,
+                    max_objects=600,
+                )
+                discovery_result = await desktop_adapter.discover(
+                    app=wf.webpage_url,
+                    page_name=page_name,
+                    platform=wf.platform,
+                    save_mode="preview",
+                    page_id=page.id,
+                    db=db,
+                    window_title=page_name,
+                    step_intents=scrape_step_intents,
+                )
+            else:
+                await _update_state(
+                    db, workflow_id, WorkflowState.DISCOVERY_RUNNING,
+                    f"{discovery_engine} is scraping raw element candidates...",
+                    detail=(
+                        "The scrape is running in preview mode. Nothing is saved to the Page "
+                        "Repository until the test steps choose the necessary elements."
+                    ),
+                )
+                adapter = BrowserDiscoveryAdapter(
+                    mcp_url=settings.mcp_playwright_url or None,
+                    playwright_fallback=settings.playwright_fallback,
+                )
+                discovery_agent = AppDiscoveryAgent(adapter)
+                discovery_result = await discovery_agent.run(
+                    url=wf.webpage_url,
+                    page_name=page_name,
+                    platform=wf.platform,
+                    save_mode="preview",
+                    page_id=page.id,
+                    db=db,
+                    step_intents=scrape_step_intents,
+                )
             if discovery_result.summary.has_error:
                 raise RuntimeError(discovery_result.summary.error or "Page scraping failed")
 
@@ -1556,10 +2954,29 @@ async def _run_testcase_generation(workflow_id: str) -> None:
                 _candidate_from_discovered(element, index)
                 for index, element in enumerate(discovery_result.elements)
             ]
+            step_intent_matched = sum(
+                1 for candidate in scraped_candidates
+                if candidate.get("matched_step_intents")
+            )
+            if is_desktop:
+                await _update_state(
+                    db, workflow_id, WorkflowState.DISCOVERY_RUNNING,
+                    f"Desktop MCP captured {len(scraped_candidates)} UID/UIA object candidates...",
+                    detail=(
+                        "Automation IDs, UIA paths, names, classes, parent/child context, "
+                        "nearby labels, and fallback locator bundles are ready for AI binding. "
+                        f"{step_intent_matched} candidate(s) matched generated step intent before saving."
+                    ),
+                    scraped_candidates=scraped_candidates,
+                )
             await _update_state(
                 db, workflow_id, WorkflowState.DISCOVERY_RUNNING,
                 f"AI is ranking scrape-time locator fallbacks with {wf.ai_provider}/{wf.ai_model}...",
                 detail=(
+                    "The model is choosing the strongest desktop selector while preserving "
+                    "Automation ID, parent/child UIA context, nearby labels, name, class, "
+                    "OCR, and visual fallbacks for runtime healing."
+                    if is_desktop else
                     "The model is choosing the strongest selector and preserving CSS, "
                     "relative XPath, and absolute XPath alternatives for runtime healing."
                 ),
@@ -1570,14 +2987,29 @@ async def _run_testcase_generation(workflow_id: str) -> None:
                 wf.ai_model,
                 scraped_candidates,
             )
+            binding_decisions = await _ai_step_binding_decisions(
+                provider,
+                wf.ai_model,
+                test_cases=all_test_cases,
+                candidates=scraped_candidates,
+                platform=wf.platform,
+                page_name=page_name,
+            )
             await _update_state(
                 db, workflow_id, WorkflowState.DISCOVERY_DONE,
                 f"Scraped and AI-ranked {len(scraped_candidates)} raw candidates into the MCP panel",
-                detail="These candidates are not Page Repository records yet.",
+                detail=(
+                    f"AI produced {len(binding_decisions)} step binding decision(s). "
+                    "Each decision used testcase and test-step descriptions before Page Repository save."
+                ),
                 scraped_candidates=scraped_candidates,
             )
 
-            selected_candidates = _select_candidates_for_steps(all_test_cases, scraped_candidates)
+            selected_candidates = _select_candidates_from_binding_decisions(
+                all_test_cases,
+                scraped_candidates,
+                binding_decisions,
+            )
             selected_by_id = {candidate["candidate_id"]: candidate for candidate in selected_candidates}
             scraped_candidates = [
                 {**candidate, **selected_by_id.get(candidate["candidate_id"], {})}
@@ -1585,10 +3017,19 @@ async def _run_testcase_generation(workflow_id: str) -> None:
             ]
             await _update_state(
                 db, workflow_id, WorkflowState.LOCATORS_RANKED,
-                f"AI selected {len(selected_candidates)} necessary elements from {len(scraped_candidates)} scraped candidates",
+                (
+                    f"AI + Desktop MCP selected {len(selected_candidates)} UID/UIA elements from {len(scraped_candidates)} scraped candidates"
+                    if is_desktop else
+                    f"AI selected {len(selected_candidates)} necessary elements from {len(scraped_candidates)} scraped candidates"
+                ),
                 detail=(
-                    "Generated test steps were compared with scraped names, roles, text, "
-                    "IDs, and locator candidates."
+                    "AI compared generated desktop test steps with Automation IDs, "
+                    "control types, names, parent/child context, nearby labels, and locator candidates, "
+                    "then the MCP safety pass added stable UID/UIA objects for step coverage and healing."
+                    if is_desktop else
+                    "AI compared generated testcase descriptions and test steps with scraped names, "
+                    "roles, text, IDs, and locator candidates, then chose elements, actions, "
+                    "input values, and locator paths."
                 ),
                 scraped_candidates=scraped_candidates,
                 selected_elements=selected_candidates,
@@ -1609,6 +3050,9 @@ async def _run_testcase_generation(workflow_id: str) -> None:
                 db, workflow_id, WorkflowState.PAGE_SAVED,
                 f"Saved {len(saved_elements)} necessary elements to '{page_name}'",
                 detail=(
+                    f"Skipped {max(len(scraped_candidates) - len(saved_elements), 0)} desktop UIA candidates "
+                    "because no generated test step needed them."
+                    if is_desktop else
                     f"Skipped {max(len(scraped_candidates) - len(saved_elements), 0)} scraped candidates "
                     "because no generated test step needed them."
                 ),
@@ -1622,13 +3066,27 @@ async def _run_testcase_generation(workflow_id: str) -> None:
                 db,
                 workflow_id,
                 WorkflowState.PAGE_SAVED,
-                "Configuring test steps with matched page, actions, elements, and XPath...",
+                (
+                    "Configuring desktop test steps with matched screen, actions, objects, and UIA fallbacks..."
+                    if is_desktop else
+                    "Configuring test steps with matched page, actions, elements, and XPath..."
+                ),
                 detail=(
+                    "Each generated desktop step is being mapped to the created screen and "
+                    "the best matching saved object from the Desktop MCP scan, with locator paths "
+                    "written into the step configuration."
+                    if is_desktop else
                     "Each generated step is being mapped to the created page and the "
-                    "best matching saved element from the scrape."
+                    "best matching saved element from the scrape, with locator paths written "
+                    "into the step configuration."
                 ),
             )
-            bound_cases = _bind_cases_to_saved_elements(all_test_cases, page.id, saved_elements)
+            bound_cases = _bind_cases_with_ai_decisions(
+                all_test_cases,
+                page.id,
+                saved_elements,
+                binding_decisions,
+            )
             saved_element_lookup = {
                 str(element.get("element_id")): element
                 for element in saved_elements
@@ -1651,7 +3109,11 @@ async def _run_testcase_generation(workflow_id: str) -> None:
                 persisted += 1
                 await _update_state(
                     db, workflow_id, WorkflowState.PAGE_SAVED,
-                    f"Configured test case {persisted}/{len(bound_cases)} with page, element, action, and XPath",
+                    (
+                        f"Configured desktop test case {persisted}/{len(bound_cases)} with screen, object, action, and UIA fallbacks"
+                        if is_desktop else
+                        f"Configured test case {persisted}/{len(bound_cases)} with page, element, action, and XPath"
+                    ),
                     detail=f"{len(tc.steps)} test step(s) stored under '{tc.title}'.",
                     testcases_created=persisted,
                     teststeps_created=sum(len(case.steps) for case in bound_cases[:persisted]),
@@ -1805,10 +3267,12 @@ async def _persist_test_case(
             "automation_id": str(platform_binding.get("automation_id") or locator),
             "css_selector": str(platform_binding.get("css_selector") or ""),
             "alternative_locators": platform_binding.get("alternative_locators") or [],
+            "locator_paths": platform_binding.get("locator_paths") or platform_binding.get("alternative_locators") or [],
             "locator_quality": platform_binding.get("locator_quality") or "",
             "binding_confidence": step.confidence,
         }
         if _is_desktop_platform(platform):
+            test_data["driver_type"] = str(platform_binding.get("driver_type") or "uia3")
             test_data["application_path"] = configured_input_value if step.action_type == "navigate" else page_url
             test_data["object_repository_required"] = bool(platform_binding.get("requires_object_configuration"))
         if step.assertion_type:

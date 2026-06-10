@@ -1062,6 +1062,7 @@ export interface AIWorkflowStateResponse {
   module_id: string | null;
   page_id: string | null;
   page_name: string | null;
+  platform: string;
   elements_saved: number;
   scenarios: AIScenarioPreview[];
   testcases_created: number;

@@ -87,6 +87,7 @@ def test_desktop_launch_uses_app_path_instead_of_web_url():
 
     assert node_type == "desktop.launch"
     assert config["app"] == r"C:\Program Files\Invoice\Invoice.exe"
+    assert config["driver_type"] == "uia3"
 
 
 def test_desktop_double_click_maps_to_desktop_double_click_node():
@@ -159,6 +160,8 @@ def test_desktop_workflow_starter_uses_application_path_variable():
 
     assert workflow.nodes[0].type == "desktop.launch"
     assert workflow.nodes[0].config["app"] == r"C:\Apps\Invoice.exe"
+    assert workflow.nodes[0].config["driver_type"] == "uia3"
+    assert workflow.nodes[1].config["driver_type"] == "uia3"
 
 
 def test_desktop_master_sheet_resolves_object_key_to_automation_id():
@@ -237,8 +240,10 @@ def test_desktop_master_sheet_resolves_app_object_and_data_keys_in_workflow():
 
     assert workflow.nodes[0].type == "desktop.launch"
     assert workflow.nodes[0].config["app"] == r"C:\Apps\Invoice.exe"
+    assert workflow.nodes[0].config["driver_type"] == "uia3"
     assert workflow.nodes[0].config["master_sheet"]["app_key"] == "invoice_app"
     assert workflow.nodes[1].type == "desktop.type_text"
+    assert workflow.nodes[1].config["driver_type"] == "uia3"
     assert workflow.nodes[1].config["selector"] == "txtCustomerName"
     assert workflow.nodes[1].config["value"] == "Asha Rao"
     assert workflow.nodes[1].config["master_sheet"]["object_key"] == "customer_name_input"

@@ -111,6 +111,7 @@ function findRepoElement(page: PageDetail | null | undefined, elementName?: stri
 function stepPage(s: TestStep, pageRepo: PageDetail[] = []) {
   const desktop = desktopBind(s);
   return (
+    asStr(desktop.page) ||
     asStr(desktop.screen) ||
     asStr(desktop.window) ||
     asStr(desktop.application) ||
@@ -300,6 +301,7 @@ function buildPayload(step: TestStep, u: StepUpdates, pageRepo: PageDetail[] = [
   const platformBinding = isDesktop
     ? {
         ...(step.bindings?.desktop ?? {}),
+        page,
         application: page,
         window: page,
         screen: page,
@@ -778,6 +780,15 @@ export default function TestConfigurationPage() {
     setRequestedProjectId(params.get('projectId'));
   }, []);
 
+  useEffect(() => {
+    if (projects.length > 0) return;
+    setSelProjectId(null);
+    setSelModuleId(null);
+    setSelCaseId(null);
+    setExpandedIds(new Set());
+    setEditorMode('project');
+  }, [projects.length]);
+
   // Auto-select the requested project, or the first project/module/case on load
   useEffect(() => {
     if (!projects.length) return;
@@ -907,8 +918,42 @@ export default function TestConfigurationPage() {
     }
   }
 
+  function selectNextProjectAfterDelete(project: TestProject) {
+    const nextProject = projects.find((candidate) => candidate.id !== project.id) ?? null;
+    const nextModule = nextProject?.modules[0] ?? null;
+    const nextCase = nextModule?.test_cases[0] ?? null;
+    setSelProjectId(nextProject?.id ?? null);
+    setSelModuleId(nextModule?.id ?? null);
+    setSelCaseId(nextCase?.id ?? null);
+    setEditorMode('project');
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(project.id);
+      if (nextProject) next.add(nextProject.id);
+      return next;
+    });
+  }
+
+  function restoreProjectSelection(project: TestProject) {
+    setSelProjectId(project.id);
+    setSelModuleId(project.modules[0]?.id ?? null);
+    setSelCaseId(project.modules[0]?.test_cases[0]?.id ?? null);
+    setEditorMode('project');
+    setExpandedIds((prev) => new Set([...prev, project.id]));
+  }
+
   function deleteEditor() {
-    if (editorMode === 'project' && selProject && window.confirm(`Delete project "${selProject.name}"?`)) { deleteProject.mutate(selProject.id); }
+    if (editorMode === 'project' && selProject && window.confirm(`Delete project "${selProject.name}"?`)) {
+      const project = selProject;
+      setValidationError(null);
+      selectNextProjectAfterDelete(project);
+      deleteProject.mutate(project.id, {
+        onError: (error) => {
+          restoreProjectSelection(project);
+          setValidationError(error instanceof Error ? error.message : 'Project delete failed.');
+        },
+      });
+    }
     else if (editorMode === 'module' && selModule && window.confirm(`Delete module "${selModule.name}"?`)) { deleteModule.mutate(selModule.id); }
     else if (editorMode === 'case' && selCase && window.confirm(`Delete case "${selCase.name}"?`)) { deleteCase.mutate(selCase.id); }
   }
@@ -919,8 +964,12 @@ export default function TestConfigurationPage() {
   const catModes      = tagCatalog.find((d) => d.key === 'execution_mode')?.values ?? ['automated','manual','hybrid'];
   const filteredCases = selModule?.test_cases.filter((c) => !caseSearch || c.name.toLowerCase().includes(caseSearch.toLowerCase())) ?? [];
   const sortedSteps   = selCase ? [...selCase.test_steps].sort((a, b) => a.step_order - b.step_order) : [];
+  const deletingEditor =
+    (editorMode === 'project' && deleteProject.isPending) ||
+    (editorMode === 'module' && deleteModule.isPending) ||
+    (editorMode === 'case' && deleteCase.isPending);
   const stepHeaders = selectedIsDesktop
-    ? ['#','Description','Action','Screen / Window','Desktop Object','Automation ID / UIA Path','Alt Locators','Value / Assertion','2nd','','']
+    ? ['#','Description','Action','Page / Screen','Desktop Object','Automation ID / UIA Path','Alt Locators','Value / Assertion','2nd','','']
     : ['#','Description','Action','Page','Element','Paths / Location','Alt Locators','Value / Assertion','2nd','',''];
 
   const INP = 'w-full rounded-lg border border-[var(--color-line-default)] bg-[var(--color-surface-2)] px-3 py-2 text-sm text-[var(--color-fg-default)] outline-none transition-colors focus:border-[var(--color-accent-default)] placeholder:text-[var(--color-fg-subtle)]';
@@ -1213,7 +1262,7 @@ export default function TestConfigurationPage() {
               </span>
             </div>
             <div className="flex items-center gap-1.5">
-              <Button variant="ghost" size="xs" onClick={deleteEditor}><Trash2 size={10} /> Del</Button>
+              <Button variant="ghost" size="xs" disabled={deletingEditor} onClick={deleteEditor}><Trash2 size={10} /> Del</Button>
               <Button variant="neon" size="xs" onClick={saveEditor}><Save size={10} /> Save</Button>
             </div>
           </div>

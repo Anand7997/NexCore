@@ -6,6 +6,8 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from typing import Any
 
+_CONTAINER_TAGS = {"uitree", "ocrtree", "appiumaut", "application", "root"}
+
 
 @dataclass
 class SpyObject:
@@ -79,9 +81,103 @@ def _float(value: Any, default: float = 0.0) -> float:
 
 def _attrs_from_match(raw: str) -> dict[str, str]:
     attrs: dict[str, str] = {}
-    for match in re.finditer(r"([a-zA-Z_:-]+)\s*=\s*\"([^\"]*)\"", raw):
-        attrs[match.group(1)] = match.group(2)
+    for match in re.finditer(r"([a-zA-Z_:-]+)\s*=\s*(?:\"([^\"]*)\"|'([^']*)')", raw):
+        key = _normalize_attr_key(match.group(1))
+        attrs[key] = match.group(2) if match.group(2) is not None else match.group(3)
     return attrs
+
+
+def _normalize_attr_key(key: str) -> str:
+    normalized = re.sub(r"[^a-zA-Z0-9]+", "_", str(key or "")).strip("_").lower()
+    aliases = {
+        "automationid": "automation_id",
+        "automation_id": "automation_id",
+        "autoid": "auto_id",
+        "auto_id": "auto_id",
+        "classname": "class_name",
+        "class_name": "class_name",
+        "controltype": "control_type",
+        "control_type": "control_type",
+        "localizedcontroltype": "localized_control_type",
+        "localized_control_type": "localized_control_type",
+        "boundingrectangle": "bounding_rectangle",
+        "bounding_rectangle": "bounding_rectangle",
+        "frameworkid": "framework_id",
+        "framework_id": "framework_id",
+        "processid": "process_id",
+        "process_id": "process_id",
+        "runtimeid": "runtime_id",
+        "runtime_id": "runtime_id",
+    }
+    return aliases.get(normalized, normalized)
+
+
+def _local_tag(tag: str) -> str:
+    text = str(tag or "")
+    if "}" in text:
+        text = text.rsplit("}", 1)[-1]
+    if ":" in text:
+        text = text.rsplit(":", 1)[-1]
+    return text.lower()
+
+
+def _clean_control_type(value: str) -> str:
+    text = str(value or "").strip()
+    if "." in text:
+        text = text.split(".")[-1]
+    return text
+
+
+def _path_literal(value: str, limit: int = 80) -> str:
+    text = str(value or "").replace("'", "\\'")[:limit]
+    return text
+
+
+def _uia_path_token(attrs: dict[str, str], index: int) -> str:
+    control_type = _clean_control_type(
+        attrs.get("type")
+        or attrs.get("control_type")
+        or attrs.get("localized_control_type")
+        or attrs.get("tag")
+        or "Control"
+    )
+    token = re.sub(r"[^A-Za-z0-9_]+", "", control_type) or "Control"
+    automation_id = (
+        attrs.get("auto_id")
+        or attrs.get("automation_id")
+        or attrs.get("accessibility_id")
+        or attrs.get("id")
+        or ""
+    ).strip()
+    name_text = (attrs.get("name") or attrs.get("title") or attrs.get("value") or "").strip()
+    class_name = (attrs.get("class_name") or attrs.get("class") or "").strip()
+    if automation_id:
+        token += f"[@AutomationId='{_path_literal(automation_id)}']"
+    elif name_text:
+        token += f"[@Name='{_path_literal(name_text)}']"
+    elif class_name:
+        token += f"[@ClassName='{_path_literal(class_name)}']"
+    else:
+        token += f"[{index}]"
+    return token
+
+
+def _box_from_attrs(attrs: dict[str, str]) -> dict[str, float] | None:
+    if all(key in attrs for key in ("x", "y", "width", "height")):
+        return {
+            "x": _float(attrs.get("x")),
+            "y": _float(attrs.get("y")),
+            "width": _float(attrs.get("width")),
+            "height": _float(attrs.get("height")),
+        }
+    raw = attrs.get("bounding_rectangle") or attrs.get("bounds") or attrs.get("bounding_box") or ""
+    numbers = [_float(value) for value in re.findall(r"-?\d+(?:\.\d+)?", raw)]
+    if len(numbers) >= 4:
+        left, top, third, fourth = numbers[:4]
+        width = third - left if third > left else third
+        height = fourth - top if fourth > top else fourth
+        return {"x": left, "y": top, "width": width, "height": height}
+    return None
 
 
 def _candidate(strategy: str, locator: str, reason: str, score: float = 1.0) -> dict[str, Any]:
@@ -136,12 +232,19 @@ def _object_from_attrs(attrs: dict[str, str], index: int, *, source: str) -> Spy
             metadata={"source": "desktop_spy", "spy_source": "ocr"},
         )
 
-    control_type = (attrs.get("type") or attrs.get("control_type") or attrs.get("tag") or "element").strip()
+    control_type = _clean_control_type(
+        attrs.get("type")
+        or attrs.get("control_type")
+        or attrs.get("localized_control_type")
+        or attrs.get("tag")
+        or "element"
+    )
     name = (attrs.get("name") or attrs.get("title") or attrs.get("value") or control_type).strip()
-    automation_id = (attrs.get("auto_id") or attrs.get("automation_id") or attrs.get("id") or "").strip()
+    automation_id = (attrs.get("auto_id") or attrs.get("automation_id") or attrs.get("accessibility_id") or attrs.get("id") or "").strip()
     class_name = (attrs.get("class_name") or attrs.get("class") or "").strip()
     uia_path = (attrs.get("uia_path") or attrs.get("path") or "").strip()
     name_text = name if name != control_type else ""
+    bounding_box = _box_from_attrs(attrs)
 
     locator_strategy = "accessibility id" if automation_id else "name" if name_text else "xpath" if uia_path else "class name"
     primary_locator = automation_id or name_text or uia_path or class_name
@@ -166,29 +269,49 @@ def _object_from_attrs(attrs: dict[str, str], index: int, *, source: str) -> Spy
         locator_strategy=locator_strategy,
         primary_locator=primary_locator,
         alternative_locators=candidates,
+        bounding_box=bounding_box,
         confidence_score=confidence,
-        metadata={"source": "desktop_spy", "spy_source": "uia"},
+        metadata={
+            "source": "desktop_spy",
+            "spy_source": "uia",
+            "framework_id": attrs.get("framework_id", ""),
+            "process_id": attrs.get("process_id", ""),
+            "runtime_id": attrs.get("runtime_id", ""),
+            "raw_attributes": attrs,
+        },
     )
 
 
 def _parse_with_elementtree(ui_tree: str) -> list[dict[str, str]]:
     root = ET.fromstring(ui_tree)
     parsed: list[dict[str, str]] = []
-    for element in root.iter():
-        tag = element.tag.lower()
-        if tag in {"uitree", "ocrtree"}:
-            continue
-        attrs = {str(k): str(v) for k, v in element.attrib.items()}
+
+    def walk(element: ET.Element, parent_path: str = "", index: int = 1) -> None:
+        tag = _local_tag(element.tag)
+        attrs = {_normalize_attr_key(str(k)): str(v) for k, v in element.attrib.items()}
         attrs.setdefault("tag", tag)
-        parsed.append(attrs)
+        path_token = _uia_path_token(attrs, index)
+        current_path = f"{parent_path}/{path_token}" if parent_path else f"/{path_token}"
+        attrs.setdefault("uia_path", current_path)
+        if tag not in _CONTAINER_TAGS:
+            parsed.append(attrs)
+        for child_index, child in enumerate(list(element), start=1):
+            walk(child, current_path, child_index)
+
+    walk(root)
     return parsed
 
 
 def _parse_with_regex(ui_tree: str) -> list[dict[str, str]]:
     parsed: list[dict[str, str]] = []
-    for match in re.finditer(r"<(control|text)\b([^>]*)/?>", ui_tree or "", flags=re.IGNORECASE):
+    pattern = r"<([A-Za-z_][\w:.-]*)\b([^<>]*?)(?:/?>)"
+    for match in re.finditer(pattern, ui_tree or "", flags=re.IGNORECASE):
+        tag = _local_tag(match.group(1))
+        if tag.startswith("/") or tag in _CONTAINER_TAGS:
+            continue
         attrs = _attrs_from_match(match.group(2))
-        attrs.setdefault("tag", match.group(1).lower())
+        attrs.setdefault("tag", tag)
+        attrs.setdefault("uia_path", "/" + _uia_path_token(attrs, len(parsed) + 1))
         parsed.append(attrs)
     return parsed
 

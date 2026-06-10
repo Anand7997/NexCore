@@ -74,6 +74,8 @@ class BrowserDiscoveryAdapter:
         save_mode: str,
         page_id: str | None,
         db: AsyncSession,
+        *,
+        step_intents: list[dict] | None = None,
     ) -> DiscoveryResponse:
         if self._mcp_url:
             try:
@@ -81,7 +83,7 @@ class BrowserDiscoveryAdapter:
                 mcp = MCPPlaywrightAdapter(self._mcp_url)
                 if await mcp.is_available():
                     logger.info("BrowserDiscoveryAdapter: using MCP Playwright at %s", self._mcp_url)
-                    raw = await mcp.discover(url)
+                    raw = await mcp.discover(url, step_intents=step_intents)
                     parsed = MCPPlaywrightAdapter.parse_elements(raw)
                     if len(parsed) >= _MCP_MIN_ELEMENTS:
                         logger.info(
@@ -89,7 +91,8 @@ class BrowserDiscoveryAdapter:
                             len(parsed),
                         )
                         return await self._mcp_elements_to_discovery(
-                            parsed, raw, url, page_name, platform, save_mode, page_id, db
+                            parsed, raw, url, page_name, platform, save_mode, page_id, db,
+                            step_intents=step_intents,
                         )
                     logger.warning(
                         "BrowserDiscoveryAdapter: MCP returned only %d elements (need %d) — falling back",
@@ -101,7 +104,15 @@ class BrowserDiscoveryAdapter:
         if self._playwright_fallback:
             from app.ai_workflow.discovery.playwright_adapter import PlaywrightDiscoveryAdapter
             adapter = PlaywrightDiscoveryAdapter()
-            return await adapter.discover(url, page_name, platform, save_mode, page_id, db)
+            return await adapter.discover(
+                url,
+                page_name,
+                platform,
+                save_mode,
+                page_id,
+                db,
+                step_intents=step_intents,
+            )
 
         raise RuntimeError("No discovery adapter available (MCP unreachable and fallback disabled)")
 
@@ -115,6 +126,8 @@ class BrowserDiscoveryAdapter:
         save_mode: str,
         page_id: str | None,
         db: AsyncSession,
+        *,
+        step_intents: list[dict] | None = None,
     ) -> DiscoveryResponse:
         from app.database.models import PageElementModel
 
@@ -130,7 +143,15 @@ class BrowserDiscoveryAdapter:
             )
             from app.ai_workflow.discovery.playwright_adapter import PlaywrightDiscoveryAdapter
             adapter = PlaywrightDiscoveryAdapter()
-            return await adapter.discover(url, page_name, platform, save_mode, page_id, db)
+            return await adapter.discover(
+                url,
+                page_name,
+                platform,
+                save_mode,
+                page_id,
+                db,
+                step_intents=step_intents,
+            )
 
         low_confidence = 0
         saved = 0
@@ -187,6 +208,10 @@ class BrowserDiscoveryAdapter:
                 add_locator("css", mcp_el.css_selector, 0.60, "MCP-provided css")
             alt_locators.sort(key=lambda locator: locator.score, reverse=True)
 
+            test_data_hints = {
+                **_infer_mcp_test_data_hints(mcp_el),
+                "scrape_step_intents": step_intents or [],
+            }
             el_model = PageElementModel(
                 page_id=resolved_page_id,
                 name=mcp_el.name,
@@ -200,12 +225,16 @@ class BrowserDiscoveryAdapter:
                 placeholder=mcp_el.placeholder,
                 label=mcp_el.label,
                 locator_strategy=mcp_el.locator_strategy,
-                test_data_hints=_infer_mcp_test_data_hints(mcp_el),
+                test_data_hints=test_data_hints,
                 tags=mcp_el.tags,
                 confidence_score=mcp_el.confidence,
                 alternative_locators=[lc.model_dump() for lc in alt_locators],
                 source_url=url,
-                discovery_metadata={"source": "mcp_playwright", "raw_selector": mcp_el.selector},
+                discovery_metadata={
+                    "source": "mcp_playwright",
+                    "raw_selector": mcp_el.selector,
+                    "scrape_step_intents": step_intents or [],
+                },
             )
             db.add(el_model)
             saved += 1
@@ -224,7 +253,7 @@ class BrowserDiscoveryAdapter:
                 input_type=mcp_el.input_type,
                 placeholder=mcp_el.placeholder,
                 label=mcp_el.label,
-                test_data_hints=_infer_mcp_test_data_hints(mcp_el),
+                test_data_hints=test_data_hints,
                 confidence_score=mcp_el.confidence,
                 alternative_locators=alt_locators,
                 tags=mcp_el.tags,
@@ -245,7 +274,12 @@ class BrowserDiscoveryAdapter:
             duration_ms=duration_ms,
         )
         return DiscoveryResponse(
-            page={"id": resolved_page_id, "name": page_name, "url": url},
+            page={
+                "id": resolved_page_id,
+                "name": page_name,
+                "url": url,
+                "scrape_step_intents": step_intents or [],
+            },
             summary=summary,
             elements=discovered_elements,
         )

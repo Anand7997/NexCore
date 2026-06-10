@@ -232,9 +232,7 @@ async def update_project(
 @router.delete("/projects/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_project(project_id: str, db: AsyncSession = Depends(get_db)):
     repo = TestConfigurationRepository(db)
-    deleted = await repo.delete_project(project_id)
-    if not deleted:
-        raise HTTPException(status_code=404, detail="Project not found")
+    await repo.delete_project(project_id)
 
 
 @router.post(

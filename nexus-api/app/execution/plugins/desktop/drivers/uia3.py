@@ -8,6 +8,7 @@ import shlex
 import subprocess
 import time
 from typing import Any
+from xml.sax.saxutils import quoteattr
 
 from .base import DesktopDriver, DriverResult, LocatorCandidate
 
@@ -35,6 +36,177 @@ def _capability_seconds(
     except (TypeError, ValueError):
         return default
     return max(0.0, value / 1000 if value_is_ms else value)
+
+
+def _safe_info_attr(info: Any, attr: str) -> str:
+    try:
+        value = getattr(info, attr, "")
+    except Exception:
+        return ""
+    return "" if value is None else str(value)
+
+
+def _rect_attrs(rectangle: Any) -> dict[str, str]:
+    if rectangle is None:
+        return {}
+    try:
+        left = float(getattr(rectangle, "left"))
+        top = float(getattr(rectangle, "top"))
+        right = float(getattr(rectangle, "right"))
+        bottom = float(getattr(rectangle, "bottom"))
+    except Exception:
+        return {}
+    return {
+        "x": str(left),
+        "y": str(top),
+        "width": str(max(0.0, right - left)),
+        "height": str(max(0.0, bottom - top)),
+    }
+
+
+def _path_literal(value: str, limit: int = 80) -> str:
+    return str(value or "").replace("'", "\\'")[:limit]
+
+
+def _uia_path_from_control(control: Any) -> str:
+    parts: list[str] = []
+    current = control
+    for _ in range(12):
+        try:
+            info = current.element_info
+        except Exception:
+            break
+        control_type = re.sub(r"[^A-Za-z0-9_]+", "", _safe_info_attr(info, "control_type")) or "Control"
+        automation_id = _safe_info_attr(info, "automation_id")
+        name_text = _safe_info_attr(info, "name")
+        token = control_type
+        if automation_id:
+            token += f"[@AutomationId='{_path_literal(automation_id)}']"
+        elif name_text:
+            token += f"[@Name='{_path_literal(name_text)}']"
+        parts.append(token)
+        try:
+            current = current.parent()
+        except Exception:
+            break
+        if current is None:
+            break
+    return "/" + "/".join(reversed(parts)) if parts else ""
+
+
+def _control_xml(control: Any, index: int) -> str | None:
+    try:
+        info = control.element_info
+    except Exception:
+        return None
+    attrs = {
+        "type": _safe_info_attr(info, "control_type") or "Control",
+        "name": _safe_info_attr(info, "name"),
+        "auto_id": _safe_info_attr(info, "automation_id"),
+        "class_name": _safe_info_attr(info, "class_name"),
+        "framework_id": _safe_info_attr(info, "framework_id"),
+        "process_id": _safe_info_attr(info, "process_id"),
+        "uia_path": _uia_path_from_control(control) or f"/Control[{index}]",
+    }
+    try:
+        attrs.update(_rect_attrs(info.rectangle))
+    except Exception:
+        pass
+    rendered = " ".join(
+        f"{key}={quoteattr(value)}"
+        for key, value in attrs.items()
+        if value not in (None, "")
+    )
+    return f"<control {rendered} />"
+
+
+def _window_identity(window: Any) -> tuple[Any, ...]:
+    try:
+        info = window.element_info
+    except Exception:
+        return (id(window),)
+    runtime_id = _safe_info_attr(info, "runtime_id")
+    return (
+        runtime_id or getattr(info, "handle", "") or id(window),
+        _safe_info_attr(info, "name"),
+        _safe_info_attr(info, "class_name"),
+        _safe_info_attr(info, "process_id"),
+    )
+
+
+def _safe_window_title(window: Any) -> str:
+    try:
+        return str(window.window_text() or "")
+    except Exception:
+        try:
+            return _safe_info_attr(window.element_info, "name")
+        except Exception:
+            return ""
+
+
+def _launch_window_hints(app_path: str, capabilities: dict[str, Any]) -> set[str]:
+    raw = str(app_path or "").strip().strip('"')
+    basename = os.path.basename(raw).lower()
+    stem = os.path.splitext(basename)[0]
+    hints = {
+        str(capabilities.get("window_title") or "").strip().lower(),
+        str(capabilities.get("process_name") or "").strip().lower(),
+        basename,
+        stem,
+    }
+    aliases = {
+        "calc": {"calculator"},
+        "calculator": {"calc"},
+        "idea64": {"intellij", "idea"},
+        "idea": {"intellij", "idea64"},
+        "notepad": {"notepad"},
+    }
+    for hint in list(hints):
+        hints.update(aliases.get(hint, set()))
+    return {hint for hint in hints if hint}
+
+
+def _desktop_windows(pw: Any) -> list[Any]:
+    try:
+        return list(pw.Desktop(backend="uia").windows())
+    except Exception:
+        return []
+
+
+def _window_matches_hints(window: Any, hints: set[str]) -> bool:
+    if not hints:
+        return False
+    title = _safe_window_title(window).lower()
+    try:
+        info = window.element_info
+        class_name = _safe_info_attr(info, "class_name").lower()
+        process_name = _safe_info_attr(info, "process_name").lower()
+    except Exception:
+        class_name = ""
+        process_name = ""
+    haystack = " ".join((title, class_name, process_name))
+    return any(hint and hint in haystack for hint in hints)
+
+
+def _find_desktop_window_after_launch(
+    pw: Any,
+    *,
+    hints: set[str],
+    before: set[tuple[Any, ...]],
+    deadline: float,
+) -> Any | None:
+    best_hint_match: Any | None = None
+    while time.monotonic() <= deadline:
+        windows = _desktop_windows(pw)
+        for window in windows:
+            if _window_matches_hints(window, hints):
+                return window
+            if best_hint_match is None and _window_identity(window) not in before:
+                best_hint_match = window
+        if best_hint_match is not None:
+            return best_hint_match
+        time.sleep(0.25)
+    return best_hint_match
 
 
 class UIA3Adapter(DesktopDriver):
@@ -66,12 +238,15 @@ class UIA3Adapter(DesktopDriver):
             app = str(app_path or "").strip().strip('"')
             cmd_parts = [app, *(args or [])]
             cmd = subprocess.list2cmdline(cmd_parts) if os.name == "nt" else shlex.join(cmd_parts)
-            app = pw.Application(backend="uia").start(cmd)
-            self._app = app
             launch_timeout = _capability_seconds(caps, "launch_window_timeout_ms", self._timeout)
             ready_timeout = _capability_seconds(caps, "ready_timeout_ms", self._timeout)
             wait_for_ready = _capability_bool(caps, "wait_for_ready", True)
             post_launch_delay = _capability_seconds(caps, "post_launch_delay_ms", 0.0)
+            hints = _launch_window_hints(app, caps)
+            before_windows = {_window_identity(window) for window in _desktop_windows(pw)}
+            app = pw.Application(backend="uia").start(cmd)
+            self._app = app
+            self._top_window = None
             deadline = time.monotonic() + max(launch_timeout, 1.0)
             last_error: Exception | None = None
             while time.monotonic() <= deadline:
@@ -81,11 +256,21 @@ class UIA3Adapter(DesktopDriver):
                 except Exception as exc:
                     last_error = exc
                     time.sleep(0.25)
-            else:
+            if self._top_window is None:
+                self._top_window = _find_desktop_window_after_launch(
+                    pw,
+                    hints=hints,
+                    before=before_windows,
+                    deadline=max(
+                        deadline,
+                        time.monotonic() + max(1.0, min(launch_timeout, 3.0)),
+                    ),
+                )
+            if self._top_window is None:
                 if last_error:
                     raise last_error
                 raise RuntimeError("No application window was found after launch")
-            if wait_for_ready:
+            if wait_for_ready and hasattr(self._top_window, "wait"):
                 self._top_window.wait(
                     "exists visible enabled ready",
                     timeout=max(ready_timeout, 1.0),
@@ -642,14 +827,27 @@ class UIA3Adapter(DesktopDriver):
         def _do():
             if self._top_window is None:
                 raise RuntimeError("No UIA3 session")
-            parts = ["<UITree>"]
-            for ctrl in self._top_window.descendants():
+            if self._app is not None:
                 try:
-                    parts.append(
-                        f'<control type="{ctrl.element_info.control_type}" '
-                        f'name="{ctrl.window_text()}" '
-                        f'auto_id="{ctrl.element_info.automation_id}" />'
-                    )
+                    self._top_window = self._app.top_window()
+                except Exception:
+                    pass
+            parts = ["<UITree>"]
+            controls: list[Any] = [self._top_window]
+            try:
+                controls.extend(list(self._top_window.descendants()))
+            except Exception:
+                pass
+            seen: set[int] = set()
+            for index, ctrl in enumerate(controls, start=1):
+                try:
+                    marker = id(ctrl)
+                    if marker in seen:
+                        continue
+                    seen.add(marker)
+                    xml = _control_xml(ctrl, index)
+                    if xml:
+                        parts.append(xml)
                 except Exception:
                     pass
             parts.append("</UITree>")

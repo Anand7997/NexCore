@@ -169,7 +169,11 @@ function withDesktopLaunchVariables(
   applicationPath: string,
   windowTitle: string,
 ): Record<string, unknown> {
-  const variables = { ...baseVariables };
+  const variables: Record<string, unknown> = {
+    ...baseVariables,
+    driver_type: 'uia3',
+    desktop_driver_type: 'uia3',
+  };
   const appPath = stripWrappingQuotes(applicationPath);
   if (appPath) {
     variables.application_path = appPath;
@@ -180,6 +184,52 @@ function withDesktopLaunchVariables(
     variables.window_title = windowTitle.trim();
   }
   return variables;
+}
+
+function desktopTargetFromTestCase(testCase: TestCase | null | undefined): { applicationPath: string; windowTitle: string } {
+  if (!testCase) return { applicationPath: '', windowTitle: '' };
+  const variables = testCase.default_variables ?? {};
+  let applicationPath = asText(
+    variables.application_path,
+    variables.app_path,
+    variables.executable_path,
+    variables.app,
+  );
+  let windowTitle = asText(
+    variables.window_title,
+    variables.desktop_window_title,
+    variables.window,
+    variables.screen,
+  );
+
+  for (const step of testCase.test_steps ?? []) {
+    const data = step.test_data ?? {};
+    const desktop = step.bindings?.desktop ?? {};
+    if (!applicationPath) {
+      applicationPath = asText(
+        data.application_path,
+        data.app_path,
+        data.executable_path,
+        data.app,
+        desktop.application_path,
+        desktop.app,
+      );
+    }
+    if (!windowTitle) {
+      windowTitle = asText(
+        data.window_title,
+        data.desktop_window_title,
+        data.window,
+        data.screen,
+        desktop.window_title,
+        desktop.window,
+        desktop.screen,
+      );
+    }
+    if (applicationPath && windowTitle) break;
+  }
+
+  return { applicationPath: stripWrappingQuotes(applicationPath), windowTitle };
 }
 
 function hasDesktopVariables(variables: Record<string, unknown> | undefined): boolean {
@@ -367,7 +417,7 @@ function DetailPanel({ execId, workflowName, onDeleted }: { execId: string; work
   }));
 
   return (
-    <motion.div initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} className="flex h-full flex-col">
+    <motion.div initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} className="flex h-full min-h-0 flex-col overflow-hidden">
       {/* Header */}
       <div className="shrink-0 border-b border-[var(--color-line-subtle)] p-4">
         <div className="flex items-start justify-between gap-3 mb-3">
@@ -492,7 +542,7 @@ function DetailPanel({ execId, workflowName, onDeleted }: { execId: string; work
       </div>
 
       {/* Actions */}
-      <div className="shrink-0 flex gap-2 border-t border-[var(--color-line-subtle)] p-3">
+      <div className="sticky bottom-0 z-10 shrink-0 flex gap-2 border-t border-[var(--color-line-subtle)] bg-[var(--color-surface-1)] p-3 shadow-[0_-16px_28px_rgba(0,0,0,0.28)]">
         <Button variant="neon" size="sm" className="flex-1 justify-center" onClick={() => openInspectorFor(exec.id)}>
           <Brain size={11} /> Mini AI Bot
         </Button>
@@ -615,8 +665,6 @@ function ExecutionLaunchPanel({ onClose, onLaunched }: { onClose: () => void; on
   const [caseId, setCaseId] = useState('');
   const [env, setEnv] = useState('staging');
   const [plat, setPlat] = useState('web');
-  const [desktopAppPath, setDesktopAppPath] = useState('');
-  const [desktopWindowTitle, setDesktopWindowTitle] = useState('');
 
   const selectedProject = projects.find((p) => p.id === projectId) ?? projects[0] ?? null;
   const modules = selectedProject?.modules ?? [];
@@ -628,6 +676,7 @@ function ExecutionLaunchPanel({ onClose, onLaunched }: { onClose: () => void; on
   const selectedWorkflowAvailable = Boolean(selectedWorkflow);
   const selectedWorkflowPlatform = useMemo(() => inferWorkflowPlatform(selectedWorkflow), [selectedWorkflow]);
   const selectedCasePlatform = useMemo(() => inferTestCasePlatform(selectedCase), [selectedCase]);
+  const desktopTarget = useMemo(() => desktopTargetFromTestCase(selectedCase), [selectedCase]);
 
   useEffect(() => {
     if (!selectedWorkflowAvailable) {
@@ -645,12 +694,6 @@ function ExecutionLaunchPanel({ onClose, onLaunched }: { onClose: () => void; on
   }, [caseId, moduleId, projectId, selectedProject]);
 
   useEffect(() => {
-    const variables = selectedCase?.default_variables ?? {};
-    setDesktopAppPath(asText(variables.application_path, variables.app_path, variables.app));
-    setDesktopWindowTitle(asText(variables.window_title, variables.desktop_window_title, variables.window, variables.screen));
-  }, [selectedCase?.id]);
-
-  useEffect(() => {
     const inferredPlatform = mode === 'workflow' ? selectedWorkflowPlatform : selectedCasePlatform;
     const hasSelection = mode === 'workflow' ? Boolean(selectedWorkflow) : Boolean(selectedCase);
     if (hasSelection) {
@@ -662,7 +705,7 @@ function ExecutionLaunchPanel({ onClose, onLaunched }: { onClose: () => void; on
     if (mode === 'workflow') {
       if (!selectedWorkflowAvailable) return;
       const variables = plat === 'desktop'
-        ? withDesktopLaunchVariables({}, desktopAppPath, desktopWindowTitle)
+        ? withDesktopLaunchVariables({}, '', '')
         : {};
       trigger({ workflow_id: wfId, trigger: 'manual', environment: env, platform: plat, variables }, {
         onSuccess: (res) => {
@@ -674,7 +717,11 @@ function ExecutionLaunchPanel({ onClose, onLaunched }: { onClose: () => void; on
     }
     if (!selectedCase || !selectedProject || !selectedModule) return;
     const variables = plat === 'desktop'
-      ? withDesktopLaunchVariables(selectedCase.default_variables ?? {}, desktopAppPath, desktopWindowTitle)
+      ? withDesktopLaunchVariables(
+          selectedCase.default_variables ?? {},
+          desktopTarget.applicationPath,
+          desktopTarget.windowTitle,
+        )
       : selectedCase.default_variables ?? {};
     triggerTestCase({
       test_case_ids: [selectedCase.id],
@@ -783,25 +830,21 @@ function ExecutionLaunchPanel({ onClose, onLaunched }: { onClose: () => void; on
           </div>
         </div>
         {plat === 'desktop' && (
-          <div className="grid gap-2 rounded-lg border border-[var(--color-line-default)] bg-black/15 p-2.5">
-            <div>
-              <label className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]">Application Path</label>
-              <input
-                value={desktopAppPath}
-                onChange={(e) => setDesktopAppPath(e.target.value)}
-                className={INP}
-                placeholder="C:\Program Files\App\App.exe"
-              />
+          <div className="grid gap-1 rounded-lg border border-[var(--color-line-default)] bg-black/15 p-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] font-mono uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]">Desktop Target</span>
+              <span className="rounded-full border border-cyan-500/25 bg-cyan-500/10 px-2 py-0.5 text-[10px] text-cyan-200">UIA3</span>
             </div>
-            <div>
-              <label className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]">Window Title</label>
-              <input
-                value={desktopWindowTitle}
-                onChange={(e) => setDesktopWindowTitle(e.target.value)}
-                className={INP}
-                placeholder="Application window title"
-              />
-            </div>
+            <p className="truncate text-xs text-[var(--color-fg-default)]" title={desktopTarget.applicationPath || ''}>
+              {mode === 'workflow'
+                ? 'Stored in workflow nodes'
+                : desktopTarget.applicationPath || 'Stored in generated test steps'}
+            </p>
+            {(desktopTarget.windowTitle || mode === 'workflow') && (
+              <p className="truncate text-[10px] text-[var(--color-fg-subtle)]" title={desktopTarget.windowTitle || ''}>
+                {mode === 'workflow' ? 'Window scope will be read from workflow config' : desktopTarget.windowTitle}
+              </p>
+            )}
           </div>
         )}
         <div className="flex gap-2 pt-1">
@@ -981,7 +1024,7 @@ export default function ExecutionsPage() {
             animate={{ width: 460, opacity: 1 }}
             exit={{ width: 0, opacity: 0 }}
             transition={{ duration: 0.24, ease: [0.22, 0.61, 0.36, 1] }}
-            className="shrink-0 overflow-hidden border-l border-[var(--color-line-default)] bg-[var(--color-surface-1)]"
+            className="h-full min-h-0 shrink-0 overflow-hidden border-l border-[var(--color-line-default)] bg-[var(--color-surface-1)]"
           >
             <DetailPanel
               execId={selected}

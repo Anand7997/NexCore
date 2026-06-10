@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { api } from './client';
+import { ApiError, api } from './client';
 import type {
   TestCase,
   TestCaseCreateInput,
@@ -25,6 +25,51 @@ export const testConfigurationKeys = {
   tree: ['test-configuration', 'tree'] as const,
   projects: ['test-configuration', 'projects'] as const,
 };
+
+function withoutProject(tree: TestConfigurationTree | undefined, projectId: string) {
+  if (!tree) return tree;
+  return {
+    ...tree,
+    projects: tree.projects.filter((project) => project.id !== projectId),
+  };
+}
+
+function withoutProjectListItem(projects: TestProjectListItem[] | undefined, projectId: string) {
+  return projects?.filter((project) => project.id !== projectId);
+}
+
+const DELETE_VERIFY_ATTEMPTS = 6;
+const DELETE_VERIFY_DELAY_MS = 1_000;
+
+function isNotFound(error: unknown) {
+  return error instanceof ApiError && error.status === 404;
+}
+
+function isUpstreamUnavailable(error: unknown) {
+  return (
+    error instanceof ApiError &&
+    error.status === 502 &&
+    error.message === 'upstream_unavailable'
+  );
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+async function confirmProjectDeleted(projectId: string) {
+  for (let attempt = 0; attempt < DELETE_VERIFY_ATTEMPTS; attempt += 1) {
+    await sleep(DELETE_VERIFY_DELAY_MS);
+    try {
+      await api.get<TestProject>(`/test-configuration/projects/${projectId}`);
+    } catch (error) {
+      if (isNotFound(error)) return true;
+      if (isUpstreamUnavailable(error)) continue;
+      return false;
+    }
+  }
+  return false;
+}
 
 export function useTestConfigurationTree() {
   return useQuery({
@@ -68,8 +113,43 @@ export function useUpdateTestProject(projectId: string) {
 export function useDeleteTestProject() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (projectId: string) => api.delete(`/test-configuration/projects/${projectId}`),
-    onSuccess: () => {
+    mutationFn: async (projectId: string) => {
+      try {
+        await api.delete(`/test-configuration/projects/${projectId}`);
+      } catch (error) {
+        if (isNotFound(error)) return;
+        if (isUpstreamUnavailable(error) && (await confirmProjectDeleted(projectId))) return;
+        throw error;
+      }
+    },
+    onMutate: async (projectId: string) => {
+      await qc.cancelQueries({ queryKey: testConfigurationKeys.all });
+      const previousTree = qc.getQueryData<TestConfigurationTree>(testConfigurationKeys.tree);
+      const previousProjectLists = qc.getQueriesData<TestProjectListItem[]>({
+        queryKey: testConfigurationKeys.projects,
+      });
+
+      qc.setQueryData<TestConfigurationTree>(
+        testConfigurationKeys.tree,
+        (current) => withoutProject(current, projectId),
+      );
+      previousProjectLists.forEach(([queryKey]) => {
+        qc.setQueryData<TestProjectListItem[]>(
+          queryKey,
+          (current) => withoutProjectListItem(current, projectId),
+        );
+      });
+
+      return { previousTree, previousProjectLists };
+    },
+    onError: (_error, _projectId, context) => {
+      if (!context) return;
+      qc.setQueryData(testConfigurationKeys.tree, context.previousTree);
+      context.previousProjectLists.forEach(([queryKey, data]) => {
+        qc.setQueryData(queryKey, data);
+      });
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: testConfigurationKeys.all });
     },
   });

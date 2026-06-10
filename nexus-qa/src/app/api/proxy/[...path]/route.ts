@@ -8,6 +8,7 @@ async function forwardRequest(
     process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000/api';
   const upstreamUrl = new URL(`${backendBase.replace(/\/$/, '')}/${path.join('/')}`);
   upstreamUrl.search = request.nextUrl.search;
+  const timeoutMs = request.method === 'GET' || request.method === 'HEAD' ? 30_000 : 180_000;
 
   try {
     const headers: HeadersInit = { Accept: request.headers.get('accept') ?? 'application/json' };
@@ -17,7 +18,7 @@ async function forwardRequest(
     const init: RequestInit = {
       method: request.method,
       headers,
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(timeoutMs),
     };
     if (request.method !== 'GET' && request.method !== 'HEAD') {
       init.body = await request.arrayBuffer();

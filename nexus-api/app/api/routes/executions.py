@@ -34,6 +34,8 @@ from app.orchestration.engine import launch_execution, cancel_execution
 
 router = APIRouter(prefix="/executions", tags=["executions"])
 
+DEFAULT_DESKTOP_DRIVER_TYPE = "uia3"
+
 
 def _slug(value: str, fallback: str) -> str:
     text = "".join(ch.lower() if ch.isalnum() else "_" for ch in (value or fallback))
@@ -206,6 +208,20 @@ def _first_non_empty(*values: object) -> str:
         if value not in (None, ""):
             return str(value)
     return ""
+
+
+def _desktop_driver_type(*sources: object) -> str:
+    for source in sources:
+        if not isinstance(source, dict):
+            continue
+        value = _first_non_empty(
+            source.get("driver_type"),
+            source.get("desktop_driver_type"),
+            source.get("desktop_driver"),
+        ).strip()
+        if value:
+            return value
+    return DEFAULT_DESKTOP_DRIVER_TYPE
 
 
 def _set_if_missing(target: dict, key: str, value: object, *, replace_values: set[str] | None = None) -> None:
@@ -560,7 +576,10 @@ def _desktop_launch_scope_from_step(step) -> dict[str, object]:
         data.get("process_name"),
         data.get("process"),
     )
-    scope: dict[str, object] = {"attach_if_running": True}
+    scope: dict[str, object] = {
+        "attach_if_running": True,
+        "driver_type": _desktop_driver_type(desktop_binding, data),
+    }
     if window_title:
         scope["window_title"] = str(window_title)
     if process_name:
@@ -580,7 +599,10 @@ def _desktop_launch_scope_from_variables(variables: dict[str, object]) -> dict[s
         variables.get("desktop_process_name"),
         variables.get("process"),
     )
-    scope: dict[str, object] = {"attach_if_running": True}
+    scope: dict[str, object] = {
+        "attach_if_running": True,
+        "driver_type": _desktop_driver_type(variables),
+    }
     if window_title:
         scope["window_title"] = str(window_title)
     if process_name:
@@ -740,6 +762,7 @@ def _node_type_and_config(
 
         def desktop_config(extra: dict | None = None) -> dict:
             config = {
+                "driver_type": _desktop_driver_type(desktop_binding, data),
                 "selector": desktop_selector,
                 "strategy": desktop_strategy,
                 "timeout_ms": 15000,
