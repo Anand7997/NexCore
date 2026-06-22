@@ -26,6 +26,9 @@ class DAGEdge:
     target: str
     condition: str | None = None
 
+    def ref(self) -> tuple[str, str, str]:
+        return (self.source, self.target, str(self.condition or "").strip())
+
 
 class DAGGraph:
     """
@@ -69,9 +72,15 @@ class DAGGraph:
         """Returns all nodes that must complete before node_key can run."""
         return [e.source for e in self.edges if e.target == node_key]
 
+    def incoming_edges(self, node_key: str) -> list[DAGEdge]:
+        return [e for e in self.edges if e.target == node_key]
+
     def successors(self, node_key: str) -> list[str]:
         """Returns all nodes that depend on node_key completing."""
         return [e.target for e in self.edges if e.source == node_key]
+
+    def outgoing_edges(self, node_key: str) -> list[DAGEdge]:
+        return [e for e in self.edges if e.source == node_key]
 
     def roots(self) -> list[str]:
         """Nodes with no incoming edges (entry points of the DAG)."""

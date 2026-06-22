@@ -18,8 +18,14 @@ import {
   useStopDesktopRecorderSession,
   useUpdateDesktopRecordedAction,
 } from '@/lib/api/desktopRecorder';
+import { useSyncDesktopWorkflows } from '@/lib/api/pageRepository';
 import { useCreateWorkflow, useUpdateWorkflow, useWorkflows } from '@/lib/api/workflows';
-import type { DesktopRecordedAction, DesktopRecordedActionCreate, DesktopRecorderCompileResponse } from '@/lib/api/types';
+import type {
+  DesktopObjectCreateInput,
+  DesktopRecordedAction,
+  DesktopRecordedActionCreate,
+  DesktopRecorderCompileResponse,
+} from '@/lib/api/types';
 
 const ACTIONS = [
   'click', 'double_click', 'right_click', 'type_text', 'select',
@@ -67,6 +73,96 @@ function applicationNameFromPath(value: string): string {
   return filenameFromPath(value).replace(/\.[^.]+$/, '');
 }
 
+function asText(value: unknown): string {
+  return String(value ?? '').trim();
+}
+
+function isUntitledLabel(value: unknown): boolean {
+  const text = asText(value).toLowerCase();
+  return /^untitled\d*$/.test(text);
+}
+
+function recordedObjectLabel(row: DesktopRecordedAction): string {
+  const objectName = asText(row.object_name);
+  const nameText = asText(row.name_text);
+  const objectKey = asText(row.object_key);
+  if (objectName && !isUntitledLabel(objectName)) return objectName;
+  if (nameText && !isUntitledLabel(nameText)) return nameText;
+  if (objectKey && !isUntitledLabel(objectKey)) return objectKey;
+
+  const controlType = asText(row.control_type);
+  const className = asText(row.class_name);
+  if (controlType && className) return `${controlType} / ${className}`;
+  return controlType || className || objectName || nameText || objectKey || 'Desktop object';
+}
+
+function recordedObjectMeta(row: DesktopRecordedAction): string {
+  const parts = [
+    isUntitledLabel(row.object_name) || isUntitledLabel(row.name_text)
+      ? `captured name: ${asText(row.object_name || row.name_text)}`
+      : '',
+    asText(row.object_key) && asText(row.object_key) !== asText(row.object_name)
+      ? `key: ${asText(row.object_key)}`
+      : '',
+    asText(row.control_type),
+    asText(row.class_name),
+  ].filter(Boolean);
+  return parts.join(' | ');
+}
+
+function locatorCandidateLines(row: DesktopRecordedAction): string[] {
+  return (row.locators ?? [])
+    .map((item) => {
+      const strategy = asText(item.strategy || 'locator');
+      const locator = asText(item.locator);
+      return locator ? `${strategy}: ${locator}` : '';
+    })
+    .filter(Boolean);
+}
+
+function firstCandidateByStrategy(row: DesktopRecordedAction, strategies: string[]): string {
+  const wanted = new Set(strategies.map((item) => item.toLowerCase()));
+  const candidate = (row.locators ?? []).find((item) => wanted.has(asText(item.strategy).toLowerCase()));
+  return asText(candidate?.locator);
+}
+
+function locatorPrimary(row: DesktopRecordedAction): string {
+  const strategy = asText(row.locator_strategy);
+  if (asText(row.automation_id)) return `${strategy || 'accessibility id'}: ${asText(row.automation_id)}`;
+  if (asText(row.name_text) && !isUntitledLabel(row.name_text)) return `name: ${asText(row.name_text)}`;
+  if (asText(row.class_name)) return `class: ${asText(row.class_name)}`;
+  const coordinate = firstCandidateByStrategy(row, ['coordinate']);
+  if (coordinate) return `coordinate: ${coordinate}`;
+  if (asText(row.uia_path)) return `xpath: ${asText(row.uia_path)}`;
+  if (asText(row.name_text)) return `window title: ${asText(row.name_text)}`;
+  return strategy || 'locator pending';
+}
+
+function locatorPath(row: DesktopRecordedAction): string {
+  const directPath = asText(row.uia_path);
+  if (directPath) return directPath;
+  const locator = (row.locators ?? []).find((item) => {
+    const strategy = asText(item.strategy).toLowerCase();
+    return strategy === 'xpath' || strategy === 'uia';
+  });
+  const candidatePath = asText(locator?.locator);
+  if (candidatePath) return candidatePath;
+  if (row.x != null && row.y != null) return `screen point (${Math.round(row.x)}, ${Math.round(row.y)})`;
+  return '';
+}
+
+function repositorySuggestionName(item: DesktopObjectCreateInput): string {
+  if (asText(item.name) && !isUntitledLabel(item.name)) return asText(item.name);
+  if (asText(item.name_text) && !isUntitledLabel(item.name_text)) return asText(item.name_text);
+  if (asText(item.object_key) && !isUntitledLabel(item.object_key)) return asText(item.object_key);
+  if (asText(item.control_type) && asText(item.class_name)) return `${asText(item.control_type)} / ${asText(item.class_name)}`;
+  return asText(item.control_type) || asText(item.class_name) || asText(item.name) || 'Desktop object';
+}
+
+function repositorySuggestionPath(item: DesktopObjectCreateInput): string {
+  return asText(item.uia_path) || asText(item.primary_locator);
+}
+
 export default function DesktopRecorderPage() {
   const { data: sessions = [] } = useDesktopRecorderSessions();
   const createSession = useCreateDesktopRecorderSession();
@@ -76,6 +172,7 @@ export default function DesktopRecorderPage() {
   const { data: savedWorkflows = [] } = useWorkflows('active');
   const agentCommandMutation = useDesktopRecorderAgentCommand();
   const mcpCommandMutation = useDesktopMcpCommand();
+  const syncPageRepository = useSyncDesktopWorkflows();
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draftSession, setDraftSession] = useState(blankSessionDraft);
@@ -88,6 +185,7 @@ export default function DesktopRecorderPage() {
   const [agentPackageStatus, setAgentPackageStatus] = useState('');
   const [mcpCommand, setMcpCommand] = useState('');
   const [mcpPackageStatus, setMcpPackageStatus] = useState('');
+  const [pageRepoSyncStatus, setPageRepoSyncStatus] = useState('');
 
   const selected = useMemo(
     () => sessions.find((session) => session.id === selectedId) ?? sessions[0] ?? null,
@@ -223,12 +321,35 @@ export default function DesktopRecorderPage() {
     });
   }
 
+  function syncSelectedRecordingToPageRepo() {
+    if (!sessionId) return;
+    setPageRepoSyncStatus('');
+    syncPageRepository.mutate(
+      {
+        session_id: sessionId,
+        include_recording_sessions: true,
+        update_existing: true,
+      },
+      {
+        onSuccess: (result) => {
+          setPageRepoSyncStatus(
+            `${result.created} created, ${result.updated} updated, ${result.skipped} skipped in Page Repo`,
+          );
+        },
+        onError: (error) => {
+          setPageRepoSyncStatus(error instanceof Error ? error.message : 'Page Repo sync failed');
+        },
+      },
+    );
+  }
+
   function clearSessionOutputs() {
     setCompiled(null);
     setAgentCommand('');
     setAgentPackageStatus('');
     setMcpCommand('');
     setMcpPackageStatus('');
+    setPageRepoSyncStatus('');
   }
 
   function deleteSelectedSession() {
@@ -407,6 +528,9 @@ export default function DesktopRecorderPage() {
             <Button variant="glass" size="sm" disabled={!sessionId} onClick={compile}>
               <Wand2 size={11} /> Compile
             </Button>
+            <Button variant="glass" size="sm" disabled={!sessionId || syncPageRepository.isPending} onClick={syncSelectedRecordingToPageRepo}>
+              <Database size={11} /> Sync Page Repo
+            </Button>
             <Button variant="glass" size="sm" disabled={!sessionId || agentCommandMutation.isPending} onClick={buildAgentCommand}>
               <Terminal size={11} /> Live Agent
             </Button>
@@ -424,6 +548,9 @@ export default function DesktopRecorderPage() {
             </Button>
           </div>
         </div>
+        {pageRepoSyncStatus && (
+          <p className="mt-2 text-[10px] font-mono text-(--color-fg-subtle)">{pageRepoSyncStatus}</p>
+        )}
       </div>
 
       {sessionDialogOpen && (
@@ -538,10 +665,10 @@ export default function DesktopRecorderPage() {
             </span>
           </div>
           <div className="overflow-x-auto rounded-lg border border-(--color-line-default)">
-            <table className="min-w-[980px] w-full border-collapse text-xs">
+            <table className="min-w-[1120px] w-full border-collapse text-xs">
               <thead className="bg-(--color-surface-2) text-[9px] uppercase tracking-[0.14em] text-(--color-fg-subtle)">
                 <tr>
-                  {['#', 'Operation', 'Object', 'Locator', 'Value', 'Window'].map((header) => (
+                  {['#', 'Operation', 'Object', 'Locator / Path', 'Value', 'Window'].map((header) => (
                     <th key={header} className="border-r border-(--color-line-subtle) px-2 py-2 text-left font-mono">{header}</th>
                   ))}
                   <th className="sticky right-0 z-10 border-l border-(--color-line-subtle) bg-(--color-surface-2) px-2 py-2 text-left font-mono">
@@ -552,6 +679,13 @@ export default function DesktopRecorderPage() {
               <tbody>
                 {(detail.data?.actions ?? []).map((row) => {
                   const isEditing = editingActionId === row.id;
+                  const objectLabelText = recordedObjectLabel(row);
+                  const objectMetaText = recordedObjectMeta(row);
+                  const locatorPrimaryText = locatorPrimary(row);
+                  const locatorPathText = locatorPath(row);
+                  const locatorLines = locatorCandidateLines(row);
+                  const locatorTitleText = [locatorPrimaryText, locatorPathText, ...locatorLines].filter(Boolean).join('\n');
+                  const alternateCount = Math.max(0, locatorLines.length - 1);
                   return (
                     <tr key={row.id} className="border-t border-(--color-line-subtle)/60">
                       <td className="px-2 py-2 font-mono text-(--color-fg-subtle)">{row.action_order}</td>
@@ -562,15 +696,40 @@ export default function DesktopRecorderPage() {
                           </select>
                         ) : row.action_type}
                       </td>
-                      <td className="px-2 py-2 text-(--color-fg-default)">
+                      <td className="max-w-[260px] px-2 py-2 text-(--color-fg-default)">
                         {isEditing ? (
-                          <input className={`${input} w-40`} value={editingAction.object_name ?? ''} onChange={(e) => setEditingAction((d) => ({ ...d, object_name: e.target.value }))} />
-                        ) : row.object_name || row.object_key}
+                          <div className="grid gap-1.5">
+                            <input className={`${input} w-56`} value={editingAction.object_name ?? ''} onChange={(e) => setEditingAction((d) => ({ ...d, object_name: e.target.value }))} placeholder="Object name" />
+                            <input className={`${input} w-56 font-mono`} value={editingAction.object_key ?? ''} onChange={(e) => setEditingAction((d) => ({ ...d, object_key: e.target.value }))} placeholder="Object key" />
+                          </div>
+                        ) : (
+                          <div className="min-w-0">
+                            <p className="truncate font-medium" title={objectLabelText}>{objectLabelText}</p>
+                            {objectMetaText && (
+                              <p className="mt-1 truncate font-mono text-[10px] text-(--color-fg-subtle)" title={objectMetaText}>{objectMetaText}</p>
+                            )}
+                          </div>
+                        )}
                       </td>
-                      <td className="px-2 py-2 font-mono text-[10px] text-(--color-fg-subtle)">
+                      <td className="max-w-[420px] px-2 py-2 font-mono text-[10px] text-(--color-fg-subtle)">
                         {isEditing ? (
-                          <input className={`${input} w-48 font-mono`} value={editingAction.automation_id || editingAction.name_text || editingAction.uia_path || ''} onChange={(e) => setEditingAction((d) => ({ ...d, automation_id: e.target.value }))} />
-                        ) : row.automation_id || row.name_text || row.uia_path}
+                          <div className="grid gap-1.5">
+                            <input className={`${input} w-80 font-mono`} value={editingAction.automation_id ?? ''} onChange={(e) => setEditingAction((d) => ({ ...d, automation_id: e.target.value }))} placeholder="Automation ID" />
+                            <input className={`${input} w-80 font-mono`} value={editingAction.uia_path ?? ''} onChange={(e) => setEditingAction((d) => ({ ...d, uia_path: e.target.value }))} placeholder="UIA path" />
+                          </div>
+                        ) : (
+                          <div className="min-w-0">
+                            <p className="truncate text-[#4dd1e1]" title={locatorTitleText || locatorPrimaryText}>{locatorPrimaryText}</p>
+                            {locatorPathText && (
+                              <p className="mt-1 truncate" title={locatorPathText}>path: {locatorPathText}</p>
+                            )}
+                            {alternateCount > 0 && (
+                              <p className="mt-1 truncate text-[9px] text-(--color-fg-subtle)" title={locatorLines.join('\n')}>
+                                +{alternateCount} alternate locator{alternateCount === 1 ? '' : 's'}
+                              </p>
+                            )}
+                          </div>
+                        )}
                       </td>
                       <td className="px-2 py-2 text-(--color-fg-default)">
                         {isEditing ? (
@@ -787,12 +946,23 @@ export default function DesktopRecorderPage() {
                 <span className={label}>Repository Suggestions</span>
               </div>
               <div className="space-y-2">
-                {compiled.repository_suggestions.map((item) => (
-                  <div key={item.object_key} className="rounded-md border border-(--color-line-default) bg-(--color-surface-2) px-3 py-2">
-                    <p className="truncate text-xs font-medium text-(--color-fg-default)">{item.name}</p>
-                    <p className="mt-1 truncate text-[10px] font-mono text-(--color-fg-subtle)">{item.locator_strategy}: {item.primary_locator}</p>
-                  </div>
-                ))}
+                {compiled.repository_suggestions.map((item) => {
+                  const suggestionName = repositorySuggestionName(item);
+                  const suggestionPath = repositorySuggestionPath(item);
+                  return (
+                    <div key={item.object_key} className="rounded-md border border-(--color-line-default) bg-(--color-surface-2) px-3 py-2">
+                      <p className="truncate text-xs font-medium text-(--color-fg-default)" title={suggestionName}>{suggestionName}</p>
+                      <p className="mt-1 truncate text-[10px] font-mono text-(--color-fg-subtle)" title={suggestionPath}>
+                        {item.locator_strategy || 'locator'}: {suggestionPath || '-'}
+                      </p>
+                      {asText(item.uia_path) && asText(item.uia_path) !== asText(item.primary_locator) && (
+                        <p className="mt-1 truncate text-[10px] font-mono text-(--color-fg-subtle)" title={asText(item.uia_path)}>
+                          path: {asText(item.uia_path)}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

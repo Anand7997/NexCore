@@ -46,6 +46,7 @@ def _normalise_strategy(value: str | None) -> str:
         "path": "xpath",
         "class": "class_name",
         "class_name": "class_name",
+        "relative": "relative",
         "ocr": "ocr",
         "visual": "visual",
     }
@@ -92,13 +93,16 @@ class DesktopExecutionPlugin(ExecutionPlugin):
             "selector": {"type": "string", "required": True, "supports_template": True},
             "strategy": {
                 "type": "string",
-                "enum": ["accessibility id", "automation id", "name", "xpath", "class name", "ocr", "visual"],
+                "enum": ["accessibility id", "automation id", "name", "xpath", "class name", "relative", "ocr", "visual"],
                 "default": "accessibility id",
             },
             "locators": {"type": "array"},
             "x": {"type": "number", "supports_template": True},
             "y": {"type": "number", "supports_template": True},
             "coordinate_fallback": {"type": "boolean", "default": True},
+            "recording_mode": {"type": "string", "enum": ["uia", "hybrid", "analog"], "default": "uia"},
+            "analog": {"type": "object"},
+            "virtual_object": {"type": "object"},
             "min_confidence": {"type": "number", "default": 0.55},
             "review_confidence": {"type": "number", "default": 0.8},
             "timeout_ms": {"type": "number", "default": 15000},
@@ -1165,6 +1169,8 @@ class DesktopExecutionPlugin(ExecutionPlugin):
     def _locator_candidates(self, cfg: dict[str, Any]) -> list[LocatorCandidate]:
         candidates: list[LocatorCandidate] = []
         seen: set[tuple[str, str]] = set()
+        virtual_object = cfg.get("virtual_object") if isinstance(cfg.get("virtual_object"), dict) else {}
+        analog = cfg.get("analog") if isinstance(cfg.get("analog"), dict) else {}
 
         def add(strategy: Any, value: Any, confidence: Any = 1.0) -> None:
             locator = str(value or "").strip()
@@ -1186,6 +1192,10 @@ class DesktopExecutionPlugin(ExecutionPlugin):
         add("xpath", cfg.get("uia_path") or cfg.get("xpath"))
         add("name", cfg.get("name") or cfg.get("object_name"))
         add("class name", cfg.get("class_name"))
+        add(virtual_object.get("locator_strategy"), virtual_object.get("primary_locator"))
+        add("name", virtual_object.get("name"))
+        add("class name", virtual_object.get("class_name") or virtual_object.get("object_class"))
+        add("relative", analog.get("relative_locator"))
         for item in cfg.get("locators") or cfg.get("alternative_locators") or []:
             if isinstance(item, dict):
                 add(
@@ -1195,6 +1205,13 @@ class DesktopExecutionPlugin(ExecutionPlugin):
                 )
             else:
                 add("", item)
+        for item in virtual_object.get("locators") or []:
+            if isinstance(item, dict):
+                add(
+                    item.get("strategy"),
+                    item.get("locator") or item.get("selector") or item.get("value"),
+                    item.get("confidence") or item.get("score") or 0.7,
+                )
         for item in cfg.get("perception_candidates") or cfg.get("ai_candidates") or []:
             if isinstance(item, dict):
                 add(
@@ -1215,6 +1232,11 @@ class DesktopExecutionPlugin(ExecutionPlugin):
     def _coordinate_pair(cfg: dict[str, Any]) -> tuple[float, float] | None:
         x = cfg.get("x")
         y = cfg.get("y")
+        if x in (None, "") or y in (None, ""):
+            analog = cfg.get("analog") if isinstance(cfg.get("analog"), dict) else {}
+            point = analog.get("point") if isinstance(analog.get("point"), dict) else {}
+            x = point.get("x", x)
+            y = point.get("y", y)
         if x in (None, "") or y in (None, ""):
             return None
         try:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 
 def _load_mcp_module():
@@ -57,3 +58,31 @@ def test_desktop_mcp_capture_object_degrades_to_coordinate_fallback_without_uia(
     assert payload["y"] == 20
     assert "locators" in payload
     assert payload["metadata"]["source"] == "nexcore_desktop_mcp_server"
+
+
+def test_desktop_mcp_payload_demotes_placeholder_window_and_keeps_fallback_paths():
+    mcp = _load_mcp_module()
+    info = SimpleNamespace(
+        name="untitled2",
+        automation_id="",
+        class_name="SunAwtFrame",
+        control_type="Window",
+        rectangle=SimpleNamespace(left=0, top=0, right=900, bottom=700),
+        process_id=4321,
+    )
+
+    payload = mcp._element_payload(
+        SimpleNamespace(element_info=info),
+        action_type="click",
+        x=100,
+        y=80,
+        window_title="IDE",
+    )
+
+    assert payload["object_name"] == "Window / SunAwtFrame"
+    assert payload["object_key"] == "window_sunawtframe_x_100_y_80"
+    assert payload["name_text"] == ""
+    assert payload["metadata"]["capture_scope"] == "window_fallback"
+    locators = {(item["strategy"], item["locator"]) for item in payload["locators"]}
+    assert ("coordinate", "x=100,y=80") in locators
+    assert any(strategy == "relative" and "@offset(100,80)" in locator for strategy, locator in locators)

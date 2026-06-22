@@ -37,6 +37,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
+import { useUIStore } from '@/lib/stores/uiStore';
 import {
   extractAIBrdFile,
   useAIModels,
@@ -860,24 +861,22 @@ function McpMissionControlPanel({
       initial={{ opacity: 0, y: 14, scale: 0.99 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ duration: reducedMotion ? 0 : 0.28, ease: 'easeOut' }}
-      className="relative overflow-hidden rounded-2xl border border-cyan-300/20 bg-[#030712] shadow-[0_24px_90px_rgba(0,0,0,0.38),0_0_60px_rgba(6,182,212,0.08)]"
+      className="relative overflow-hidden rounded-2xl border border-cyan-300/20 bg-[var(--color-surface-1)] shadow-[0_24px_90px_rgba(0,0,0,0.18),0_0_60px_rgba(6,182,212,0.08)]"
     >
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 opacity-80"
         style={{
-          background:
-            'radial-gradient(circle at 18% 0%, rgba(34,211,238,0.18), transparent 34%), radial-gradient(circle at 86% 12%, rgba(16,185,129,0.12), transparent 30%), linear-gradient(135deg, rgba(15,23,42,0.92), rgba(2,6,23,0.96))',
+          background: 'var(--light-bg-none)',
         }}
       />
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 opacity-[0.16]"
         style={{
-          backgroundImage:
-            'linear-gradient(rgba(34,211,238,0.14) 1px, transparent 1px), linear-gradient(90deg, rgba(16,185,129,0.10) 1px, transparent 1px)',
+          backgroundImage: 'var(--light-bg-none)',
           backgroundSize: '24px 24px',
-          maskImage: 'radial-gradient(circle at 55% 38%, black, transparent 76%)',
+          maskImage: 'var(--light-bg-none)',
         }}
       />
       {isLive && !reducedMotion && (
@@ -927,7 +926,7 @@ function McpMissionControlPanel({
                 {isLive ? <Loader2 size={17} className="animate-spin" /> : <ActiveIcon size={17} />}
               </div>
               <div className="min-w-0">
-                <h2 className="text-lg font-semibold leading-tight text-white md:text-xl">
+                <h2 className="text-lg font-semibold leading-tight text-(--color-fg-default) md:text-xl">
                   {desktop ? 'Desktop MCP is capturing object paths in public' : 'MCP is doing the boring scrape work in public'}
                 </h2>
                 <p className="mt-1 text-[12px] leading-relaxed text-(--color-fg-subtle)">
@@ -946,7 +945,7 @@ function McpMissionControlPanel({
             ].map((metric) => {
               const Icon = metric.icon;
               return (
-                <div key={metric.label} className="min-w-0 rounded-lg border border-white/[0.07] bg-black/25 p-2 text-center">
+                <div key={metric.label} className="min-w-0 rounded-lg border border-[var(--color-line-default)] bg-[var(--color-surface-1)] p-2 text-center">
                   <Icon size={12} className={`mx-auto mb-1 ${metric.tone}`} />
                   <div className={`font-mono text-lg font-bold tabular-nums ${metric.tone}`}>{metric.value}</div>
                   <div className="truncate text-[8px] uppercase tracking-wide text-(--color-fg-subtle)">{metric.label}</div>
@@ -957,7 +956,7 @@ function McpMissionControlPanel({
         </div>
 
         <div className="mt-4 grid grid-cols-[1fr_auto] items-center gap-3">
-          <div className="h-1.5 overflow-hidden rounded-full bg-black/45">
+          <div className="h-1.5 overflow-hidden rounded-full bg-[var(--color-line-default)]">
             <motion.div
               className="h-full rounded-full bg-linear-to-r from-cyan-300 via-blue-300 to-emerald-300"
               animate={{ width: `${panelProgress}%` }}
@@ -987,7 +986,7 @@ function McpMissionControlPanel({
                   />
                 )}
                 <div className="relative flex items-center gap-2">
-                  <div className="grid h-6 w-6 shrink-0 place-items-center rounded-md border border-current/20 bg-black/20">
+                  <div className="grid h-6 w-6 shrink-0 place-items-center rounded-md border border-current/20 bg-[var(--color-surface-2)]">
                     {status === 'complete'
                       ? <CheckCircle2 size={12} />
                       : status === 'active'
@@ -1006,7 +1005,7 @@ function McpMissionControlPanel({
         </div>
 
         <div className={`mt-4 grid gap-3 ${compact ? 'xl:grid-cols-[1fr_1.1fr]' : 'xl:grid-cols-[0.9fr_1.25fr]'}`}>
-          <div className="min-w-0 rounded-xl border border-white/[0.07] bg-black/25 overflow-hidden">
+          <div className="min-w-0 rounded-xl border border-[var(--color-line-default)] bg-[var(--color-surface-1)] overflow-hidden">
             <div className="flex items-center justify-between border-b border-white/[0.06] px-3 py-2">
               <div className="flex items-center gap-2 text-xs font-semibold text-(--color-fg-default)">
                 <Cpu size={13} className="text-cyan-200" />
@@ -1048,7 +1047,7 @@ function McpMissionControlPanel({
             </div>
           </div>
 
-          <div className="min-w-0 rounded-xl border border-white/[0.07] bg-black/25 overflow-hidden">
+          <div className="min-w-0 rounded-xl border border-[var(--color-line-default)] bg-[var(--color-surface-1)] overflow-hidden">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.06] px-3 py-2">
               <div className="flex items-center gap-2 text-xs font-semibold text-(--color-fg-default)">
                 <Target size={13} className="text-emerald-200" />
@@ -1075,7 +1074,7 @@ function McpMissionControlPanel({
               </div>
             ) : (
               <div className="max-h-[420px] overflow-y-auto">
-                <div className="sticky top-0 z-10 grid grid-cols-[minmax(0,1.1fr)_minmax(0,1.6fr)_78px] gap-2 border-b border-white/[0.055] bg-[#030712]/95 px-3 py-1.5 font-mono text-[8px] uppercase tracking-wide text-(--color-fg-subtle) backdrop-blur">
+                <div className="sticky top-0 z-10 grid grid-cols-[minmax(0,1.1fr)_minmax(0,1.6fr)_78px] gap-2 border-b border-[var(--color-line-subtle)] bg-[var(--color-surface-1)] px-3 py-1.5 font-mono text-[8px] uppercase tracking-wide text-(--color-fg-subtle) backdrop-blur">
                   <div>Element</div>
                   <div>XPath / selector</div>
                   <div className="text-right">Signal</div>
@@ -1194,7 +1193,7 @@ function WorkflowTimeline({
                 isError ? 'border-red-500/40 bg-red-500/10' :
                   isDone ? 'border-emerald-500/35 bg-emerald-500/10' :
                     isActive ? 'border-cyan-400/45 bg-cyan-400/10 shadow-[0_0_12px_rgba(34,211,238,0.18)]' :
-                      'border-white/[0.08] bg-black/20'
+                      'border-[var(--color-line-default)] bg-[var(--color-surface-2)]'
               }`}>
                 {isError ? <XCircle size={13} /> :
                   isDone ? <CheckCircle2 size={13} /> :
@@ -1421,7 +1420,7 @@ function LiveIntelligence({ wf, selectedModel, selectedPlatform }: {
         <div className="rounded-2xl bg-white/[0.035] border border-white/[0.08] p-3">
           <div className="text-[9px] text-(--color-fg-subtle) mb-1.5">Progress</div>
           <div className="flex items-center gap-2 mb-1.5">
-            <div className="flex-1 h-1.5 rounded-full bg-black/40 overflow-hidden relative">
+            <div className="flex-1 h-1.5 rounded-full bg-[var(--color-line-default)] overflow-hidden relative">
               <motion.div
                 className="h-full rounded-full bg-linear-to-r from-cyan-400 via-violet-400 to-emerald-400"
                 animate={{ width: `${wf.progress_percent}%` }}
@@ -1479,6 +1478,7 @@ function InputStep({ onStart, isPending, selectedPlatform, onPlatformChange }: {
   selectedPlatform: WorkflowPlatform;
   onPlatformChange: (platform: WorkflowPlatform) => void;
 }) {
+  const isLight = useUIStore((s) => s.theme === 'light');
   const [brd, setBrd] = useState('');
   const [url, setUrl] = useState('');
   const [projectName, setProjectName] = useState('');
@@ -1497,7 +1497,9 @@ function InputStep({ onStart, isPending, selectedPlatform, onPlatformChange }: {
     if (!url.trim()) e.url = `${targetLabel} is required`;
     else if (platform !== 'desktop' && !/^https?:\/\//i.test(url)) e.url = 'URL must start with http:// or https://';
     if (!projectName.trim()) e.projectName = 'Project name is required';
-    if (!pageName.trim()) e.pageName = 'Page name is required';
+    if (!pageName.trim()) e.pageName = platform === 'desktop'
+      ? 'Screen / Window name is required'
+      : 'Page name is required';
     return e;
   }
 
@@ -1594,21 +1596,30 @@ function InputStep({ onStart, isPending, selectedPlatform, onPlatformChange }: {
           onDragLeave={() => setIsDragging(false)}
           onDrop={onDrop}
           className={`relative overflow-hidden rounded-xl border-2 border-dashed transition-all ${isDragging ? 'border-violet-500/60 bg-violet-500/10 scale-[1.01] shadow-[0_0_28px_rgba(139,92,246,0.18)]' : 'border-(--color-line-default) hover:border-line-strong'}`}
+          style={isLight
+            ? {
+                background: 'var(--color-surface-1)',
+                borderColor: 'var(--color-line-default)',
+                boxShadow: 'none',
+              }
+            : undefined}
         >
           <span
             aria-hidden
             className="pointer-events-none absolute inset-0 opacity-45"
             style={{
-              backgroundImage:
-                'linear-gradient(30deg, rgba(139,92,246,0.16) 12%, transparent 12.5%, transparent 87%, rgba(139,92,246,0.16) 87.5%, rgba(139,92,246,0.16)), linear-gradient(150deg, rgba(6,182,212,0.12) 12%, transparent 12.5%, transparent 87%, rgba(6,182,212,0.12) 87.5%, rgba(6,182,212,0.12)), linear-gradient(30deg, rgba(139,92,246,0.16) 12%, transparent 12.5%, transparent 87%, rgba(139,92,246,0.16) 87.5%, rgba(139,92,246,0.16)), linear-gradient(150deg, rgba(6,182,212,0.12) 12%, transparent 12.5%, transparent 87%, rgba(6,182,212,0.12) 87.5%, rgba(6,182,212,0.12))',
+              backgroundImage: isLight
+                ? 'none'
+                : 'linear-gradient(30deg, rgba(139,92,246,0.16) 12%, transparent 12.5%, transparent 87%, rgba(139,92,246,0.16) 87.5%, rgba(139,92,246,0.16)), linear-gradient(150deg, rgba(6,182,212,0.12) 12%, transparent 12.5%, transparent 87%, rgba(6,182,212,0.12) 87.5%, rgba(6,182,212,0.12)), linear-gradient(30deg, rgba(139,92,246,0.16) 12%, transparent 12.5%, transparent 87%, rgba(139,92,246,0.16) 87.5%, rgba(139,92,246,0.16)), linear-gradient(150deg, rgba(6,182,212,0.12) 12%, transparent 12.5%, transparent 87%, rgba(6,182,212,0.12) 87.5%, rgba(6,182,212,0.12))',
               backgroundPosition: '0 0, 0 0, 18px 31px, 18px 31px',
               backgroundSize: '36px 62px',
-              maskImage: 'linear-gradient(to bottom, transparent, black 18%, black 82%, transparent)',
+              maskImage: isLight ? 'none' : 'linear-gradient(to bottom, transparent, black 18%, black 82%, transparent)',
             }}
           />
           <span
             aria-hidden
             className={`pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-cyan-400/10 to-transparent transition-opacity ${isDragging ? 'opacity-100' : 'opacity-45'}`}
+            style={isLight ? { background: 'none' } : undefined}
           />
           {brd ? (
             <textarea
@@ -1618,7 +1629,10 @@ function InputStep({ onStart, isPending, selectedPlatform, onPlatformChange }: {
             />
           ) : (
             <div className="relative flex flex-col items-center justify-center py-10 cursor-pointer" onClick={() => fileRef.current?.click()}>
-              <div className="w-11 h-11 rounded-xl border border-cyan-400/25 bg-cyan-400/10 shadow-[0_0_18px_rgba(6,182,212,0.16)] flex items-center justify-center mb-3">
+              <div
+                className="w-11 h-11 rounded-xl border border-cyan-400/25 bg-cyan-400/10 shadow-[0_0_18px_rgba(6,182,212,0.16)] flex items-center justify-center mb-3"
+                style={isLight ? { background: 'var(--color-surface-1)', borderColor: 'var(--color-line-default)', boxShadow: 'none' } : undefined}
+              >
                 <Upload size={16} className="text-cyan-300" />
               </div>
               <p className="text-sm font-medium text-(--color-fg-muted)">Drop your BRD here</p>
@@ -1647,15 +1661,34 @@ function InputStep({ onStart, isPending, selectedPlatform, onPlatformChange }: {
       </div>
 
       <div>
-        <label className={labelCls}>{targetLabel}</label>
-        <div className="relative">
-          {favicon
-            ? <img src={favicon} alt="" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 rounded-sm" />
-            : <TargetIcon size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-(--color-fg-subtle)" />}
-          <input type={platform === 'desktop' ? 'text' : 'url'} className={`${inputCls} pl-8`} placeholder={targetPlaceholder}
-            value={url} onChange={(e) => setUrl(e.target.value)} />
+        <label className={labelCls}>Platform</label>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {PLATFORMS.map(({ id, label: lbl, icon: Icon }) => (
+            <button key={id} onClick={() => onPlatformChange(id)}
+              className={`flex min-h-10 items-center justify-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-all ${platform === id ? 'border-violet-500/50 bg-violet-500/10 text-violet-300' : 'border-(--color-line-default) text-(--color-fg-muted) hover:border-line-strong hover:bg-(--color-surface-2)'}`}>
+              <Icon size={14} />{lbl}
+            </button>
+          ))}
         </div>
-        {errors.url && <p className="text-[10px] text-red-400 mt-1">{errors.url}</p>}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label className={labelCls}>{targetLabel}</label>
+          <div className="relative">
+            {favicon
+              ? <img src={favicon} alt="" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 rounded-sm" />
+              : <TargetIcon size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-(--color-fg-subtle)" />}
+            <input type={platform === 'desktop' ? 'text' : 'url'} className={`${inputCls} pl-8`} placeholder={targetPlaceholder}
+              value={url} onChange={(e) => setUrl(e.target.value)} />
+          </div>
+          {errors.url && <p className="text-[10px] text-red-400 mt-1">{errors.url}</p>}
+        </div>
+        <div>
+          <label className={labelCls}>{pageLabel}</label>
+          <input className={inputCls} placeholder={pagePlaceholder} value={pageName} onChange={(e) => setPageName(e.target.value)} />
+          {errors.pageName && <p className="text-[10px] text-red-400 mt-1">{errors.pageName}</p>}
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
@@ -1667,24 +1700,6 @@ function InputStep({ onStart, isPending, selectedPlatform, onPlatformChange }: {
         <div>
           <label className={labelCls}>Module <span className="text-(--color-fg-subtle) font-normal">(optional)</span></label>
           <input className={inputCls} placeholder="Defaults to project name" value={moduleName} onChange={(e) => setModuleName(e.target.value)} />
-        </div>
-      </div>
-
-      <div>
-        <label className={labelCls}>{pageLabel}</label>
-        <input className={inputCls} placeholder={pagePlaceholder} value={pageName} onChange={(e) => setPageName(e.target.value)} />
-        {errors.pageName && <p className="text-[10px] text-red-400 mt-1">{errors.pageName}</p>}
-      </div>
-
-      <div>
-        <label className={labelCls}>Platform</label>
-        <div className="flex gap-2">
-          {PLATFORMS.map(({ id, label: lbl, icon: Icon }) => (
-            <button key={id} onClick={() => onPlatformChange(id)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium transition-all ${platform === id ? 'border-violet-500/50 bg-violet-500/10 text-violet-300' : 'border-(--color-line-default) text-(--color-fg-muted) hover:border-line-strong hover:bg-(--color-surface-2)'}`}>
-              <Icon size={14} />{lbl}
-            </button>
-          ))}
         </div>
       </div>
 
@@ -2096,6 +2111,7 @@ function ReviewStep({
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function AIWorkflowPage() {
+  const isLight = useUIStore((s) => s.theme === 'light');
   const [workflowId, setWorkflowId] = useState<string | null>(null);
   const [activeStep, setActiveStep] = useState<StepId>('input');
   const [completedSteps, setCompletedSteps] = useState<Set<StepId>>(new Set());
@@ -2164,28 +2180,26 @@ export default function AIWorkflowPage() {
   const visualProgress = wf?.progress_percent ?? Math.round((completedSteps.size / WORKFLOW_STEPS.length) * 100);
 
   return (
-    <div className="relative flex h-full min-h-0 overflow-hidden bg-[#020617]">
+    <div className="relative flex h-full min-h-0 overflow-hidden bg-[var(--color-bg-base)]">
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 opacity-70"
         style={{
-          background:
-            'radial-gradient(circle at 28% 12%, rgba(34,211,238,0.10), transparent 28%), radial-gradient(circle at 80% 18%, rgba(139,92,246,0.12), transparent 30%), linear-gradient(180deg, rgba(15,23,42,0.52), rgba(2,6,23,0.96))',
+          background: 'var(--light-bg-none)',
         }}
       />
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 opacity-[0.18]"
         style={{
-          backgroundImage:
-            'linear-gradient(rgba(148,163,184,0.12) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,0.10) 1px, transparent 1px)',
+          backgroundImage: 'var(--light-bg-none)',
           backgroundSize: '28px 28px',
-          maskImage: 'radial-gradient(circle at center, black, transparent 78%)',
+          maskImage: 'var(--light-bg-none)',
         }}
       />
 
-      <div className="relative z-10 w-72 shrink-0 border-r border-white/[0.08] bg-black/25 p-3 overflow-y-auto backdrop-blur-xl">
-        <div className="mb-3 rounded-2xl border border-white/[0.08] bg-white/[0.035] p-3">
+      <div className="relative z-10 w-72 shrink-0 border-r border-[var(--color-line-default)] bg-[var(--color-surface-overlay)] p-3 overflow-y-auto backdrop-blur-xl">
+        <div className="mb-3 rounded-2xl border border-[var(--color-line-default)] bg-[var(--color-surface-1)] p-3">
           <div className="flex items-center justify-between gap-3">
             <div>
               <div className="text-[10px] font-semibold text-(--color-fg-subtle) uppercase tracking-[0.18em]">{stages.length}-stage pipeline</div>
@@ -2195,13 +2209,22 @@ export default function AIWorkflowPage() {
                   : 'Project, scenario, scrape, XPath, configured steps'}
               </div>
             </div>
-            <div className="grid h-10 w-10 place-items-center rounded-xl border border-cyan-400/20 bg-cyan-400/10 font-mono text-[11px] text-cyan-200">
+            <div
+              className="grid h-10 w-10 place-items-center rounded-xl border border-cyan-400/20 bg-cyan-400/10 font-mono text-[11px] text-cyan-200"
+              style={isLight
+                ? {
+                    background: 'var(--color-surface-1)',
+                    borderColor: 'var(--color-line-default)',
+                    color: 'var(--color-fg-default)',
+                  }
+                : undefined}
+            >
               {String(activeStage.no).padStart(2, '0')}
             </div>
           </div>
-          <div className="mt-3 h-1 rounded-full bg-black/40 overflow-hidden">
+          <div className="mt-3 h-1 rounded-full bg-[var(--color-line-default)] overflow-hidden">
             <motion.div
-              className="h-full rounded-full bg-linear-to-r from-cyan-300 via-violet-300 to-emerald-300"
+              className={isLight ? 'h-full rounded-full bg-[var(--color-line-strong)]' : 'h-full rounded-full bg-linear-to-r from-cyan-300 via-violet-300 to-emerald-300'}
               animate={{ width: `${visualProgress}%` }}
               transition={{ duration: 0.5, ease: 'easeOut' }}
             />
@@ -2212,23 +2235,32 @@ export default function AIWorkflowPage() {
 
       <div className="relative z-10 flex-1 min-w-0 flex flex-col">
         <div
-          className="mx-5 mt-5 mb-3 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.045] px-5 py-4 shadow-[0_22px_70px_rgba(0,0,0,0.32)] backdrop-blur-xl"
+          className="mx-5 mt-5 mb-3 overflow-hidden rounded-2xl border border-[var(--color-line-default)] bg-[var(--color-surface-overlay)] px-5 py-4 shadow-[0_22px_70px_rgba(0,0,0,0.18)] backdrop-blur-xl"
           style={{
-            background:
-              'radial-gradient(ellipse 90% 70% at 84% 10%, rgba(34,211,238,0.12), transparent 64%), radial-gradient(ellipse 70% 70% at 16% 0%, rgba(139,92,246,0.13), transparent 62%), rgba(15,23,42,0.58)',
+            background: 'var(--color-surface-overlay)',
+            boxShadow: isLight ? '0 1px 3px rgba(15,23,42,0.05)' : '0 22px 70px rgba(0,0,0,0.18)',
           }}
         >
           <div className="flex flex-col gap-4">
             <div className="min-w-0">
               <div className="mb-2 flex flex-wrap items-center gap-2">
-                <span className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.16em] text-cyan-200">
+                <span
+                  className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.16em] text-cyan-200"
+                  style={isLight
+                    ? {
+                        background: 'var(--color-surface-1)',
+                        borderColor: 'var(--color-line-default)',
+                        color: 'var(--color-fg-muted)',
+                      }
+                    : undefined}
+                >
                   AI Execution OS
                 </span>
-                <span className="rounded-full border border-white/[0.08] bg-black/20 px-2.5 py-1 font-mono text-[10px] text-(--color-fg-subtle)">
+                <span className="rounded-full border border-[var(--color-line-default)] bg-[var(--color-surface-2)] px-2.5 py-1 font-mono text-[10px] text-(--color-fg-subtle)">
                   {workflowStepLabel(activeStepMeta, selectedPlatform)} / {activeStage.label}
                 </span>
               </div>
-              <h1 className="text-[22px] font-semibold tracking-tight text-white">AI Workflow Orchestrator</h1>
+              <h1 className="text-[22px] font-semibold tracking-tight text-(--color-fg-default)">AI Workflow Orchestrator</h1>
               <p className="mt-1 max-w-2xl text-[12px] leading-relaxed text-(--color-fg-subtle)">
                 Convert requirements into scenarios, test cases, page intelligence, and configured executable steps.
               </p>
@@ -2237,11 +2269,28 @@ export default function AIWorkflowPage() {
               <div className="flex items-center gap-2">
                 {wf && isPollingState(wf.state) && (
                   <motion.div animate={{ opacity: [0.55, 1, 0.55] }} transition={{ repeat: Infinity, duration: 1.5, ease: 'easeInOut' }}
-                    className="flex items-center gap-1.5 rounded-full border border-cyan-400/20 bg-cyan-400/10 px-2.5 py-1 text-[10px] text-cyan-200">
+                    className="flex items-center gap-1.5 rounded-full border border-cyan-400/20 bg-cyan-400/10 px-2.5 py-1 text-[10px] text-cyan-200"
+                    style={isLight
+                      ? {
+                          background: 'var(--color-surface-1)',
+                          borderColor: 'var(--color-line-default)',
+                          color: 'var(--color-fg-muted)',
+                        }
+                      : undefined}
+                  >
                     <Loader2 size={10} className="animate-spin" /> Live
                   </motion.div>
                 )}
-                <span className="rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2.5 py-1 font-mono text-[10px] tracking-[0.08em] text-emerald-200">
+                <span
+                  className="rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2.5 py-1 font-mono text-[10px] tracking-[0.08em] text-emerald-200"
+                  style={isLight
+                    ? {
+                        background: 'var(--color-surface-1)',
+                        borderColor: 'var(--color-line-default)',
+                        color: 'var(--color-fg-muted)',
+                      }
+                    : undefined}
+                >
                   3 AGENTS NOMINAL
                 </span>
               </div>
@@ -2266,9 +2315,9 @@ export default function AIWorkflowPage() {
             </div>
           </div>
           <div className="mt-4 grid grid-cols-[1fr_auto] items-center gap-3">
-            <div className="h-1.5 overflow-hidden rounded-full bg-black/35">
+            <div className="h-1.5 overflow-hidden rounded-full bg-[var(--color-line-default)]">
               <motion.div
-                className="h-full rounded-full bg-linear-to-r from-cyan-300 via-violet-300 to-emerald-300"
+                className={isLight ? 'h-full rounded-full bg-[var(--color-line-strong)]' : 'h-full rounded-full bg-linear-to-r from-cyan-300 via-violet-300 to-emerald-300'}
                 animate={{ width: `${visualProgress}%` }}
                 transition={{ duration: 0.5, ease: 'easeOut' }}
               />
@@ -2281,9 +2330,9 @@ export default function AIWorkflowPage() {
             aria-hidden
             className="pointer-events-none absolute inset-0 opacity-25"
             style={{
-              backgroundImage: 'linear-gradient(to bottom, rgba(255,255,255,0.05) 1px, transparent 1px)',
+              backgroundImage: isLight ? 'none' : 'linear-gradient(to bottom, rgba(255,255,255,0.05) 1px, transparent 1px)',
               backgroundSize: '100% 18px',
-              maskImage: 'linear-gradient(to bottom, transparent, black 10%, black 90%, transparent)',
+              maskImage: isLight ? 'none' : 'linear-gradient(to bottom, transparent, black 10%, black 90%, transparent)',
             }}
           />
           <AnimatePresence mode="wait">
@@ -2309,7 +2358,7 @@ export default function AIWorkflowPage() {
         </div>
       </div>
 
-      <div className="relative z-10 w-60 shrink-0 border-l border-white/[0.08] bg-black/25 p-3 overflow-y-auto backdrop-blur-xl">
+      <div className="relative z-10 w-60 shrink-0 border-l border-[var(--color-line-default)] bg-[var(--color-surface-overlay)] p-3 overflow-y-auto backdrop-blur-xl">
         <LiveIntelligence wf={wf} selectedModel={selectedModel} selectedPlatform={selectedPlatform} />
       </div>
     </div>

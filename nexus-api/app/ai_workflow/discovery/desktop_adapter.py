@@ -29,6 +29,18 @@ from app.page_discovery.schemas import (
 logger = logging.getLogger(__name__)
 
 _DESKTOP_LOW_CONFIDENCE_THRESHOLD = 0.6
+_LOW_SIGNAL_CONTROL_TYPES = {
+    "window",
+    "pane",
+    "group",
+    "separator",
+    "statusbar",
+    "status bar",
+    "titlebar",
+    "title bar",
+    "scrollbar",
+    "scroll bar",
+}
 _INTENT_STOPWORDS = {
     "a", "an", "and", "are", "as", "be", "by", "click", "enter", "fill",
     "for", "in", "into", "is", "it", "of", "on", "open", "select", "should",
@@ -249,6 +261,22 @@ def _objects_quality(objects: list[SpyObject]) -> float:
         if obj.control_type and obj.control_type.lower() not in {"window", "pane"}:
             quality += 0.25
     return quality
+
+
+def _is_capture_ready_object(obj: SpyObject) -> bool:
+    control_type = str(obj.control_type or "").strip().lower()
+    if control_type in _LOW_SIGNAL_CONTROL_TYPES:
+        return False
+    return bool(
+        obj.automation_id
+        or obj.name_text
+        or obj.primary_locator
+        or obj.uia_path
+    )
+
+
+def _capture_ready_object_count(objects: list[SpyObject]) -> int:
+    return sum(1 for obj in objects if _is_capture_ready_object(obj))
 
 
 def _context_for_object(objects: list[SpyObject], index: int, window_title: str) -> dict[str, Any]:
@@ -531,8 +559,9 @@ class DesktopDiscoveryAdapter:
                     stable_polls = 1 if objects else 0
                 last_signature = signature
 
+                ready_count = _capture_ready_object_count(objects)
                 if (
-                    len(objects) >= self._min_objects
+                    ready_count >= self._min_objects
                     and stable_polls >= self._stability_polls
                     and time.monotonic() >= settle_until
                 ):
@@ -540,6 +569,7 @@ class DesktopDiscoveryAdapter:
                         "capture_attempts": attempts,
                         "stabilized": True,
                         "stable_polls": stable_polls,
+                        "ready_object_count": ready_count,
                     }
             elif source is not None:
                 last_error = source.error or "UI tree capture failed"
@@ -549,7 +579,8 @@ class DesktopDiscoveryAdapter:
             if remaining <= 0:
                 break
 
-            if not best_objects and process_name and not tried_process_attach:
+            best_ready_count = _capture_ready_object_count(best_objects)
+            if best_ready_count < self._min_objects and process_name and not tried_process_attach:
                 tried_process_attach = True
                 wait_app = getattr(driver, "wait_app", None)
                 if wait_app is not None:
@@ -558,7 +589,7 @@ class DesktopDiscoveryAdapter:
                     except Exception as exc:
                         last_error = str(exc)
 
-            if not best_objects and window_title and not tried_window_wait:
+            if best_ready_count < self._min_objects and window_title and not tried_window_wait:
                 tried_window_wait = True
                 wait_window = getattr(driver, "wait_window", None)
                 if wait_window is not None:
@@ -573,12 +604,14 @@ class DesktopDiscoveryAdapter:
 
             await asyncio.sleep(min(self._poll_interval, max(0.05, remaining)))
 
-        if len(best_objects) >= self._min_objects:
+        best_ready_count = _capture_ready_object_count(best_objects)
+        if best_ready_count >= self._min_objects:
             return best_tree, best_objects, {
                 "capture_attempts": attempts,
                 "stabilized": False,
                 "stable_polls": stable_polls,
                 "timed_out_with_best_snapshot": True,
+                "ready_object_count": best_ready_count,
             }
 
         message = (

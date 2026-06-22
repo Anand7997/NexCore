@@ -12,7 +12,7 @@ def build_brd_analysis_prompt(brd_text: str, webpage_url: str, project_name: str
         "Extract:\n"
         "1. A concise summary (2-3 sentences).\n"
         "2. Key functional features that must be tested, including important inferred features when the BRD is sparse.\n"
-        "3. Suggested module names (e.g. Authentication, Checkout).\n"
+        "3. Suggested module names using product areas described or strongly implied by the BRD.\n"
         "4. High-level test objectives that can drive scenario and test-step generation before scraping.\n\n"
         "Return a JSON object matching the BRDAnalysis schema."
     )

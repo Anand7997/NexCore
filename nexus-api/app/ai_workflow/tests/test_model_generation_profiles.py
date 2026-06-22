@@ -66,75 +66,78 @@ def test_sparse_brd_prompts_infer_flows_before_scraping():
     assert "without inventing locator syntax" in testcase_prompt
 
 
-def test_testcase_prompt_blocks_auth_inference_for_calculator():
+def test_testcase_prompt_uses_generic_desktop_profile_without_app_hardcoding():
     app_profile = _application_learning_profile(
         platform="desktop",
-        app_target="calc.exe",
-        page_name="Calculator",
-        project_name="Calculator",
-        brd_text="Automate calculator arithmetic.",
+        app_target="sample-desktop.exe",
+        page_name="Main Screen",
+        project_name="Desktop Tool",
+        brd_text="Automate the requested desktop workflow.",
     )
     prompt = build_testcase_prompt(
-        scenario_title="Calculator smoke",
-        business_requirement="Automate calculator arithmetic",
+        scenario_title="Desktop workflow smoke",
+        business_requirement="Automate the requested desktop workflow",
         test_type="functional",
         priority="medium",
-        page_name="Calculator",
+        page_name="Main Screen",
         elements_summary="No elements yet.",
         platform="desktop",
-        app_target="calc.exe",
+        app_target="sample-desktop.exe",
         application_profile=app_profile,
     )
 
-    assert "Windows Calculator desktop utility" in app_profile
+    assert "Inferred application type: desktop application" in app_profile
     assert "Application learning profile" in prompt
     assert "Do not invent sign-in, email, password" in prompt
-    assert "For desktop Calculator/calc.exe, generate arithmetic workflows only" in prompt
-    assert "Click digit 7" in prompt
+    assert "exact visible control name or business action" in prompt
+    assert "Calculator/calc.exe" not in prompt
+    assert "Click digit 7" not in prompt
 
 
 def test_scenario_prompt_learns_application_before_generating_cases():
     app_profile = _application_learning_profile(
         platform="desktop",
-        app_target=r"C:\Windows\System32\calc.exe",
-        page_name="Calculator",
-        project_name="Calculator",
-        brd_text="Validate calculator arithmetic.",
+        app_target=r"C:\Apps\sample-desktop.exe",
+        page_name="Main Screen",
+        project_name="Desktop Tool",
+        brd_text="Validate the requested desktop workflow.",
     )
     prompt = build_scenario_prompt(
-        brd_text="Validate calculator arithmetic.",
-        project_name="Calculator",
-        page_name="Calculator",
+        brd_text="Validate the requested desktop workflow.",
+        project_name="Desktop Tool",
+        page_name="Main Screen",
         elements_summary="Scraping has not run yet.",
-        brd_analysis_summary="Calculator arithmetic validation.",
+        brd_analysis_summary="Desktop workflow validation.",
         platform="desktop",
-        app_target=r"C:\Windows\System32\calc.exe",
+        app_target=r"C:\Apps\sample-desktop.exe",
         application_profile=app_profile,
     )
 
     assert "Application learning profile" in prompt
     assert "Application-first generation rules" in prompt
-    assert "Windows Calculator desktop utility" in prompt
+    assert "Inferred application type: desktop application" in prompt
     assert "Do not create sign-in, email, password" in prompt
-    assert "generate arithmetic" in prompt.lower()
+    assert "direct native application operations" in prompt
+    assert "Calculator/calc.exe" not in prompt
+    assert "IntelliJ IDEA" not in prompt
 
 
-def test_calculator_scenario_generation_does_not_start_with_login():
+def test_desktop_scenario_generation_does_not_start_with_login():
     app_profile = _application_learning_profile(
         platform="desktop",
-        app_target="calc.exe",
-        page_name="Calculator",
-        project_name="Calculator",
-        brd_text="Validate calculator arithmetic.",
+        app_target="sample-desktop.exe",
+        page_name="Main Screen",
+        project_name="Desktop Tool",
+        brd_text="Validate the requested desktop workflow.",
     )
     prompt = build_scenario_prompt(
-        brd_text="Validate calculator arithmetic.",
-        project_name="Calculator",
-        page_name="Calculator",
+        brd_text="Validate the requested desktop workflow.",
+        project_name="Desktop Tool",
+        page_name="Main Screen",
         elements_summary="Scraping has not run yet.",
-        brd_analysis_summary="Calculator arithmetic validation.",
+        brd_analysis_summary="Desktop workflow validation.",
         platform="desktop",
-        app_target="calc.exe",
+        app_target="sample-desktop.exe",
         application_profile=app_profile,
     )
 
@@ -144,7 +147,7 @@ def test_calculator_scenario_generation_does_not_start_with_login():
         for scenario in result.scenarios
     )
 
-    assert "calculator" in scenario_text
+    assert "desktop application" in scenario_text
     assert "login" not in scenario_text
     assert "email" not in scenario_text
     assert "password" not in scenario_text

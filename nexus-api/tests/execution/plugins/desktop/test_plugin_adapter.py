@@ -89,12 +89,15 @@ def test_node_specs_expose_driver_selection_and_locator_candidates():
     assert "locators" in click_schema
     assert "x" in click_schema
     assert "y" in click_schema
+    assert "analog" in click_schema
+    assert "virtual_object" in click_schema
     assert "min_confidence" in click_schema
     assert "review_confidence" in click_schema
     assert "window_title" in click_schema
     assert "process_name" in click_schema
     assert "ocr" in click_schema["strategy"]["enum"]
     assert "visual" in click_schema["strategy"]["enum"]
+    assert "relative" in click_schema["strategy"]["enum"]
     for node_type in (
         "desktop.attach",
         "desktop.close",
@@ -378,6 +381,29 @@ async def test_click_falls_back_to_recorded_coordinates_when_locator_fails():
     driver.click_coordinates.assert_awaited_once_with(104.0, 56.0, button="left")
     assert result.output["coordinate_fallback"] is True
     assert result.output["strategy"] == "coordinates"
+
+
+@pytest.mark.asyncio
+async def test_click_uses_nested_analog_point_when_top_level_coordinates_are_missing():
+    driver = _mock_driver()
+    driver.click = AsyncMock(return_value=DriverResult(success=False, error="Element not found for click"))
+    plugin = DesktopExecutionPlugin()
+    plugin._sessions["exec1"] = driver
+    envelope = _envelope(
+        "desktop.click",
+        {
+            "selector": "OwnerDrawnGrid",
+            "strategy": "name",
+            "analog": {"point": {"x": 310, "y": 440}, "low_level": True},
+            "coordinate_fallback": True,
+        },
+    )
+
+    result = await plugin.execute(envelope)
+
+    assert result.success is True
+    driver.click_coordinates.assert_awaited_once_with(310.0, 440.0, button="left")
+    assert result.output["coordinate_fallback"] is True
 
 
 @pytest.mark.asyncio

@@ -24,6 +24,7 @@ def _action(**overrides):
         "window_title": "Invoice",
         "screen": "Main",
         "locators": [],
+        "metadata": {},
     }
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
@@ -44,6 +45,80 @@ def test_compile_recorded_click_prefers_automation_id():
     assert compiled["node"]["config"]["selector"] == "btnSubmit"
     assert compiled["node"]["config"]["strategy"] == "accessibility id"
     assert compiled["repository_suggestion"]["object_key"] == "submit_button"
+
+
+def test_compile_recorded_click_demotes_placeholder_window_name():
+    compiled = compile_recorded_action(_action(
+        object_key="untitled2",
+        object_name="untitled2",
+        control_type="Window",
+        automation_id="",
+        name_text="untitled2",
+        class_name="SunAwtFrame",
+        uia_path="/Pane[@Name='Desktop 1']/Window[@Name='untitled2']",
+        locator_strategy="name",
+    ), 1)
+
+    assert compiled["keyword"]["object"] == "Window / SunAwtFrame"
+    assert compiled["node"]["config"]["strategy"] == "xpath"
+    assert compiled["node"]["config"]["selector"] == "/Pane[@Name='Desktop 1']/Window[@Name='untitled2']"
+    assert compiled["repository_suggestion"]["name_text"] == ""
+
+
+def test_compile_recorded_action_uses_coordinate_fallback_when_no_uia_locator():
+    compiled = compile_recorded_action(_action(
+        object_key="",
+        object_name="",
+        control_type="",
+        automation_id="",
+        name_text="",
+        class_name="",
+        uia_path="",
+        locator_strategy="coordinate",
+        x=12,
+        y=34,
+    ), 1)
+
+    assert compiled["node"]["config"]["strategy"] == "coordinate"
+    assert compiled["node"]["config"]["selector"] == "x=12,y=34"
+    assert compiled["node"]["config"]["coordinate_fallback"] is True
+    assert compiled["node"]["config"]["analog"]["low_level"] is True
+    assert any(
+        item["strategy"] == "coordinate" and item["locator"] == "x=12,y=34"
+        for item in compiled["node"]["config"]["locators"]
+    )
+
+
+def test_compile_recorded_action_promotes_virtual_object_to_custom_control():
+    compiled = compile_recorded_action(_action(
+        automation_id="",
+        name_text="",
+        class_name="OwnerDrawnGrid",
+        control_type="CustomGrid",
+        locator_strategy="coordinate",
+        x=140,
+        y=220,
+        metadata={
+            "recording_mode": "analog",
+            "capture_scope": "window_fallback",
+            "virtual_object": {
+                "name": "Ledger Grid",
+                "object_class": "OwnerDrawnGrid",
+                "control_type": "CustomGrid",
+                "class_name": "OwnerDrawnGrid",
+                "locator_strategy": "coordinate",
+                "primary_locator": "x=140,y=220",
+                "locators": [{"strategy": "coordinate", "locator": "x=140,y=220", "score": 0.34}],
+            },
+        },
+    ), 1)
+
+    assert compiled["node"]["type"] == "desktop.custom_control_action"
+    assert compiled["node"]["config"]["extension_pack"] == "custom_control"
+    assert compiled["node"]["config"]["action"] == "click"
+    assert compiled["node"]["config"]["recording_mode"] == "analog"
+    assert compiled["node"]["config"]["virtual_object"]["object_class"] == "OwnerDrawnGrid"
+    assert compiled["repository_suggestion"]["metadata"]["virtual_object"]["object_class"] == "OwnerDrawnGrid"
 
 
 def test_compile_recorded_type_adds_value_to_node_config():
@@ -81,19 +156,19 @@ def test_compile_recording_adds_launch_node_and_edges():
 def test_compile_recording_carries_window_scope_to_launch_node():
     session = SimpleNamespace(
         id="session1",
-        name="VS Code flow",
-        application_path=r"C:\Users\VAnand\AppData\Local\Programs\Microsoft VS Code\Code.exe",
-        application="VS Code",
+        name="Generic editor flow",
+        application_path=r"C:\Tools\generic-editor.exe",
+        application="Generic Editor",
         driver_type="uia3",
-        window_title="Visual Studio Code",
+        window_title="Generic Editor",
         process_name="17880",
     )
     compiled = compile_recording(session, [_action()])
 
     launch_config = compiled["workflow"]["nodes"][0]["config"]
-    assert launch_config["window_title"] == "Visual Studio Code"
+    assert launch_config["window_title"] == "Generic Editor"
     assert launch_config["process_name"] == ""
-    assert launch_config["args"] == ["--new-window"]
+    assert "args" not in launch_config
     assert launch_config["attach_if_running"] is True
 
 
@@ -136,12 +211,12 @@ def test_compile_recording_ignores_shell_window_title_without_launchable_app():
     assert all(node["type"] != "desktop.launch" for node in compiled["workflow"]["nodes"])
 
 
-def test_compile_recording_replaces_bad_shell_window_title_for_vs_code():
+def test_compile_recording_replaces_bad_shell_window_title_with_application_name():
     session = SimpleNamespace(
         id="session1",
-        name="VS Code flow",
-        application_path=r"C:\Users\VAnand\AppData\Local\Programs\Microsoft VS Code\Code.exe",
-        application="VS Code",
+        name="Generic editor flow",
+        application_path=r"C:\Tools\generic-editor.exe",
+        application="Generic Editor",
         driver_type="uia3",
         window_title="Snap Assist",
         process_name="17880",
@@ -150,18 +225,18 @@ def test_compile_recording_replaces_bad_shell_window_title_for_vs_code():
 
     launch_node = compiled["workflow"]["nodes"][0]
     launch_config = launch_node["config"]
-    assert launch_config["window_title"] == "Visual Studio Code"
+    assert launch_config["window_title"] == "Generic Editor"
     assert launch_config["process_name"] == ""
-    assert launch_config["args"] == ["--new-window"]
+    assert "args" not in launch_config
     assert launch_node["retry_policy"]["max_attempts"] == 1
 
 
-def test_compile_recording_infers_intellij_launch_scope_from_path():
+def test_compile_recording_infers_launch_scope_from_application_name_and_path():
     session = SimpleNamespace(
         id="session1",
-        name="IntelliJ flow",
-        application_path=r"C:\Users\VAnand\AppData\Local\JetBrains\IntelliJ IDEA Community Edition 2024.3.5\bin\idea64.exe",
-        application="IntelliJ IDEA",
+        name="Custom tool flow",
+        application_path=r"C:\Apps\custom-tool.exe",
+        application="Custom Tool",
         driver_type="uia3",
         window_title="Windows PowerShell",
         process_name="",
@@ -169,9 +244,9 @@ def test_compile_recording_infers_intellij_launch_scope_from_path():
     compiled = compile_recording(session, [_action()])
 
     launch_config = compiled["workflow"]["nodes"][0]["config"]
-    assert launch_config["app"] == r"C:\Users\VAnand\AppData\Local\JetBrains\IntelliJ IDEA Community Edition 2024.3.5\bin\idea64.exe"
-    assert launch_config["window_title"] == "IntelliJ IDEA"
-    assert launch_config["process_name"] == "idea64.exe"
+    assert launch_config["app"] == r"C:\Apps\custom-tool.exe"
+    assert launch_config["window_title"] == "Custom Tool"
+    assert launch_config["process_name"] == "custom-tool.exe"
 
 
 def test_compile_recording_suggests_login_reusable_component():

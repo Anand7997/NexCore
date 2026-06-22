@@ -39,6 +39,7 @@ import {
   Wifi,
   Zap,
 } from 'lucide-react';
+import { useUIStore } from '@/lib/stores/uiStore';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -198,10 +199,14 @@ function genId(): string {
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
 function StatusBadge({ label, color, pulse }: { label: string; color: string; pulse: string }) {
+  const isLight = useUIStore((s) => s.theme === 'light');
+
   return (
     <div
       className="flex items-center gap-2 rounded-full border px-3 py-1"
-      style={{ borderColor: `${color}33`, backgroundColor: `${color}11` }}
+      style={isLight
+        ? { borderColor: 'var(--color-line-default)', backgroundColor: 'var(--color-surface-1)' }
+        : { borderColor: `${color}33`, backgroundColor: `${color}11` }}
     >
       <span className="relative flex h-1.5 w-1.5">
         <span
@@ -210,7 +215,7 @@ function StatusBadge({ label, color, pulse }: { label: string; color: string; pu
         />
         <span className="relative inline-flex h-1.5 w-1.5 rounded-full" style={{ backgroundColor: color }} />
       </span>
-      <span className="text-[12px] font-mono" style={{ color }}>{label}</span>
+      <span className="text-[12px] font-mono" style={{ color: isLight ? 'var(--color-fg-muted)' : color }}>{label}</span>
     </div>
   );
 }
@@ -366,6 +371,7 @@ function InsightRow({ item, index }: { item: InsightItem; index: number }) {
 
 function OrchestrationPulse() {
   const [events, setEvents] = useState<PulseEvent[]>([]);
+  const isLight = useUIStore((s) => s.theme === 'light');
 
   useEffect(() => {
     // Seed initial events client-side only (avoids SSR hydration mismatch)
@@ -390,21 +396,36 @@ function OrchestrationPulse() {
   const density = Math.min(100, events.length * 10);
 
   return (
-    <div className="relative overflow-hidden rounded-xl border border-[rgba(34,211,238,0.18)] bg-[linear-gradient(135deg,rgba(34,211,238,0.075),rgba(34,197,94,0.035)_48%,rgba(3,17,24,0.24))] p-3.5">
+    <div className="relative overflow-hidden rounded-xl border border-[var(--color-line-default)] bg-[var(--color-surface-1)] p-3.5">
       <div
         className="pointer-events-none absolute inset-x-4 top-0 h-px"
-        style={{ background: 'linear-gradient(90deg, transparent, rgba(34,211,238,0.75), rgba(34,197,94,0.5), transparent)' }}
+        style={{ background: 'rgba(15,23,42,0.08)' }}
       />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
-          <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-cyan-300/25 bg-cyan-300/10">
-            <span className="absolute inset-0 rounded-xl bg-cyan-300/10 animate-pulse" />
-            <Cpu size={17} className="relative text-cyan-100" />
+          <div
+            className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-cyan-300/25 bg-cyan-300/10"
+            style={isLight ? { background: 'var(--color-surface-1)', borderColor: 'var(--color-line-default)' } : undefined}
+          >
+            <span
+              className="absolute inset-0 rounded-xl bg-cyan-300/10 animate-pulse"
+              style={isLight ? { background: 'transparent' } : undefined}
+            />
+            <Cpu size={17} className="relative text-cyan-100" style={isLight ? { color: 'var(--color-fg-default)' } : undefined} />
           </div>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full border border-emerald-300/25 bg-emerald-300/10 px-2.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-100">
+              <span
+                className="rounded-full border border-emerald-300/25 bg-emerald-300/10 px-2.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-100"
+                style={isLight
+                  ? {
+                      background: 'var(--color-surface-1)',
+                      borderColor: 'var(--color-line-default)',
+                      color: 'var(--color-fg-muted)',
+                    }
+                  : undefined}
+              >
                 Live engine
               </span>
               <span className="font-mono text-[10px] text-[var(--color-fg-subtle)]">
@@ -418,22 +439,31 @@ function OrchestrationPulse() {
         </div>
 
         <div className="grid grid-cols-2 gap-2 text-right">
-          <div className="rounded-lg border border-white/[0.07] bg-black/20 px-3 py-1.5">
-            <div className="font-mono text-[16px] font-semibold leading-none text-cyan-100">{events.length}</div>
+          <div
+            className="rounded-lg border border-white/[0.07] bg-black/20 px-3 py-1.5"
+            style={isLight ? { background: 'var(--color-surface-1)', borderColor: 'var(--color-line-default)' } : undefined}
+          >
+            <div className="font-mono text-[16px] font-semibold leading-none text-[var(--color-accent-default)]">{events.length}</div>
             <div className="mt-0.5 text-[9px] uppercase tracking-wide text-[var(--color-fg-subtle)]">signals</div>
           </div>
-          <div className="rounded-lg border border-white/[0.07] bg-black/20 px-3 py-1.5">
-            <div className="font-mono text-[16px] font-semibold leading-none text-emerald-100">{density}%</div>
+          <div
+            className="rounded-lg border border-white/[0.07] bg-black/20 px-3 py-1.5"
+            style={isLight ? { background: 'var(--color-surface-1)', borderColor: 'var(--color-line-default)' } : undefined}
+          >
+            <div className="font-mono text-[16px] font-semibold leading-none text-[var(--color-state-success)]">{density}%</div>
             <div className="mt-0.5 text-[9px] uppercase tracking-wide text-[var(--color-fg-subtle)]">load</div>
           </div>
         </div>
       </div>
 
-      <div className="relative mt-3 overflow-hidden rounded-xl border border-white/[0.07] bg-black/20 px-3 py-3">
+      <div
+        className="relative mt-3 overflow-hidden rounded-xl border border-white/[0.07] bg-black/20 px-3 py-3"
+        style={isLight ? { background: 'var(--color-surface-1)', borderColor: 'var(--color-line-default)' } : undefined}
+      >
         <div className="absolute left-6 right-6 top-[31px] h-px bg-[var(--color-line-default)]" />
         <motion.div
           aria-hidden
-          className="absolute top-[30px] h-[3px] w-24 rounded-full bg-[linear-gradient(90deg,transparent,#67e8f9,#22c55e,transparent)]"
+          className="absolute top-[30px] h-[2px] w-24 rounded-full bg-[rgba(15,23,42,0.18)]"
           animate={{ x: ['-20%', '760%'] }}
           transition={{ repeat: Infinity, duration: 3.1, ease: 'linear' }}
         />
@@ -448,15 +478,21 @@ function OrchestrationPulse() {
                 key={step.type}
                 className="rounded-xl border px-2.5 py-2 transition-all"
                 style={{
-                  background: isLatest ? `${step.color}18` : 'rgba(255,255,255,0.025)',
-                  borderColor: isLatest ? `${step.color}55` : 'rgba(255,255,255,0.075)',
-                  boxShadow: isLatest ? `0 0 18px ${step.color}22` : 'none',
+                  background: isLight
+                    ? 'var(--color-surface-1)'
+                    : isLatest ? `${step.color}18` : 'rgba(255,255,255,0.025)',
+                  borderColor: isLight
+                    ? 'var(--color-line-default)'
+                    : isLatest ? `${step.color}55` : 'rgba(255,255,255,0.075)',
+                  boxShadow: isLight ? 'none' : isLatest ? `0 0 18px ${step.color}22` : 'none',
                 }}
               >
                 <div className="flex items-center justify-between gap-2">
                   <span
                     className="grid h-7 w-7 place-items-center rounded-lg border"
-                    style={{ background: `${step.color}14`, borderColor: `${step.color}30` }}
+                    style={isLight
+                      ? { background: 'var(--color-surface-1)', borderColor: 'var(--color-line-default)' }
+                      : { background: `${step.color}14`, borderColor: `${step.color}30` }}
                   >
                     <Icon size={13} style={{ color: step.color }} />
                   </span>
@@ -483,7 +519,9 @@ function OrchestrationPulse() {
               exit={{ opacity: 0, y: -4, scale: 0.96 }}
               transition={{ duration: 0.18, ease: [0.22, 0.61, 0.36, 1] }}
               className="flex items-center gap-1.5 rounded-full border px-2.5 py-1"
-              style={{ background: `${ev.color}10`, borderColor: `${ev.color}2f` }}
+              style={isLight
+                ? { background: 'var(--color-surface-1)', borderColor: 'var(--color-line-default)' }
+                : { background: `${ev.color}10`, borderColor: `${ev.color}2f` }}
             >
               <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: ev.color }} />
               <span className="font-mono text-[10px] font-medium" style={{ color: ev.color }}>{ev.label}</span>
@@ -498,6 +536,7 @@ function OrchestrationPulse() {
 
 function ConductorBridge({ cards }: { cards: MetricCard[] }) {
   const stages = PULSE_EVENT_TYPES.slice(0, 5);
+  const isLight = useUIStore((s) => s.theme === 'light');
 
   return (
     <motion.section
@@ -506,24 +545,22 @@ function ConductorBridge({ cards }: { cards: MetricCard[] }) {
       transition={{ duration: 0.3, delay: 0.14 }}
       className="relative overflow-hidden rounded-2xl border px-4 py-3.5"
       style={{
-        background:
-          'radial-gradient(circle at 50% 0%, rgba(34,211,238,0.16), transparent 32%), linear-gradient(135deg, rgba(34,211,238,0.055), rgba(161,149,255,0.05) 46%, rgba(69,192,138,0.045))',
-        borderColor: 'rgba(34,211,238,0.18)',
-        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.045), 0 18px 60px rgba(0,0,0,0.16)',
+        background: 'var(--color-surface-1)',
+        borderColor: 'var(--color-line-default)',
+        boxShadow: '0 1px 3px rgba(15,23,42,0.05)',
       }}
     >
       <div
         className="pointer-events-none absolute inset-0 opacity-30"
         style={{
-          backgroundImage:
-            'linear-gradient(rgba(103,232,249,0.09) 1px, transparent 1px), linear-gradient(90deg, rgba(103,232,249,0.09) 1px, transparent 1px)',
+          backgroundImage: 'none',
           backgroundSize: '34px 34px',
         }}
       />
       <motion.div
         aria-hidden
         className="pointer-events-none absolute left-8 right-8 top-1/2 hidden h-px xl:block"
-        style={{ background: 'linear-gradient(90deg, rgba(91,140,255,0.1), rgba(34,211,238,0.75), rgba(69,192,138,0.18))' }}
+        style={{ background: 'rgba(15,23,42,0.08)' }}
         animate={{ opacity: [0.35, 0.9, 0.35] }}
         transition={{ repeat: Infinity, duration: 2.8, ease: 'easeInOut' }}
       />
@@ -531,8 +568,11 @@ function ConductorBridge({ cards }: { cards: MetricCard[] }) {
       <div className="relative flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
-            <Network size={15} style={{ color: '#67e8f9' }} />
-            <h2 className="text-[13px] font-semibold uppercase tracking-[0.16em] text-cyan-100">
+            <Network size={15} style={{ color: isLight ? 'var(--color-fg-default)' : '#67e8f9' }} />
+            <h2
+              className="text-[13px] font-semibold uppercase tracking-[0.16em] text-cyan-100"
+              style={isLight ? { color: 'var(--color-fg-default)' } : undefined}
+            >
               Execution Orchestra
             </h2>
           </div>
@@ -540,7 +580,16 @@ function ConductorBridge({ cards }: { cards: MetricCard[] }) {
             Signals move from workspace health into the conductor, then out to execution stages.
           </p>
         </div>
-        <div className="flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-cyan-100">
+        <div
+          className="flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-cyan-100"
+          style={isLight
+            ? {
+                background: 'var(--color-surface-1)',
+                borderColor: 'var(--color-line-default)',
+                color: 'var(--color-fg-muted)',
+              }
+            : undefined}
+        >
           <span className="h-1.5 w-1.5 rounded-full bg-cyan-200 shadow-[0_0_14px_rgba(103,232,249,0.9)]" />
           tempo 2.2s
         </div>
@@ -554,12 +603,16 @@ function ConductorBridge({ cards }: { cards: MetricCard[] }) {
               <div
                 key={card.id}
                 className="relative overflow-hidden rounded-xl border px-3 py-2.5"
-                style={{ background: `${card.colorClass}0c`, borderColor: `${card.colorClass}24` }}
+                style={isLight
+                  ? { background: 'var(--color-surface-1)', borderColor: 'var(--color-line-default)' }
+                  : { background: `${card.colorClass}0c`, borderColor: `${card.colorClass}24` }}
               >
                 <div className="flex items-center gap-2">
                   <span
                     className="grid h-7 w-7 shrink-0 place-items-center rounded-lg border"
-                    style={{ background: `${card.colorClass}14`, borderColor: `${card.colorClass}30` }}
+                    style={isLight
+                      ? { background: 'var(--color-surface-1)', borderColor: 'var(--color-line-default)' }
+                      : { background: `${card.colorClass}14`, borderColor: `${card.colorClass}30` }}
                   >
                     <Icon size={13} style={{ color: card.colorClass }} />
                   </span>
@@ -581,6 +634,7 @@ function ConductorBridge({ cards }: { cards: MetricCard[] }) {
           <motion.div
             aria-hidden
             className="absolute inset-0 rounded-full border border-cyan-300/20"
+            style={isLight ? { borderColor: 'var(--color-line-default)' } : undefined}
             animate={{ scale: [0.92, 1.04, 0.92], opacity: [0.32, 0.75, 0.32] }}
             transition={{ repeat: Infinity, duration: 2.6, ease: 'easeInOut' }}
           />
@@ -590,13 +644,21 @@ function ConductorBridge({ cards }: { cards: MetricCard[] }) {
             animate={{ rotate: 360 }}
             transition={{ repeat: Infinity, duration: 11, ease: 'linear' }}
             style={{
-              background:
-                'conic-gradient(from 90deg, rgba(34,211,238,0.0), rgba(34,211,238,0.34), rgba(69,192,138,0.24), rgba(34,211,238,0.0))',
+              background: isLight
+                ? 'none'
+                : 'conic-gradient(from 90deg, rgba(34,211,238,0.0), rgba(34,211,238,0.34), rgba(69,192,138,0.24), rgba(34,211,238,0.0))',
+              borderColor: isLight ? 'var(--color-line-default)' : undefined,
             }}
           />
-          <div className="relative grid h-[74px] w-[74px] place-items-center rounded-2xl border border-cyan-300/30 bg-[#061b24] shadow-[0_0_32px_rgba(34,211,238,0.24)]">
-            <Zap size={22} className="text-cyan-100" />
-            <span className="absolute -bottom-6 whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.16em] text-cyan-100">
+          <div
+            className="relative grid h-[74px] w-[74px] place-items-center rounded-2xl border border-cyan-300/30 bg-[var(--color-surface-1)] shadow-[0_0_32px_rgba(34,211,238,0.18)]"
+            style={isLight ? { borderColor: 'var(--color-line-default)', boxShadow: '0 1px 3px rgba(15,23,42,0.05)' } : undefined}
+          >
+            <Zap size={22} className="text-cyan-100" style={isLight ? { color: 'var(--color-fg-default)' } : undefined} />
+            <span
+              className="absolute -bottom-6 whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.16em] text-cyan-100"
+              style={isLight ? { color: 'var(--color-fg-muted)' } : undefined}
+            >
               conductor
             </span>
           </div>
@@ -609,7 +671,9 @@ function ConductorBridge({ cards }: { cards: MetricCard[] }) {
               <div
                 key={stage.type}
                 className="rounded-xl border px-3 py-2.5"
-                style={{ background: `${stage.color}0c`, borderColor: `${stage.color}24` }}
+                style={isLight
+                  ? { background: 'var(--color-surface-1)', borderColor: 'var(--color-line-default)' }
+                  : { background: `${stage.color}0c`, borderColor: `${stage.color}24` }}
               >
                 <div className="flex items-center justify-between gap-2">
                   <Icon size={13} style={{ color: stage.color }} />
@@ -813,6 +877,7 @@ function ModuleLibraryTile({ tile, index }: { tile: RouteTile; index: number }) 
 }
 
 export default function CommandCenterPage() {
+  const isLight = useUIStore((s) => s.theme === 'light');
   // Live metric state
   const [metrics, setMetrics] = useState({
     executions: 7,
@@ -907,17 +972,25 @@ export default function CommandCenterPage() {
           transition={{ duration: 0.28, ease: [0.22, 0.61, 0.36, 1] }}
           className="relative isolate overflow-hidden rounded-[26px] border p-5 lg:p-6"
           style={{
-            background:
-              'radial-gradient(circle at 10% 0%, rgba(34,211,238,0.18), transparent 30%), radial-gradient(circle at 88% 14%, rgba(99,102,241,0.22), transparent 34%), linear-gradient(135deg, rgba(5,14,24,0.96), rgba(8,18,30,0.9))',
-            borderColor: 'rgba(125, 211, 252, 0.18)',
-            boxShadow: '0 24px 80px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.06)',
+            background: 'var(--color-surface-1)',
+            borderColor: 'var(--color-line-default)',
+            boxShadow: '0 1px 3px rgba(15,23,42,0.06)',
           }}
         >
-          <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(103,232,249,0.8),rgba(129,140,248,0.55),transparent)]" />
+          <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-[rgba(15,23,42,0.08)]" />
           <div className="relative grid gap-5 xl:grid-cols-[minmax(0,1fr)_420px] xl:items-center">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2.5">
-                <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-100">
+                <span
+                  className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-100"
+                  style={isLight
+                    ? {
+                        background: 'var(--color-surface-1)',
+                        borderColor: 'var(--color-line-default)',
+                        color: 'var(--color-fg-muted)',
+                      }
+                    : undefined}
+                >
                   Workspace Command Center
                 </span>
                 <StatusBadge label="3 Active Agents" color="#45c08a" pulse="green" />
@@ -925,21 +998,21 @@ export default function CommandCenterPage() {
                 <LiveClock />
               </div>
 
-              <h1 className="mt-4 max-w-3xl text-[30px] font-semibold leading-[1.06] tracking-[-0.035em] text-white md:text-[40px]">
+              <h1 className="mt-4 max-w-3xl text-[30px] font-semibold leading-[1.06] tracking-[-0.035em] text-[var(--color-fg-default)] md:text-[40px]">
                 See the risk, control the run, and launch the next QA mission.
               </h1>
-              <p className="mt-3 max-w-2xl text-[15px] leading-6 text-slate-300">
+              <p className="mt-3 max-w-2xl text-[15px] leading-6 text-[var(--color-fg-muted)]">
                 A cleaner operating floor for executions, AI recoveries, flaky-test triage, topology, and every module your team needs next.
               </p>
 
               <div className="mt-5 flex flex-wrap items-center gap-3">
                 <Link
                   href="/workspace/new"
-                  className="flex max-w-full items-center gap-2 rounded-xl px-4 py-2.5 text-[14px] font-semibold transition-all hover:-translate-y-0.5 hover:opacity-95 active:scale-95"
+                  className={`flex max-w-full items-center gap-2 rounded-xl px-4 py-2.5 text-[14px] font-semibold transition-all hover:-translate-y-0.5 hover:opacity-95 active:scale-95 ${isLight ? 'border border-[var(--color-line-default)]' : ''}`}
                   style={{
-                    background: 'linear-gradient(135deg, #10b981, #22d3ee)',
-                    color: '#021018',
-                    boxShadow: '0 0 0 1px rgba(45,212,191,0.45), 0 16px 34px rgba(16,185,129,0.2)',
+                    background: isLight ? 'var(--color-surface-1)' : 'var(--color-accent-default)',
+                    color: isLight ? 'var(--color-fg-default)' : 'var(--color-accent-fg)',
+                    boxShadow: isLight ? '0 1px 3px rgba(15,23,42,0.05)' : '0 6px 18px rgba(37,99,235,0.14)',
                   }}
                 >
                   <Plus size={15} />
@@ -947,7 +1020,7 @@ export default function CommandCenterPage() {
                 </Link>
                 <Link
                   href="/executions"
-                  className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-[14px] font-semibold text-slate-100 transition-all hover:border-cyan-300/35 hover:bg-cyan-300/10"
+                  className="flex items-center gap-2 rounded-xl border border-[var(--color-line-default)] bg-[var(--color-surface-1)] px-4 py-2.5 text-[14px] font-semibold text-[var(--color-fg-default)] transition-all hover:border-cyan-300/35 hover:bg-cyan-300/10"
                 >
                   Monitor live runs <ArrowRight size={14} />
                 </Link>
@@ -964,9 +1037,9 @@ export default function CommandCenterPage() {
                   key={item.label}
                   className="rounded-2xl border px-4 py-3"
                   style={{
-                    background: `${item.tone}0f`,
-                    borderColor: `${item.tone}2c`,
-                    boxShadow: `inset 0 1px 0 rgba(255,255,255,0.05), 0 0 28px ${item.tone}12`,
+                    background: 'var(--color-surface-1)',
+                    borderColor: 'var(--color-line-default)',
+                    boxShadow: '0 1px 2px rgba(15,23,42,0.04)',
                   }}
                 >
                   <div className="flex items-center justify-between gap-3">
@@ -1007,10 +1080,9 @@ export default function CommandCenterPage() {
             <div
               className="flex flex-col gap-3 overflow-y-auto rounded-2xl border p-4 xl:max-h-[300px]"
               style={{
-                background:
-                  'linear-gradient(180deg, rgba(161,149,255,0.08), rgba(255,255,255,0.025) 34%, var(--color-surface-1))',
-                borderColor: 'rgba(161,149,255,0.18)',
-                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
+                background: 'var(--color-surface-1)',
+                borderColor: 'var(--color-line-default)',
+                boxShadow: '0 1px 2px rgba(15,23,42,0.04)',
               }}
             >
             <div className="flex shrink-0 items-center justify-between">
@@ -1064,9 +1136,9 @@ export default function CommandCenterPage() {
             transition={{ duration: 0.3, delay: 0.18 }}
             className="flex flex-col justify-center rounded-2xl border px-5 py-4 xl:col-span-8"
             style={{
-              background: 'linear-gradient(135deg, rgba(34,211,238,0.06), var(--color-surface-1) 42%, rgba(69,192,138,0.04))',
-              borderColor: 'rgba(34,211,238,0.17)',
-              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
+              background: 'var(--color-surface-1)',
+              borderColor: 'var(--color-line-default)',
+              boxShadow: '0 1px 2px rgba(15,23,42,0.04)',
             }}
           >
             <div className="mb-2 flex items-center gap-2">
@@ -1107,8 +1179,8 @@ export default function CommandCenterPage() {
             transition={{ duration: 0.3, delay: 0.34 }}
             className="flex min-h-[280px] flex-col overflow-hidden rounded-2xl border p-4 xl:col-span-8 xl:col-start-1"
             style={{
-              background: 'linear-gradient(180deg, rgba(69,192,138,0.055), var(--color-surface-1) 44%)',
-              borderColor: 'rgba(69,192,138,0.16)',
+              background: 'var(--color-surface-1)',
+              borderColor: 'var(--color-line-default)',
             }}
           >
             <div className="mb-2.5 flex shrink-0 items-center justify-between">

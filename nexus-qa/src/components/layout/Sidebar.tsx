@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -10,6 +10,7 @@ import {
   Bot,
   Boxes,
   Brain,
+  ChevronDown,
   ChevronsLeft,
   ChevronsRight,
   FileSpreadsheet,
@@ -29,9 +30,10 @@ import { cn } from '@/lib/utils';
 import { useUIStore } from '@/lib/stores/uiStore';
 
 type NavItem = {
-  href: string;
+  href?: string;
   label: string;
   icon: React.ComponentType<{ size?: number; className?: string }>;
+  children?: NavItem[];
 };
 
 type NavGroup = {
@@ -56,9 +58,15 @@ const GROUPS: NavGroup[] = [
       { href: '/architecture', label: 'Architecture', icon: Boxes },
       { href: '/ai-workflow', label: 'AI Workflow', icon: Sparkles },
       { href: '/page-repository', label: 'Page Repository', icon: BookOpen },
-      { href: '/desktop-repository', label: 'Desktop Repository', icon: Monitor },
-      { href: '/master-sheet', label: 'Master Sheet', icon: FileSpreadsheet },
-      { href: '/desktop-recorder', label: 'Desktop Recorder', icon: Bot },
+      {
+        label: 'Desktop',
+        icon: Monitor,
+        children: [
+          { href: '/desktop-repository', label: 'Desktop Repo', icon: Monitor },
+          { href: '/desktop-recorder', label: 'Desktop Recorder', icon: Bot },
+          { href: '/master-sheet', label: 'Master Sheet', icon: FileSpreadsheet },
+        ],
+      },
       { href: '/intent-studio', label: 'Intent Studio', icon: Target },
       { href: '/test-configuration', label: 'Test Config', icon: FlaskConical },
     ],
@@ -91,6 +99,8 @@ const GROUPS: NavGroup[] = [
   },
 ];
 
+const COMPACT_SIDEBAR_BREAKPOINT = 900;
+
 function HexLogo({ size = 24 }: { size?: number }) {
   return (
     <svg
@@ -121,17 +131,27 @@ function HexLogo({ size = 24 }: { size?: number }) {
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { sidebarCollapsed, setSidebarCollapsed, toggleSidebar } = useUIStore();
+  const { sidebarCollapsed, setSidebarCollapsed, toggleSidebar, theme } = useUIStore();
+  const isLight = theme === 'light';
   const collapsed = sidebarCollapsed;
+  const desktopItems = GROUPS.flatMap((group) => group.items).find((item) => item.label === 'Desktop')?.children ?? [];
+  const desktopActive = desktopItems.some((item) => item.href && (pathname === item.href || pathname.startsWith(item.href)));
+  const [desktopOpen, setDesktopOpen] = useState(desktopActive);
 
   useEffect(() => {
-    const shouldCollapse = window.innerWidth < 1536;
-    if (shouldCollapse) setSidebarCollapsed(true);
+    setSidebarCollapsed(window.innerWidth < COMPACT_SIDEBAR_BREAKPOINT);
   }, [setSidebarCollapsed]);
+
+  useEffect(() => {
+    if (desktopActive) setDesktopOpen(true);
+  }, [desktopActive]);
 
   // Pre-warm Turbopack compilation for every route on mount so first clicks are instant
   useEffect(() => {
-    const allHrefs = GROUPS.flatMap((g) => g.items.map((i) => i.href));
+    const allHrefs = GROUPS.flatMap((g) => g.items.flatMap((i) => [
+      ...(i.href ? [i.href] : []),
+      ...((i.children ?? []).map((child) => child.href).filter(Boolean) as string[]),
+    ]));
     allHrefs.forEach((href) => router.prefetch(href));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -140,14 +160,28 @@ export default function Sidebar() {
     <motion.aside
       animate={{ width: collapsed ? 68 : 292 }}
       transition={{ duration: 0.24, ease: [0.22, 0.61, 0.36, 1] }}
-      className="nex-sidebar relative z-30 flex h-full shrink-0 flex-col border-r border-[var(--color-line-default)] bg-[var(--color-surface-1)]"
-      style={{ minHeight: 0 }}
+      className="nex-sidebar relative z-30 flex h-full shrink-0 flex-col border-r border-[var(--color-line-strong)] bg-[var(--color-surface-1)] shadow-[8px_0_28px_rgba(0,0,0,0.22)]"
+      style={{
+        minHeight: 0,
+        ...(isLight
+          ? {
+              background: '#ffffff',
+              backgroundColor: '#ffffff',
+              backgroundImage: 'none',
+              color: '#111827',
+              boxShadow: 'none',
+              borderColor: 'rgba(15, 23, 42, 0.10)',
+            }
+          : {}),
+      }}
     >
       {/* Subtle AI Inspect edge glow on right border */}
       <div
         className="pointer-events-none absolute right-0 top-0 bottom-0 w-px"
         style={{
-          background: 'linear-gradient(180deg, transparent 0%, rgba(34,211,238,0.28) 40%, rgba(34,197,94,0.16) 70%, transparent 100%)',
+          background: isLight
+            ? 'none'
+            : 'linear-gradient(180deg, transparent 0%, rgba(34,211,238,0.28) 40%, rgba(34,197,94,0.16) 70%, transparent 100%)',
         }}
       />
 
@@ -184,9 +218,9 @@ export default function Sidebar() {
               <p className="text-[16px] font-bold tracking-tight leading-none">
                 <span className="text-[var(--color-fg-default)]">NEX</span>
                 <span className="text-[var(--color-fg-default)]">CORE</span>
-                <span className="ml-1 text-[var(--color-accent-default)]">QA</span>
+                <span className={cn('ml-1', isLight ? 'text-[var(--color-fg-default)]' : 'text-[var(--color-accent-default)]')}>QA</span>
               </p>
-              <p className="mt-1 text-[11px] font-mono uppercase tracking-[0.18em] text-[var(--color-fg-subtle)]">
+              <p className={cn('mt-1 text-[11px] font-mono uppercase tracking-[0.18em]', isLight ? 'text-[var(--color-fg-default)]' : 'text-[var(--color-fg-subtle)]')}>
                 AI Execution OS
               </p>
             </motion.div>
@@ -217,73 +251,217 @@ export default function Sidebar() {
 
             <ul className={cn('space-y-1.5', collapsed ? 'px-2' : 'px-3.5')}>
               {group.items.map((item) => {
+                const isDropdown = Boolean(item.children?.length);
+                const isOpen = item.label === 'Desktop' && desktopOpen;
                 const isActive =
-                  pathname === item.href ||
-                  (item.href !== '/' && pathname.startsWith(item.href));
+                  Boolean(item.href && (
+                    pathname === item.href ||
+                    (item.href !== '/' && pathname.startsWith(item.href))
+                  )) ||
+                  Boolean(item.children?.some((child) => child.href && (
+                    pathname === child.href ||
+                    (child.href !== '/' && pathname.startsWith(child.href))
+                  )));
                 const Icon = item.icon;
 
                 return (
-                  <li key={item.href}>
-                    <Link
-                      href={item.href}
-                      className={cn(
-                        'group relative flex items-center rounded-md transition-all duration-150',
-                        collapsed ? 'h-11 w-11 justify-center mx-auto' : 'h-11 gap-3.5 px-3.5',
-                        isActive
-                          ? 'bg-cyan-500/10 border border-cyan-300/25 text-cyan-200'
-                          : 'text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg-default)] border border-transparent',
-                      )}
-                    >
-                      {/* Left rail glow indicator */}
-                      {isActive && (
-                        <motion.span
-                          layoutId="nav-active-bar"
-                          className="absolute left-[-8px] top-1/2 h-5 w-[2.5px] -translate-y-1/2 rounded-full bg-[var(--color-accent-default)] nav-glow-rail"
-                          transition={{ type: 'spring', stiffness: 420, damping: 34 }}
-                        />
-                      )}
+                  <li key={item.href ?? item.label}>
+                    {isDropdown ? (
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (collapsed) setSidebarCollapsed(false);
+                            setDesktopOpen((open) => !open);
+                          }}
+                          className={cn(
+                            'group relative flex items-center rounded-md transition-all duration-150',
+                            'cursor-pointer',
+                            collapsed ? 'h-11 w-11 justify-center mx-auto' : 'h-11 w-full gap-3.5 px-3.5 text-left',
+                            isActive
+                              ? isLight
+                                ? 'bg-[var(--color-surface-1)] border border-[var(--color-line-default)] text-[var(--color-fg-default)]'
+                                : 'bg-cyan-500/10 border border-cyan-300/25 text-cyan-200'
+                              : 'text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg-default)] border border-transparent',
+                          )}
+                          aria-expanded={isOpen}
+                        >
+                          {isActive && (
+                            <motion.span
+                              layoutId="nav-active-bar"
+                              className={cn(
+                                'absolute left-[-8px] top-1/2 h-5 w-[2.5px] -translate-y-1/2 rounded-full',
+                                isLight ? 'bg-[var(--color-line-strong)]' : 'bg-[var(--color-accent-default)] nav-glow-rail',
+                              )}
+                              transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+                            />
+                          )}
 
-                      <Icon
-                        size={17}
+                          <Icon
+                            size={17}
+                            className={cn(
+                              'shrink-0 transition-all duration-150',
+                              isActive
+                                ? isLight ? 'text-[var(--color-fg-default)]' : 'text-cyan-300'
+                                : 'text-[var(--color-fg-muted)] group-hover:text-[var(--color-fg-default)]',
+                            )}
+                          />
+
+                          <AnimatePresence initial={false}>
+                            {!collapsed && (
+                              <motion.span
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                transition={{ duration: 0.1 }}
+                                className="min-w-0 flex-1 truncate text-[14px] font-semibold"
+                              >
+                                {item.label}
+                              </motion.span>
+                            )}
+                          </AnimatePresence>
+
+                          {!collapsed && (
+                            <ChevronDown
+                              size={14}
+                              className={cn(
+                                'shrink-0 transition-transform duration-150',
+                                isOpen && 'rotate-180',
+                              )}
+                            />
+                          )}
+
+                          {collapsed && (
+                            <span
+                              className={cn(
+                                'pointer-events-none absolute left-full z-50 ml-2.5 whitespace-nowrap',
+                                'rounded-md border border-[var(--color-line-strong)] bg-[var(--color-surface-3)]',
+                                'px-3 py-2 text-[13px] font-medium',
+                                'opacity-0 shadow-[var(--shadow-pop)] transition-all duration-150',
+                                'group-hover:opacity-100 group-hover:translate-x-0',
+                                '-translate-x-1',
+                                isActive && !isLight ? 'text-cyan-200' : 'text-[var(--color-fg-default)]',
+                              )}
+                            >
+                              {item.label}
+                            </span>
+                          )}
+                        </button>
+
+                        <AnimatePresence initial={false}>
+                          {!collapsed && isOpen && (
+                            <motion.ul
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: 'auto', opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.16, ease: [0.22, 0.61, 0.36, 1] }}
+                              className="mt-1.5 overflow-hidden pl-5"
+                            >
+                              {item.children?.map((child) => {
+                                const childActive = Boolean(child.href && (
+                                  pathname === child.href ||
+                                  (child.href !== '/' && pathname.startsWith(child.href))
+                                ));
+                                const ChildIcon = child.icon;
+                                return (
+                                  <li key={child.href} className="relative">
+                                    <span className="absolute left-0 top-0 h-full w-px bg-[var(--color-line-subtle)]" />
+                                    <Link
+                                      href={child.href ?? '#'}
+                                      className={cn(
+                                        'group ml-3 flex h-9 items-center gap-2.5 rounded-md border px-3 text-[13px] font-semibold transition-colors duration-150',
+                                        childActive
+                                          ? isLight
+                                            ? 'border-[var(--color-line-default)] bg-[var(--color-surface-1)] text-[var(--color-fg-default)]'
+                                            : 'border-cyan-300/20 bg-cyan-500/10 text-cyan-200'
+                                          : 'border-transparent text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg-default)]',
+                                      )}
+                                    >
+                                      <ChildIcon
+                                        size={14}
+                                        className={cn(
+                                          'shrink-0',
+                                          childActive
+                                            ? isLight ? 'text-[var(--color-fg-default)]' : 'text-cyan-300'
+                                            : 'text-[var(--color-fg-muted)] group-hover:text-[var(--color-fg-default)]',
+                                        )}
+                                      />
+                                      <span className="truncate">{child.label}</span>
+                                    </Link>
+                                  </li>
+                                );
+                              })}
+                            </motion.ul>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    ) : (
+                      <Link
+                        href={item.href ?? '#'}
                         className={cn(
-                          'shrink-0 transition-all duration-150',
+                          'group relative flex items-center rounded-md transition-all duration-150',
+                          collapsed ? 'h-11 w-11 justify-center mx-auto' : 'h-11 gap-3.5 px-3.5',
                           isActive
-                            ? 'text-cyan-300'
-                            : 'text-[var(--color-fg-muted)] group-hover:text-[var(--color-fg-default)]',
+                            ? isLight
+                              ? 'bg-[var(--color-surface-1)] border border-[var(--color-line-default)] text-[var(--color-fg-default)]'
+                              : 'bg-cyan-500/10 border border-cyan-300/25 text-cyan-200'
+                            : 'text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg-default)] border border-transparent',
                         )}
-                      />
-
-                      <AnimatePresence initial={false}>
-                        {!collapsed && (
+                      >
+                        {/* Left rail glow indicator */}
+                        {isActive && (
                           <motion.span
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            transition={{ duration: 0.1 }}
-                            className="truncate text-[14px] font-semibold"
+                            layoutId="nav-active-bar"
+                            className={cn(
+                              'absolute left-[-8px] top-1/2 h-5 w-[2.5px] -translate-y-1/2 rounded-full',
+                              isLight ? 'bg-[var(--color-line-strong)]' : 'bg-[var(--color-accent-default)] nav-glow-rail',
+                            )}
+                            transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+                          />
+                        )}
+
+                        <Icon
+                          size={17}
+                          className={cn(
+                            'shrink-0 transition-all duration-150',
+                            isActive
+                              ? isLight ? 'text-[var(--color-fg-default)]' : 'text-cyan-300'
+                              : 'text-[var(--color-fg-muted)] group-hover:text-[var(--color-fg-default)]',
+                          )}
+                        />
+
+                        <AnimatePresence initial={false}>
+                          {!collapsed && (
+                            <motion.span
+                              initial={{ opacity: 0 }}
+                              animate={{ opacity: 1 }}
+                              exit={{ opacity: 0 }}
+                              transition={{ duration: 0.1 }}
+                              className="truncate text-[14px] font-semibold"
+                            >
+                              {item.label}
+                            </motion.span>
+                          )}
+                        </AnimatePresence>
+
+                        {/* Tooltip when collapsed */}
+                        {collapsed && (
+                          <span
+                            className={cn(
+                              'pointer-events-none absolute left-full z-50 ml-2.5 whitespace-nowrap',
+                              'rounded-md border border-[var(--color-line-strong)] bg-[var(--color-surface-3)]',
+                              'px-3 py-2 text-[13px] font-medium',
+                              'opacity-0 shadow-[var(--shadow-pop)] transition-all duration-150',
+                              'group-hover:opacity-100 group-hover:translate-x-0',
+                              '-translate-x-1',
+                              isActive ? 'text-cyan-200' : 'text-[var(--color-fg-default)]',
+                            )}
                           >
                             {item.label}
-                          </motion.span>
+                          </span>
                         )}
-                      </AnimatePresence>
-
-                      {/* Tooltip when collapsed */}
-                      {collapsed && (
-                        <span
-                          className={cn(
-                            'pointer-events-none absolute left-full z-50 ml-2.5 whitespace-nowrap',
-                            'rounded-md border border-[var(--color-line-strong)] bg-[var(--color-surface-3)]',
-                            'px-3 py-2 text-[13px] font-medium',
-                            'opacity-0 shadow-[var(--shadow-pop)] transition-all duration-150',
-                            'group-hover:opacity-100 group-hover:translate-x-0',
-                            '-translate-x-1',
-                            isActive ? 'text-cyan-200' : 'text-[var(--color-fg-default)]',
-                          )}
-                        >
-                          {item.label}
-                        </span>
-                      )}
-                    </Link>
+                      </Link>
+                    )}
                   </li>
                 );
               })}

@@ -31,6 +31,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
+import { useUIStore } from '@/lib/stores/uiStore';
 import { useExecutions } from '@/lib/api/executions';
 import {
   useAskAIInspectAssistant,
@@ -295,16 +296,19 @@ function Panel({
   accent?: Accent;
 }) {
   const a = ACCENTS[accent];
+  const isLight = useUIStore((s) => s.theme === 'light');
   return (
     <div
-      className={`relative overflow-hidden rounded-[28px] border bg-white/[0.055] backdrop-blur-2xl ${a.border} ${className}`}
+      className={`relative overflow-hidden rounded-[28px] border ${isLight ? 'bg-[var(--color-surface-1)]' : 'bg-white/[0.055] backdrop-blur-2xl'} ${a.border} ${className}`}
       style={{
-        boxShadow: '0 24px 80px rgba(0,0,0,0.30), inset 0 1px 0 rgba(255,255,255,0.08)',
+        boxShadow: isLight
+          ? '0 1px 3px rgba(15,23,42,0.05)'
+          : '0 24px 80px rgba(0,0,0,0.30), inset 0 1px 0 rgba(255,255,255,0.08)',
       }}
     >
       <div
         className="pointer-events-none absolute inset-x-8 top-0 h-px"
-        style={{ background: `linear-gradient(90deg, transparent, ${a.solid}88, transparent)` }}
+        style={{ background: isLight ? 'rgba(15,23,42,0.08)' : `linear-gradient(90deg, transparent, ${a.solid}88, transparent)` }}
       />
       {children}
     </div>
@@ -313,15 +317,26 @@ function Panel({
 
 function StatusPill({ label, accent = 'slate' }: { label: string; accent?: Accent }) {
   const a = ACCENTS[accent];
+  const isLight = useUIStore((s) => s.theme === 'light');
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${a.border} ${a.bg} ${a.text}`}>
-      <span className="h-1.5 w-1.5 rounded-full" style={{ background: a.solid, boxShadow: `0 0 12px ${a.solid}` }} />
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${a.border} ${a.bg} ${a.text}`}
+      style={isLight
+        ? {
+            background: 'var(--color-surface-1)',
+            borderColor: 'var(--color-line-default)',
+            color: 'var(--color-fg-muted)',
+          }
+        : undefined}
+    >
+      <span className="h-1.5 w-1.5 rounded-full" style={{ background: a.solid, boxShadow: isLight ? 'none' : `0 0 12px ${a.solid}` }} />
       {label}
     </span>
   );
 }
 
 function ThreeDBot({ job }: { job?: AIJobStatus }) {
+  const isLight = useUIStore((s) => s.theme === 'light');
   const running = job?.status === 'queued' || job?.status === 'running';
   const progress = Math.max(0, Math.min(100, Math.round((job?.progress ?? 0) * 100)));
   const tiltX = useMotionValue(0);
@@ -370,31 +385,40 @@ function ThreeDBot({ job }: { job?: AIJobStatus }) {
 
   return (
     <div
-      className="group relative min-h-[360px] overflow-hidden rounded-[32px] border border-cyan-300/15 bg-[radial-gradient(circle_at_50%_35%,rgba(34,211,238,0.22),rgba(15,23,42,0.16)_42%,rgba(2,6,23,0.38)_78%)]"
+      className="group relative min-h-[360px] overflow-hidden rounded-[32px] border border-cyan-300/15 bg-[var(--color-surface-1)]"
       onPointerMove={handlePointerMove}
       onPointerLeave={handlePointerLeave}
+      style={{
+        background: isLight
+          ? 'var(--color-surface-1)'
+          : 'radial-gradient(circle at 50% 35%, rgba(34,211,238,0.18), transparent 42%), linear-gradient(180deg, var(--color-surface-1), var(--color-bg-base))',
+      }}
     >
       <motion.div
         className="pointer-events-none absolute left-1/2 top-1/2 h-72 w-72 -translate-x-1/2 -translate-y-1/2 rounded-full bg-cyan-300/20 blur-3xl"
-        style={{ x: auraX, y: auraY }}
+        style={isLight ? { x: auraX, y: auraY, opacity: 0 } : { x: auraX, y: auraY }}
       />
       <motion.div
         className="absolute left-1/2 top-1/2 h-72 w-72 -translate-x-1/2 -translate-y-1/2 rounded-full border border-cyan-300/20"
+        style={isLight ? { borderColor: 'var(--color-line-default)' } : undefined}
         animate={{ rotate: running ? 360 : 20, scale: running ? [1, 1.04, 1] : 1 }}
         transition={{ rotate: { duration: 18, repeat: Infinity, ease: 'linear' }, scale: { duration: 3, repeat: Infinity } }}
       />
       <motion.div
         className="absolute left-1/2 top-1/2 h-52 w-52 -translate-x-1/2 -translate-y-1/2 rounded-full border border-emerald-300/20"
+        style={isLight ? { borderColor: 'var(--color-line-default)' } : undefined}
         animate={{ rotate: running ? -360 : -12 }}
         transition={{ duration: 13, repeat: Infinity, ease: 'linear' }}
       />
       <motion.div
         className="absolute left-8 top-10 h-16 w-16 rounded-full bg-cyan-300/20 blur-2xl"
+        style={isLight ? { opacity: 0 } : undefined}
         animate={{ y: running ? [0, 18, 0] : 0, opacity: [0.35, 0.8, 0.35] }}
         transition={{ duration: 4, repeat: Infinity }}
       />
       <motion.div
         className="absolute bottom-10 right-12 h-24 w-24 rounded-full bg-emerald-300/20 blur-2xl"
+        style={isLight ? { opacity: 0 } : undefined}
         animate={{ y: running ? [0, -24, 0] : 0, opacity: [0.25, 0.75, 0.25] }}
         transition={{ duration: 5, repeat: Infinity }}
       />
@@ -403,9 +427,12 @@ function ThreeDBot({ job }: { job?: AIJobStatus }) {
         <StatusPill label={running ? 'Inspecting' : 'Standby'} accent={running ? 'green' : 'slate'} />
       </div>
 
-      <div className="absolute bottom-6 left-6 rounded-2xl border border-white/10 bg-slate-950/45 px-4 py-3 backdrop-blur-xl">
+      <div
+        className="absolute bottom-6 left-6 rounded-2xl border border-[var(--color-line-default)] bg-[var(--color-surface-overlay)] px-4 py-3 backdrop-blur-xl"
+        style={isLight ? { background: 'var(--color-surface-1)', backdropFilter: 'none' } : undefined}
+      >
         <p className="text-[10px] uppercase tracking-[0.22em] text-slate-500">Confidence core</p>
-        <p className="mt-1 font-mono text-2xl font-bold text-cyan-200">{progress}%</p>
+        <p className="mt-1 font-mono text-2xl font-bold text-cyan-200" style={isLight ? { color: 'var(--color-fg-default)' } : undefined}>{progress}%</p>
       </div>
 
       <div className="absolute inset-0 flex items-center justify-center [perspective:900px]">
@@ -418,39 +445,75 @@ function ThreeDBot({ job }: { job?: AIJobStatus }) {
             animate={{ y: running ? [0, -10, 0] : [0, -4, 0] }}
             transition={{ duration: running ? 3.2 : 5, repeat: Infinity, ease: 'easeInOut' }}
           >
-            <div className="absolute left-1/2 top-0 h-6 w-1 -translate-x-1/2 rounded-full bg-cyan-200/80 shadow-[0_0_18px_rgba(34,211,238,0.8)]" />
+            <div
+              className="absolute left-1/2 top-0 h-6 w-1 -translate-x-1/2 rounded-full bg-cyan-200/80 shadow-[0_0_18px_rgba(34,211,238,0.8)]"
+              style={isLight ? { background: 'rgba(148,163,184,0.8)', boxShadow: 'none' } : undefined}
+            />
             <motion.div
               className="absolute left-1/2 top-[-13px] h-5 w-5 -translate-x-1/2 rounded-full bg-emerald-300 shadow-[0_0_28px_rgba(34,197,94,0.9)]"
+              style={isLight ? { background: 'rgba(148,163,184,0.85)', boxShadow: 'none' } : undefined}
               animate={{ scale: running ? [1, 1.22, 1] : [1, 1.08, 1] }}
               transition={{ duration: 1.5, repeat: Infinity }}
             />
-            <div className="absolute left-1/2 top-7 h-28 w-36 -translate-x-1/2 rounded-[42px] border border-cyan-200/30 bg-[linear-gradient(145deg,rgba(226,252,255,0.96),rgba(56,189,248,0.52)_45%,rgba(14,116,144,0.72))] shadow-[0_35px_80px_rgba(34,211,238,0.28),inset_12px_14px_22px_rgba(255,255,255,0.62),inset_-18px_-18px_28px_rgba(8,47,73,0.38)]">
-              <div className="absolute inset-x-5 top-10 h-11 rounded-[24px] border border-slate-950/20 bg-slate-950/88 shadow-[inset_0_0_18px_rgba(34,211,238,0.25)]">
+            <div
+              className="absolute left-1/2 top-7 h-28 w-36 -translate-x-1/2 rounded-[42px] border border-cyan-200/30 bg-[linear-gradient(145deg,rgba(226,252,255,0.96),rgba(56,189,248,0.52)_45%,rgba(14,116,144,0.72))] shadow-[0_35px_80px_rgba(34,211,238,0.28),inset_12px_14px_22px_rgba(255,255,255,0.62),inset_-18px_-18px_28px_rgba(8,47,73,0.38)]"
+              style={isLight
+                ? {
+                    background: 'var(--color-surface-1)',
+                    borderColor: 'var(--color-line-default)',
+                    boxShadow: '0 1px 3px rgba(15,23,42,0.08)',
+                  }
+                : undefined}
+            >
+              <div
+                className="absolute inset-x-5 top-10 h-11 rounded-[24px] border border-[var(--color-line-default)] bg-[var(--color-surface-1)] shadow-[inset_0_0_18px_rgba(34,211,238,0.18)]"
+                style={isLight ? { boxShadow: 'none' } : undefined}
+              >
                 <motion.div
                   className="absolute left-5 top-4 h-3 w-5 rounded-full bg-cyan-300 shadow-[0_0_16px_rgba(34,211,238,0.9)]"
-                  style={{ x: eyeX, y: eyeY }}
+                  style={isLight
+                    ? { x: eyeX, y: eyeY, background: 'rgba(15,23,42,0.55)', boxShadow: 'none' }
+                    : { x: eyeX, y: eyeY }}
                 />
                 <motion.div
                   className="absolute right-5 top-4 h-3 w-5 rounded-full bg-cyan-300 shadow-[0_0_16px_rgba(34,211,238,0.9)]"
-                  style={{ x: eyeX, y: eyeY }}
+                  style={isLight ? { x: eyeX, y: eyeY, background: 'rgba(15,23,42,0.55)', boxShadow: 'none' } : { x: eyeX, y: eyeY }}
                 />
                 <motion.div
                   className="absolute left-1/2 top-6 h-1 w-9 -translate-x-1/2 rounded-full bg-emerald-300/80"
+                  style={isLight ? { background: 'rgba(148,163,184,0.85)' } : undefined}
                   animate={{ width: running ? [24, 38, 24] : 30 }}
                   transition={{ duration: 1.9, repeat: Infinity }}
                 />
               </div>
             </div>
-            <div className="absolute left-1/2 top-[128px] h-20 w-28 -translate-x-1/2 rounded-[34px] border border-white/20 bg-[linear-gradient(145deg,rgba(103,232,249,0.78),rgba(15,23,42,0.92))] shadow-[0_32px_80px_rgba(15,23,42,0.55),inset_10px_12px_22px_rgba(255,255,255,0.22)]">
-              <div className="absolute left-1/2 top-6 h-8 w-8 -translate-x-1/2 rounded-full border border-cyan-200/30 bg-cyan-300/10">
-                <Sparkles className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-cyan-100" size={16} />
+            <div
+              className="absolute left-1/2 top-[128px] h-20 w-28 -translate-x-1/2 rounded-[34px] border border-white/20 bg-[linear-gradient(145deg,rgba(103,232,249,0.78),rgba(34,211,238,0.18))] shadow-[0_24px_60px_rgba(14,116,144,0.18),inset_10px_12px_22px_rgba(255,255,255,0.22)]"
+              style={isLight
+                ? {
+                    background: 'var(--color-surface-1)',
+                    borderColor: 'var(--color-line-default)',
+                    boxShadow: '0 1px 3px rgba(15,23,42,0.08)',
+                  }
+                : undefined}
+            >
+              <div
+                className="absolute left-1/2 top-6 h-8 w-8 -translate-x-1/2 rounded-full border border-cyan-200/30 bg-cyan-300/10"
+                style={isLight ? { borderColor: 'var(--color-line-default)', background: 'var(--color-surface-1)' } : undefined}
+              >
+                <Sparkles
+                  className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-cyan-100"
+                  size={16}
+                  style={isLight ? { color: 'var(--color-fg-default)' } : undefined}
+                />
               </div>
             </div>
-            <div className="absolute left-[22px] top-[142px] h-11 w-7 rotate-[-18deg] rounded-full bg-cyan-200/50 blur-[0.2px]" />
-            <div className="absolute right-[22px] top-[142px] h-11 w-7 rotate-[18deg] rounded-full bg-cyan-200/50 blur-[0.2px]" />
-            <div className="absolute bottom-2 left-1/2 h-5 w-36 -translate-x-1/2 rounded-full bg-cyan-300/30 blur-xl" />
+            <div className="absolute left-[22px] top-[142px] h-11 w-7 rotate-[-18deg] rounded-full bg-cyan-200/50 blur-[0.2px]" style={isLight ? { opacity: 0 } : undefined} />
+            <div className="absolute right-[22px] top-[142px] h-11 w-7 rotate-[18deg] rounded-full bg-cyan-200/50 blur-[0.2px]" style={isLight ? { opacity: 0 } : undefined} />
+            <div className="absolute bottom-2 left-1/2 h-5 w-36 -translate-x-1/2 rounded-full bg-cyan-300/30 blur-xl" style={isLight ? { opacity: 0 } : undefined} />
             <motion.div
               className="pointer-events-none absolute -bottom-7 left-1/2 h-8 w-44 -translate-x-1/2 rounded-full bg-cyan-200/20 blur-2xl"
+              style={isLight ? { opacity: 0 } : undefined}
               animate={{ opacity: running ? [0.35, 0.72, 0.35] : [0.25, 0.42, 0.25] }}
               transition={{ duration: 2.4, repeat: Infinity }}
             />
@@ -632,7 +695,7 @@ function AuthorityStrip() {
 
 function Worklog({ steps, active }: { steps: string[]; active: boolean }) {
   return (
-    <div className="rounded-3xl border border-white/8 bg-slate-950/70 p-4">
+    <div className="rounded-3xl border border-white/8 bg-[var(--color-surface-1)] p-4">
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Terminal size={14} className="text-cyan-200" />
@@ -845,7 +908,7 @@ function AssistantFixCouncil({
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/8 bg-slate-950/45 px-3 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/8 bg-[var(--color-surface-1)] px-3 py-3">
         <div>
           <p className="text-xs font-semibold text-white">{fix.title}</p>
           <p className="mt-1 text-[11px] text-slate-500">Target: {fixTargetLabel(fix)} / {fix.field}</p>
@@ -891,7 +954,7 @@ function AssistantRagPlan({ result }: { result: AssistantQueryResponse | null })
         </div>
       </div>
 
-      <div className="rounded-xl border border-white/8 bg-slate-950/45 p-3">
+      <div className="rounded-xl border border-white/8 bg-[var(--color-surface-1)] p-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Retrieved DB scope</p>
           <span className="font-mono text-[10px] text-slate-500">
@@ -1133,7 +1196,7 @@ function ClopAgentConsole({
   };
 
   return (
-    <div className="mt-5 overflow-hidden rounded-2xl border border-cyan-300/20 bg-slate-950/85 shadow-[0_22px_70px_rgba(0,0,0,0.28)]">
+    <div className="mt-5 overflow-hidden rounded-2xl border border-cyan-300/20 bg-[var(--color-surface-overlay)] shadow-[0_22px_70px_rgba(0,0,0,0.16)]">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/8 px-4 py-3">
         <div className="flex items-center gap-2">
           <Terminal size={14} className="text-emerald-200" />
@@ -1153,7 +1216,7 @@ function ClopAgentConsole({
       </div>
 
       <div className="grid min-h-[480px] lg:grid-cols-[210px_minmax(0,1fr)]">
-        <div className="border-b border-white/8 bg-black/20 p-3 lg:border-b-0 lg:border-r">
+        <div className="border-b border-white/8 bg-[var(--color-surface-2)] p-3 lg:border-b-0 lg:border-r">
           <div className="grid grid-cols-2 gap-2 lg:grid-cols-1">
             {ASSISTANT_SCREENS.map((screen) => {
               const Icon = screen.icon;
@@ -1175,7 +1238,7 @@ function ClopAgentConsole({
               );
             })}
           </div>
-          <div className="mt-3 rounded-xl border border-white/8 bg-slate-950/55 p-3">
+          <div className="mt-3 rounded-xl border border-white/8 bg-[var(--color-surface-1)] p-3">
             <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Runtime</p>
             <div className="mt-3 space-y-2 font-mono text-[11px] text-slate-400">
               <p>intent: {lastResult?.intent ?? 'idle'}</p>
@@ -1241,7 +1304,7 @@ function ClopAgentConsole({
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              className="h-10 min-w-0 flex-1 rounded-lg border border-white/10 bg-black/35 px-3 font-mono text-xs text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-cyan-300/45"
+              className="h-10 min-w-0 flex-1 rounded-lg border border-white/10 bg-[var(--color-surface-1)] px-3 font-mono text-xs text-[var(--color-fg-default)] outline-none transition placeholder:text-slate-600 focus:border-cyan-300/45"
               placeholder="Ask: what was the error, show fixes, why is this safe..."
               disabled={askAssistant.isPending}
             />
@@ -1379,15 +1442,14 @@ export default function AIAnalysisPage() {
 
   return (
     <div
-      className="relative h-full overflow-y-auto bg-[#031118] text-slate-100"
+      className="relative h-full overflow-y-auto bg-[var(--color-bg-base)] text-[var(--color-fg-default)]"
       style={{
         fontFamily: "'Fira Sans', 'Segoe UI', sans-serif",
-        background:
-          'radial-gradient(circle at 12% 12%, rgba(34,211,238,0.18), transparent 32%), radial-gradient(circle at 86% 4%, rgba(34,197,94,0.14), transparent 30%), linear-gradient(135deg, #031118 0%, #061c24 46%, #020617 100%)',
+        background: 'var(--color-bg-base)',
       }}
     >
-      <div className="pointer-events-none absolute inset-0 opacity-[0.14] [background-image:linear-gradient(rgba(255,255,255,0.12)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.12)_1px,transparent_1px)] [background-size:42px_42px]" />
-      <div className="pointer-events-none absolute left-1/2 top-0 h-[520px] w-[720px] -translate-x-1/2 rounded-full bg-cyan-300/10 blur-3xl" />
+      <div className="pointer-events-none absolute inset-0 opacity-0 [background-image:linear-gradient(rgba(255,255,255,0.12)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.12)_1px,transparent_1px)] [background-size:42px_42px]" />
+      <div className="pointer-events-none absolute left-1/2 top-0 h-[520px] w-[720px] -translate-x-1/2 rounded-full opacity-0 bg-cyan-300/10 blur-3xl" />
 
       <div className="relative mx-auto flex w-full max-w-[1680px] flex-col gap-5 px-5 py-5 lg:px-7">
         <Panel accent="cyan" className="p-5 lg:p-6">
@@ -1398,10 +1460,10 @@ export default function AIAnalysisPage() {
                   <StatusPill label="AI Inspect Lab" accent="green" />
                   <StatusPill label="Failed execution diagnosis" accent="cyan" />
                 </div>
-                <h1 className="mt-5 max-w-4xl text-4xl font-black tracking-[-0.04em] text-white md:text-6xl">
+                <h1 className="mt-5 max-w-4xl text-4xl font-black tracking-[-0.04em] text-[var(--color-fg-default)] md:text-6xl">
                   AI Inspect Lab for deep failure reasons and implementation plans.
                 </h1>
-                <p className="mt-4 max-w-3xl text-sm leading-7 text-cyan-50/70 md:text-base">
+                <p className="mt-4 max-w-3xl text-sm leading-7 text-[var(--color-fg-muted)] md:text-base">
                   This lab scans failed testcases and workflows in depth: failed nodes, runtime evidence, locator quality,
                   page and test-step config, API responses, stale workflow bindings, and safe implementation options.
                 </p>
@@ -1414,7 +1476,7 @@ export default function AIAnalysisPage() {
                     <select
                       value={selectedExecutionId ?? ''}
                       onChange={(event) => setSelectedExecution(event.target.value || null)}
-                      className="h-11 w-full rounded-2xl border border-white/10 bg-slate-950/60 px-3 text-sm text-slate-100 outline-none transition focus:border-cyan-300/50"
+                      className="h-11 w-full rounded-2xl border border-[var(--color-line-default)] bg-[var(--color-surface-1)] px-3 text-sm text-[var(--color-fg-default)] outline-none transition focus:border-cyan-300/50"
                     >
                       {executions.length === 0 && <option value="">No executions</option>}
                       {executions.map((execution) => (
@@ -1430,7 +1492,7 @@ export default function AIAnalysisPage() {
                     <select
                       value={jobType}
                       onChange={(event) => setJobType(event.target.value as AIJobType)}
-                      className="h-11 w-full rounded-2xl border border-white/10 bg-slate-950/60 px-3 text-sm text-slate-100 outline-none transition focus:border-cyan-300/50"
+                      className="h-11 w-full rounded-2xl border border-[var(--color-line-default)] bg-[var(--color-surface-1)] px-3 text-sm text-[var(--color-fg-default)] outline-none transition focus:border-cyan-300/50"
                     >
                       {(Object.entries(JOB_TYPE_LABELS) as [AIJobType, string][]).map(([type, label]) => (
                         <option key={type} value={type}>{label}</option>
@@ -1571,7 +1633,7 @@ export default function AIAnalysisPage() {
                 </div>
                 <StatusPill label={confidence ? `${confidence}% confidence` : 'pending'} accent={confidence >= 80 ? 'green' : confidence >= 50 ? 'amber' : 'slate'} />
               </div>
-              <div className="rounded-3xl border border-white/8 bg-slate-950/40 p-5">
+              <div className="rounded-3xl border border-white/8 bg-[var(--color-surface-1)] p-5">
                 <p className="text-sm leading-7 text-slate-200">
                   {rootCause || (activeJob ? 'AI Inspect Lab is correlating execution evidence, code paths, DB links, and runtime behavior.' : 'Run Lab Scan to produce a detailed root-cause narrative.')}
                 </p>

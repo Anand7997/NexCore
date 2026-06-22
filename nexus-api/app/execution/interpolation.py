@@ -5,10 +5,10 @@ Supports both `{{var}}` (Mustache-style — primary) and legacy `${var}` syntax
 within strings, dicts, and lists. Used by execution plugins to substitute
 shared-context values like:
 
-    {"url": "https://api.example.com/bookings/{{booking_id}}"}
-    {"headers": {"Authorization": "Bearer {{auth_token}}"}}
+    {"url": "https://api.example.com/resources/{{resource_id}}"}
+    {"headers": {"X-API-Key": "{{api_token}}"}}
 
-Dotted paths (`{{user.profile.email}}`) walk into nested dicts.
+Dotted paths (`{{entity.details.value}}`) walk into nested dicts.
 """
 from __future__ import annotations
 

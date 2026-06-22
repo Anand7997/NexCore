@@ -42,6 +42,7 @@ from app.execution.plugin import (
 from app.execution.registry import get_plugin_for, list_plugins
 from app.distributed.scheduler import DistributedScheduler
 from app.orchestration.context import ExecutionContext
+from app.orchestration.conditions import evaluate_condition, evaluate_expression
 from app.orchestration.dag import DAGGraph, DAGNode, DAGEdge
 from app.orchestration.retry import RetryPolicy
 from app.orchestration.simulator import NodeSimulator
@@ -63,6 +64,7 @@ class ExecutionEngine:
         self._simulator = NodeSimulator()
         self._cancel_event = asyncio.Event()
         self._active_tasks: dict[str, asyncio.Task] = {}
+        self._node_outputs: dict[str, dict[str, Any]] = {}
 
     # ── Public interface ─────────────────────────────────────────────────────
 
@@ -170,7 +172,10 @@ class ExecutionEngine:
         """
         completed: set[str] = set()
         failed: set[str] = set()
+        skipped: set[str] = set()
         in_progress: set[str] = set()
+        branch_skipped: set[str] = set()
+        inactive_edges: set[tuple[str, str, str]] = set()
 
         # Queue every runtime node before traversal. Dependency resolution still
         # controls when nodes run, but this preserves the legal lifecycle:
@@ -183,19 +188,22 @@ class ExecutionEngine:
             if self._cancel_event.is_set():
                 raise asyncio.CancelledError()
 
-            ready = dag.get_ready_nodes(completed | failed, in_progress)
+            branch_pruned, failure_pruned, truly_ready = self._resolve_ready_nodes(
+                dag,
+                completed=completed,
+                failed=failed,
+                skipped=skipped,
+                in_progress=in_progress,
+                inactive_edges=inactive_edges,
+            )
 
-            # Partition into skippable (failed predecessor) vs truly ready
-            skippable = []
-            truly_ready = []
-            for node_key in ready:
-                preds = dag.predecessors(node_key)
-                if any(p in failed for p in preds):
-                    skippable.append(node_key)
-                else:
-                    truly_ready.append(node_key)
+            for node_key in branch_pruned:
+                await self._skip_node(node_key, dag, "Branch not selected")
+                skipped.add(node_key)
+                branch_skipped.add(node_key)
+                self._mark_outgoing_edges_inactive(dag, node_key, inactive_edges)
 
-            for node_key in skippable:
+            for node_key in failure_pruned:
                 await self._skip_node(node_key, dag, "Predecessor failed")
                 failed.add(node_key)
 
@@ -211,7 +219,7 @@ class ExecutionEngine:
             # Continue after a skip-only wave so failure propagation reaches
             # every descendant before the execution closes.
             if not in_progress:
-                if skippable:
+                if branch_pruned or failure_pruned:
                     continue
                 break
 
@@ -239,12 +247,66 @@ class ExecutionEngine:
                     result = task.result()
                     if result:
                         completed.add(node_key)
+                        await self._resolve_outgoing_edges(
+                            node_key,
+                            dag,
+                            context,
+                            inactive_edges=inactive_edges,
+                        )
                     else:
                         failed.add(node_key)
 
         # Execution succeeded only if no nodes permanently failed
         actually_failed = {k for k in failed if k in dag.nodes}
         return len(actually_failed) == 0
+
+    def _resolve_ready_nodes(
+        self,
+        dag: DAGGraph,
+        *,
+        completed: set[str],
+        failed: set[str],
+        skipped: set[str],
+        in_progress: set[str],
+        inactive_edges: set[tuple[str, str, str]],
+    ) -> tuple[list[str], list[str], list[str]]:
+        branch_pruned: list[str] = []
+        failure_pruned: list[str] = []
+        ready: list[str] = []
+        terminal = completed | failed | skipped
+
+        for node_key in dag.nodes:
+            if node_key in terminal or node_key in in_progress:
+                continue
+
+            incoming = dag.incoming_edges(node_key)
+            if not incoming:
+                ready.append(node_key)
+                continue
+
+            active_sources: list[str] = []
+            unresolved = False
+            for edge in incoming:
+                if edge.ref() in inactive_edges:
+                    continue
+                source = edge.source
+                if source not in terminal:
+                    unresolved = True
+                    break
+                active_sources.append(source)
+
+            if unresolved:
+                continue
+            if not active_sources:
+                branch_pruned.append(node_key)
+                continue
+            if any(source in failed or source in skipped for source in active_sources):
+                failure_pruned.append(node_key)
+                continue
+            if all(source in completed for source in active_sources):
+                ready.append(node_key)
+
+        return branch_pruned, failure_pruned, ready
 
     # ── Node execution ───────────────────────────────────────────────────────
 
@@ -290,6 +352,7 @@ class ExecutionEngine:
             if result.success:
                 # Propagate outputs to shared context
                 if result.output:
+                    self._node_outputs[node_key] = dict(result.output)
                     await context.set_many(result.output)
                     await self._save_variable_snapshot(node_key, result.output)
                     await bus.publish(VariableSet(
@@ -316,6 +379,7 @@ class ExecutionEngine:
                 return True
 
             # Node failed
+            self._node_outputs.pop(node_key, None)
             will_retry = retry_policy.should_retry(attempt)
             await self._emit_log(
                 "error",
@@ -370,6 +434,9 @@ class ExecutionEngine:
         phases — a "real execution layer" doesn't break the demo).
         """
         bus = get_event_bus()
+        control_result = await self._dispatch_control_node(dag_node, context)
+        if control_result is not None:
+            return control_result
         plugin = get_plugin_for(dag_node.node_type)
 
         # ── Simulator fallback ────────────────────────────────────────
@@ -486,6 +553,141 @@ class ExecutionEngine:
             result.output.setdefault("artifact_ids", result.artifact_ids)
 
         return result
+
+    async def _dispatch_control_node(
+        self,
+        dag_node: DAGNode,
+        context: ExecutionContext,
+    ) -> PluginResult | None:
+        if dag_node.node_type != "conditionalBranch":
+            return None
+
+        cfg = dag_node.config or {}
+        ctx_vars = await context.all()
+        try:
+            output = self._evaluate_conditional_branch(cfg, ctx_vars)
+        except Exception as exc:
+            return PluginResult(
+                success=False,
+                duration_ms=0,
+                error=f"Conditional branch evaluation failed: {exc}",
+            )
+        return PluginResult(success=True, duration_ms=0, output=output)
+
+    def _evaluate_conditional_branch(
+        self,
+        cfg: dict[str, Any],
+        variables: dict[str, Any],
+    ) -> dict[str, Any]:
+        variable_name = str(cfg.get("variable") or "branch_decision")
+        cases = cfg.get("cases")
+        default_case = str(cfg.get("default_case") or "else").strip() or "else"
+
+        if isinstance(cases, dict) and cases:
+            selected = default_case
+            matched_expression = ""
+            for label, expression in cases.items():
+                if evaluate_condition(str(expression or ""), variables):
+                    selected = str(label)
+                    matched_expression = str(expression or "")
+                    break
+            return {
+                variable_name: selected,
+                "branch_decision": selected,
+                "condition_result": selected != default_case,
+                "matched_expression": matched_expression,
+                "default_case": default_case,
+            }
+
+        expression = str(cfg.get("expression") or cfg.get("condition") or "").strip()
+        result = bool(evaluate_expression(expression or "False", variables))
+        true_label = str(cfg.get("true_label") or "true")
+        false_label = str(cfg.get("false_label") or "false")
+        selected = true_label if result else false_label
+        return {
+            variable_name: selected if variable_name == "branch_decision" else result,
+            "branch_decision": selected,
+            "condition_result": result,
+            "evaluated_expression": expression,
+            "true_label": true_label,
+            "false_label": false_label,
+        }
+
+    async def _resolve_outgoing_edges(
+        self,
+        node_key: str,
+        dag: DAGGraph,
+        context: ExecutionContext,
+        *,
+        inactive_edges: set[tuple[str, str, str]],
+    ) -> None:
+        outgoing = dag.outgoing_edges(node_key)
+        if not outgoing:
+            return
+
+        variables = await context.all()
+        source_output = self._node_outputs.get(node_key, {})
+        extra = {"output": source_output, "node_output": source_output}
+        else_edges: list[DAGEdge] = []
+        matched_explicit = False
+
+        for edge in outgoing:
+            condition = str(edge.condition or "").strip()
+            edge_ref = edge.ref()
+            if not condition:
+                inactive_edges.discard(edge_ref)
+                continue
+            lowered = condition.lower()
+            if lowered in {"else", "default"}:
+                else_edges.append(edge)
+                continue
+            if self._edge_matches(condition, variables, source_output, extra=extra):
+                inactive_edges.discard(edge_ref)
+                matched_explicit = True
+            else:
+                inactive_edges.add(edge_ref)
+
+        for edge in else_edges:
+            if matched_explicit:
+                inactive_edges.add(edge.ref())
+            else:
+                inactive_edges.discard(edge.ref())
+
+    def _edge_matches(
+        self,
+        condition: str,
+        variables: dict[str, Any],
+        source_output: dict[str, Any],
+        *,
+        extra: dict[str, Any],
+    ) -> bool:
+        normalized = str(condition or "").strip()
+        lowered = normalized.lower()
+        branch_decision = str(source_output.get("branch_decision") or "").strip()
+        if branch_decision and lowered in {
+            branch_decision.lower(),
+            f"branch:{branch_decision.lower()}",
+            f"case:{branch_decision.lower()}",
+        }:
+            return True
+
+        condition_result = source_output.get("condition_result")
+        if isinstance(condition_result, bool) and lowered in {"true", "false"}:
+            return condition_result is (lowered == "true")
+
+        try:
+            return evaluate_condition(normalized, variables, extra=extra)
+        except NameError:
+            return False
+
+    @staticmethod
+    def _mark_outgoing_edges_inactive(
+        dag: DAGGraph,
+        node_key: str,
+        inactive_edges: set[tuple[str, str, str]],
+    ) -> None:
+        for edge in dag.outgoing_edges(node_key):
+            inactive_edges.add(edge.ref())
 
     async def _skip_node(self, node_key: str, dag: DAGGraph, reason: str) -> None:
         bus = get_event_bus()

@@ -34,6 +34,8 @@ interface NexusNodeData extends Record<string, unknown> {
 }
 
 type NexusNode = Node<NexusNodeData, 'nexusNode'>;
+type NexusEdgeData = { condition?: string };
+type NexusEdge = Edge<NexusEdgeData>;
 
 // ── Palette ────────────────────────────────────────────────────────────────────
 
@@ -61,6 +63,7 @@ const PALETTE_GROUPS = [
     items: [
       { type: 'aiAnalysis',       label: 'AI Analysis', icon: Brain },
       { type: 'conditionalBranch', label: 'Condition',  icon: GitBranch },
+      { type: 'desktop.data_iteration', label: 'Data Loop', icon: RefreshCw },
       { type: 'retryNode',         label: 'Retry',      icon: RefreshCw },
       { type: 'delayNode',         label: 'Delay',      icon: Timer },
     ],
@@ -74,6 +77,50 @@ const OPEN_METEO_SAMPLE_URL =
 const API_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'];
 
 let nodeId = 0;
+
+function edgePresentation(condition?: string | null) {
+  const label = String(condition || '').trim();
+  if (!label) return {};
+  return {
+    label,
+    labelStyle: {
+      fontSize: 10,
+      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+      color: '#d5d8ef',
+    },
+    labelBgStyle: {
+      fill: 'rgba(13, 13, 24, 0.92)',
+      stroke: 'rgba(148, 163, 184, 0.18)',
+      strokeWidth: 1,
+    },
+    labelBgPadding: [6, 3] as [number, number],
+    labelBgBorderRadius: 4,
+  };
+}
+
+function buildCanvasEdge({
+  id,
+  source,
+  target,
+  condition,
+}: {
+  id: string;
+  source: string;
+  target: string;
+  condition?: string | null;
+}): NexusEdge {
+  const normalized = condition ?? undefined;
+  return {
+    id,
+    source,
+    target,
+    animated: true,
+    style: EDGE_STYLE,
+    markerEnd: MARKER,
+    data: { condition: normalized },
+    ...edgePresentation(normalized),
+  } as NexusEdge;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
@@ -109,6 +156,15 @@ function apiNodeLabelForMethod(method: string): string {
 }
 
 function defaultConfigForType(type: string): Record<string, unknown> {
+  if (type === 'conditionalBranch') {
+    return { expression: '', variable: 'branch_decision', true_label: 'true', false_label: 'false' };
+  }
+  if (type === 'delayNode') {
+    return { delay_seconds: 1 };
+  }
+  if (type === 'desktop.data_iteration') {
+    return { row_index: 0, variable_prefix: '' };
+  }
   if (!isApiNodeType(type)) return {};
   const config: Record<string, unknown> = { timeout_seconds: 30, verify_ssl: true, trust_env: false };
   const fixedMethod = fixedApiMethod(type);
@@ -144,16 +200,16 @@ function workflowToNodes(wf: WorkflowDetail): NexusNode[] {
   }));
 }
 
-function workflowToEdges(wf: WorkflowDetail): Edge[] {
-  return wf.edges.map((e) => ({
+function workflowToEdges(wf: WorkflowDetail): NexusEdge[] {
+  return wf.edges.map((e) => buildCanvasEdge({
     id: `${e.source_key}-${e.target_key}`,
-    source: e.source_key, target: e.target_key,
-    animated: true, style: EDGE_STYLE, markerEnd: MARKER,
-    data: { condition: e.condition },
+    source: e.source_key,
+    target: e.target_key,
+    condition: e.condition,
   }));
 }
 
-function toInput(name: string, nodes: NexusNode[], edges: Edge[]): WorkflowCreateInput {
+function toInput(name: string, nodes: NexusNode[], edges: NexusEdge[]): WorkflowCreateInput {
   return {
     name: name.trim() || 'Untitled Workflow',
     description: 'Authored in NEXUS QA workflow canvas.',
@@ -277,6 +333,165 @@ function ConfigJsonField({
         className="mt-1.5 w-full resize-y rounded-lg border border-[var(--color-line-default)] bg-[var(--color-surface-2)] px-3 py-2 font-mono text-[11px] text-[var(--color-fg-default)] outline-none transition-colors placeholder:text-[var(--color-fg-subtle)]/45 focus:border-[var(--color-accent-default)]"
       />
       {error && <p className="mt-1 text-[10px] text-[var(--color-state-error)]">{error}</p>}
+    </div>
+  );
+}
+
+function ConfigCheckboxField({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="flex items-center justify-between rounded-lg border border-[var(--color-line-default)] bg-[var(--color-surface-2)] px-3 py-2">
+      <span className="text-[9px] font-mono uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]">{label}</span>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+        className="h-4 w-4 accent-[var(--color-accent-default)]"
+      />
+    </label>
+  );
+}
+
+function GenericNodeConfigEditor({
+  config,
+  onReplace,
+}: {
+  config: Record<string, unknown>;
+  onReplace: (value: Record<string, unknown>) => void;
+}) {
+  return (
+    <ConfigJsonField
+      label="Node Config JSON"
+      value={config}
+      placeholder={'{"key":"value"}'}
+      onChange={(value) => onReplace(isRecord(value) ? value : {})}
+    />
+  );
+}
+
+function ConditionalConfigEditor({
+  config,
+  onChange,
+}: {
+  config: Record<string, unknown>;
+  onChange: (key: string, value: unknown) => void;
+}) {
+  return (
+    <div className="space-y-3 rounded-xl border border-[var(--color-line-default)] bg-[rgba(245,158,11,0.08)] p-3">
+      <span className="text-[10px] font-mono uppercase tracking-[0.14em] text-[#f0b558]">Branch Logic</span>
+      <ConfigTextField
+        label="Expression"
+        value={formatConfigValue(config.expression)}
+        placeholder="amount > 1000 and approved == true"
+        onChange={(value) => onChange('expression', value)}
+      />
+      <ConfigTextField
+        label="Variable"
+        value={formatConfigValue(config.variable || 'branch_decision')}
+        placeholder="branch_decision"
+        onChange={(value) => onChange('variable', value || 'branch_decision')}
+      />
+      <div className="grid grid-cols-2 gap-3">
+        <ConfigTextField
+          label="True Label"
+          value={formatConfigValue(config.true_label || 'true')}
+          onChange={(value) => onChange('true_label', value || 'true')}
+        />
+        <ConfigTextField
+          label="False Label"
+          value={formatConfigValue(config.false_label || 'false')}
+          onChange={(value) => onChange('false_label', value || 'false')}
+        />
+      </div>
+      <p className="text-[10px] leading-relaxed text-[var(--color-fg-subtle)]">
+        Connect two outgoing edges from this node. The first connection defaults to `true`, the second to `false`, and you can rename either edge in the edge inspector.
+      </p>
+    </div>
+  );
+}
+
+function DataIterationConfigEditor({
+  config,
+  onChange,
+}: {
+  config: Record<string, unknown>;
+  onChange: (key: string, value: unknown) => void;
+}) {
+  return (
+    <div className="space-y-3 rounded-xl border border-[var(--color-line-default)] bg-[rgba(217,70,239,0.06)] p-3">
+      <span className="text-[10px] font-mono uppercase tracking-[0.14em] text-[#d946ef]">Data Iteration</span>
+      <ConfigTextField
+        label="Data Key"
+        value={formatConfigValue(config.data_key)}
+        placeholder="customers"
+        onChange={(value) => onChange('data_key', value)}
+      />
+      <div className="grid grid-cols-2 gap-3">
+        <ConfigTextField
+          label="Row Index"
+          type="number"
+          value={formatConfigValue(config.row_index ?? 0)}
+          onChange={(value) => onChange('row_index', Number(value || 0))}
+        />
+        <ConfigTextField
+          label="Variable Prefix"
+          value={formatConfigValue(config.variable_prefix)}
+          placeholder="customer_"
+          onChange={(value) => onChange('variable_prefix', value)}
+        />
+      </div>
+      <ConfigJsonField
+        label="Inline Data JSON"
+        value={config.data_source}
+        placeholder={'[{"name":"Asha"},{"name":"Anand"}]'}
+        objectOnly={false}
+        onChange={(value) => onChange('data_source', value)}
+      />
+    </div>
+  );
+}
+
+function DesktopAdvancedConfigEditor({
+  config,
+  onChange,
+}: {
+  config: Record<string, unknown>;
+  onChange: (key: string, value: unknown) => void;
+}) {
+  return (
+    <div className="space-y-3 rounded-xl border border-[var(--color-line-default)] bg-[rgba(99,102,241,0.06)] p-3">
+      <span className="text-[10px] font-mono uppercase tracking-[0.14em] text-[#8b93ff]">Desktop Recovery</span>
+      <ConfigCheckboxField
+        label="Enable Recovery"
+        checked={config.enable_recovery !== false}
+        onChange={(value) => onChange('enable_recovery', value)}
+      />
+      <ConfigJsonField
+        label="Recovery Rules JSON"
+        value={config.recovery_rules}
+        placeholder={'[{"category":"object_not_found","failure_outcome":"continue"}]'}
+        objectOnly={false}
+        onChange={(value) => onChange('recovery_rules', value)}
+      />
+      <ConfigJsonField
+        label="Virtual Object JSON"
+        value={config.virtual_object}
+        placeholder={'{"object_class":"OwnerDrawnGrid"}'}
+        onChange={(value) => onChange('virtual_object', value)}
+      />
+      <ConfigJsonField
+        label="Analog Recording JSON"
+        value={config.analog}
+        placeholder={'{"point":{"x":120,"y":240},"low_level":true}'}
+        onChange={(value) => onChange('analog', value)}
+      />
     </div>
   );
 }
@@ -490,8 +705,9 @@ function WorkflowCard({
 
 export default function WorkflowsPage() {
   const [nodes, setNodes, onNodesChange] = useNodesState<NexusNode>([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<NexusEdge>([]);
   const [selectedNode, setSelectedNode]       = useState<string | null>(null);
+  const [selectedEdge, setSelectedEdge]       = useState<string | null>(null);
   const [selectedWfId, setSelectedWfId]       = useState<string | null>(null);
   const [workflowName, setWorkflowName]       = useState('Untitled Workflow');
   const [editingName, setEditingName]         = useState(false);
@@ -532,6 +748,7 @@ export default function WorkflowsPage() {
       return m ? Number(m[1]) : 0;
     }));
     setSelectedNode(null);
+    setSelectedEdge(null);
     loadedRef.current = selectedWorkflow.id;
   }, [selectedWorkflow, setEdges, setNodes]);
 
@@ -540,13 +757,37 @@ export default function WorkflowsPage() {
   }, [editingName]);
 
   const onConnect = useCallback(
-    (p: Connection) => setEdges((eds) => addEdge({ ...p, animated: true, style: EDGE_STYLE, markerEnd: MARKER }, eds)),
-    [setEdges],
+    (p: Connection) => {
+      const sourceNode = nodes.find((node) => node.id === p.source);
+      const existingOutgoing = edges.filter((edge) => edge.source === p.source);
+      const defaultCondition =
+        sourceNode?.data.nodeType === 'conditionalBranch'
+          ? existingOutgoing.length === 0
+            ? 'true'
+            : existingOutgoing.length === 1
+              ? 'false'
+              : ''
+          : '';
+      const edgeId = `${p.source}-${p.target}${existingOutgoing.length ? `-${existingOutgoing.length + 1}` : ''}`;
+      setEdges((eds) => addEdge(
+        buildCanvasEdge({
+          id: edgeId,
+          source: String(p.source || ''),
+          target: String(p.target || ''),
+          condition: defaultCondition || undefined,
+        }),
+        eds,
+      ));
+      setSelectedNode(null);
+      setSelectedEdge(edgeId);
+    },
+    [edges, nodes, setEdges],
   );
 
   function addNode(type: string, label: string) {
     const id = `n${++nodeId}`;
     setNodes((ns) => [...ns, { id, type: 'nexusNode', position: { x: 220 + Math.random() * 220, y: 180 + Math.random() * 220 }, data: { label, nodeType: type, config: defaultConfigForType(type) } } as NexusNode]);
+    setSelectedEdge(null);
   }
 
   function openApiWorkflowDialog() {
@@ -593,6 +834,7 @@ export default function WorkflowsPage() {
     setWorkflowName(apiDraftName.trim() || 'API Workflow');
     setNameInput(apiDraftName.trim() || 'API Workflow');
     setSelectedNode(requestId);
+    setSelectedEdge(null);
     setNodes([
       {
         id: requestId,
@@ -622,8 +864,8 @@ export default function WorkflowsPage() {
       },
     ] as NexusNode[]);
     setEdges([
-      { id: `${requestId}-${assertId}`, source: requestId, target: assertId, animated: true, style: EDGE_STYLE, markerEnd: MARKER },
-      { id: `${assertId}-${timingId}`, source: assertId, target: timingId, animated: true, style: EDGE_STYLE, markerEnd: MARKER },
+      buildCanvasEdge({ id: `${requestId}-${assertId}`, source: requestId, target: assertId }),
+      buildCanvasEdge({ id: `${assertId}-${timingId}`, source: assertId, target: timingId }),
     ]);
     setApiDialogOpen(false);
   }
@@ -659,6 +901,7 @@ export default function WorkflowsPage() {
   }
 
   const selectedNodeData = nodes.find((n) => n.id === selectedNode);
+  const selectedEdgeData = edges.find((edge) => edge.id === selectedEdge);
 
   function updateSelectedNodeConfig(key: string, value: unknown) {
     if (!selectedNode) return;
@@ -666,6 +909,28 @@ export default function WorkflowsPage() {
       if (n.id !== selectedNode) return n;
       const current = nodeConfig(n.data.config);
       return { ...n, data: { ...n.data, config: { ...current, [key]: value } } };
+    }));
+  }
+
+  function replaceSelectedNodeConfig(value: Record<string, unknown>) {
+    if (!selectedNode) return;
+    setNodes((ns) => ns.map((node) => (
+      node.id === selectedNode
+        ? { ...node, data: { ...node.data, config: value } }
+        : node
+    )));
+  }
+
+  function updateSelectedEdgeCondition(value: string) {
+    if (!selectedEdge) return;
+    const condition = value.trim();
+    setEdges((current) => current.map((edge) => {
+      if (edge.id !== selectedEdge) return edge;
+      return {
+        ...edge,
+        data: { ...(edge.data || {}), condition: condition || undefined },
+        ...edgePresentation(condition),
+      };
     }));
   }
 
@@ -892,7 +1157,7 @@ export default function WorkflowsPage() {
         </svg>
 
         {/* Top toolbar */}
-        <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between border-b border-[var(--color-line-default)] bg-[rgba(13,13,24,0.85)] px-4 py-2 backdrop-blur-sm">
+        <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between border-b border-[var(--color-line-default)] bg-[var(--color-surface-overlay)] px-4 py-2 backdrop-blur-sm">
           <div className="flex items-center gap-3">
             {editingName ? (
               <div className="flex items-center gap-2">
@@ -939,7 +1204,18 @@ export default function WorkflowsPage() {
           nodes={nodes} edges={edges}
           onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect}
           nodeTypes={nodeTypes}
-          onNodeClick={(_, node) => setSelectedNode(node.id === selectedNode ? null : node.id)}
+          onNodeClick={(_, node) => {
+            setSelectedEdge(null);
+            setSelectedNode(node.id === selectedNode ? null : node.id);
+          }}
+          onEdgeClick={(_, edge) => {
+            setSelectedNode(null);
+            setSelectedEdge(edge.id === selectedEdge ? null : edge.id);
+          }}
+          onPaneClick={() => {
+            setSelectedNode(null);
+            setSelectedEdge(null);
+          }}
           fitView
           proOptions={{ hideAttribution: true }}
           style={{ background: 'transparent', paddingTop: 44 }}
@@ -948,7 +1224,7 @@ export default function WorkflowsPage() {
           <Controls position="bottom-left" style={{ bottom: 12, left: 12 }} />
           <MiniMap
             position="bottom-right"
-            style={{ bottom: 12, right: 12, background: 'rgba(13,13,24,0.8)', border: '1px solid rgba(255,255,255,0.05)' }}
+            style={{ bottom: 12, right: 12, background: 'var(--color-surface-overlay)', border: '1px solid var(--color-line-default)' }}
             nodeColor={(n) => {
               const d = n.data as { status?: string };
               if (d.status === 'running') return 'var(--color-state-running)';
@@ -962,7 +1238,7 @@ export default function WorkflowsPage() {
         {/* Empty state */}
         {nodes.length === 0 && (
           <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center" style={{ paddingTop: 44 }}>
-            <div className="rounded-2xl border border-[var(--color-line-default)] bg-[rgba(13,13,24,0.7)] px-10 py-8 text-center backdrop-blur-sm">
+            <div className="rounded-2xl border border-[var(--color-line-default)] bg-[var(--color-surface-overlay)] px-10 py-8 text-center backdrop-blur-sm">
               <Layers size={28} className="mx-auto mb-3 text-[var(--color-fg-subtle)]/40" />
               <p className="text-sm font-medium text-[var(--color-fg-muted)]">Canvas is empty</p>
               <p className="mt-1 text-[11px] text-[var(--color-fg-subtle)]">Click node icons on the left to add them</p>
@@ -973,28 +1249,71 @@ export default function WorkflowsPage() {
 
       {/* ── Node inspector panel ───────────────────────────────────────────── */}
       <AnimatePresence>
-        {selectedNode && selectedNodeData && (
+        {(selectedNodeData || selectedEdgeData) && (
           <motion.aside
-            key="inspector"
+            key={selectedNodeData ? 'node-inspector' : 'edge-inspector'}
             initial={{ width: 0, opacity: 0 }}
             animate={{ width: 280, opacity: 1 }}
             exit={{ width: 0, opacity: 0 }}
             transition={{ duration: 0.22, ease: [0.22, 0.61, 0.36, 1] }}
             className="shrink-0 overflow-hidden border-l border-[var(--color-line-default)] bg-[var(--color-surface-1)]"
           >
-            <div className="flex h-full w-70 flex-col" style={{ width: 280 }}>
-              <div className="flex items-center justify-between border-b border-[var(--color-line-subtle)] px-4 py-3 shrink-0">
-                <div className="flex items-center gap-2">
-                  <Cpu size={13} className="text-[var(--color-accent-default)]" />
-                  <span className="text-[10px] font-mono uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]">Node Inspector</span>
-                </div>
-                <button onClick={() => setSelectedNode(null)}
+              <div className="flex h-full w-70 flex-col" style={{ width: 280 }}>
+                <div className="flex items-center justify-between border-b border-[var(--color-line-subtle)] px-4 py-3 shrink-0">
+                  <div className="flex items-center gap-2">
+                    <Cpu size={13} className="text-[var(--color-accent-default)]" />
+                    <span className="text-[10px] font-mono uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]">
+                      {selectedNodeData ? 'Node Inspector' : 'Edge Inspector'}
+                    </span>
+                  </div>
+                <button onClick={() => {
+                  setSelectedNode(null);
+                  setSelectedEdge(null);
+                }}
                   className="rounded-md p-1 text-[var(--color-fg-subtle)] transition-colors hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg-default)]">
                   <X size={12} />
                 </button>
               </div>
 
               <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                {selectedEdgeData && (
+                  <>
+                    <div>
+                      <label className="text-[9px] font-mono uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]">Path</label>
+                      <p className="mt-1 font-mono text-[11px] text-[var(--color-fg-muted)]">
+                        {selectedEdgeData.source} -&gt; {selectedEdgeData.target}
+                      </p>
+                    </div>
+
+                    <ConfigTextField
+                      label="Condition"
+                      value={String(selectedEdgeData.data?.condition || '')}
+                      placeholder="true, false, else, amount > 1000"
+                      onChange={updateSelectedEdgeCondition}
+                    />
+
+                    <p className="text-[10px] leading-relaxed text-[var(--color-fg-subtle)]">
+                      Edge conditions are evaluated after the source node completes. Use simple labels like `true`, `false`, or `else`, or write expressions against workflow variables.
+                    </p>
+
+                    <div className="border-t border-[var(--color-line-subtle)] pt-3">
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        className="w-full justify-center"
+                        onClick={() => {
+                          setEdges((current) => current.filter((edge) => edge.id !== selectedEdgeData.id));
+                          setSelectedEdge(null);
+                        }}
+                      >
+                        <Trash2Icon size={11} /> Remove edge
+                      </Button>
+                    </div>
+                  </>
+                )}
+
+                {selectedNodeData && (
+                  <>
                 {/* Node ID */}
                 <div>
                   <label className="text-[9px] font-mono uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]">Node ID</label>
@@ -1031,6 +1350,34 @@ export default function WorkflowsPage() {
                   />
                 )}
 
+                {String(selectedNodeData.data.nodeType) === 'conditionalBranch' && (
+                  <ConditionalConfigEditor
+                    config={nodeConfig(selectedNodeData.data.config)}
+                    onChange={updateSelectedNodeConfig}
+                  />
+                )}
+
+                {String(selectedNodeData.data.nodeType) === 'desktop.data_iteration' && (
+                  <DataIterationConfigEditor
+                    config={nodeConfig(selectedNodeData.data.config)}
+                    onChange={updateSelectedNodeConfig}
+                  />
+                )}
+
+                {String(selectedNodeData.data.nodeType).startsWith('desktop.') && (
+                  <DesktopAdvancedConfigEditor
+                    config={nodeConfig(selectedNodeData.data.config)}
+                    onChange={updateSelectedNodeConfig}
+                  />
+                )}
+
+                {!isApiNodeType(String(selectedNodeData.data.nodeType)) && (
+                  <GenericNodeConfigEditor
+                    config={nodeConfig(selectedNodeData.data.config)}
+                    onReplace={replaceSelectedNodeConfig}
+                  />
+                )}
+
                 {/* Status if present */}
                 {selectedNodeData.data.status && (() => {
                   const sc: Record<string, string> = { success:'#45c08a', running:'#5b8cff', failed:'#f06262', queued:'#f0b558' };
@@ -1058,6 +1405,8 @@ export default function WorkflowsPage() {
                     <Trash2Icon size={11} /> Remove node
                   </Button>
                 </div>
+                  </>
+                )}
               </div>
             </div>
           </motion.aside>

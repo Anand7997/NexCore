@@ -163,5 +163,111 @@ async def test_sync_recorded_window_uses_application_name_for_placeholder_title(
     assert objects[0]["application"] == "Intellij"
     assert objects[0]["object_key"] == "intellij_window"
     assert objects[0]["name"] == "Intellij Window"
-    assert objects[0]["primary_locator"] == "untitled2"
-    assert objects[0]["name_text"] == "untitled2"
+    assert objects[0]["primary_locator"] == "/Pane[@Name='Desktop 1']/Window[@Name='untitled2']"
+    assert objects[0]["name_text"] == ""
+
+
+@pytest.mark.asyncio
+async def test_sync_recorded_placeholder_without_uia_uses_coordinate_fallback(client: AsyncClient):
+    session_response = await client.post("/api/desktop-recorder/sessions", json={
+        "name": "Intellij",
+        "application_path": r"C:\Apps\idea64.exe",
+        "window_title": "IDE",
+        "driver_type": "uia3",
+    })
+    assert session_response.status_code == 201
+    session_id = session_response.json()["id"]
+
+    action_response = await client.post(f"/api/desktop-recorder/sessions/{session_id}/actions", json={
+        "action_type": "click",
+        "object_key": "untitled2",
+        "object_name": "untitled2",
+        "locator_strategy": "name",
+        "window_title": "IDE",
+        "screen": "IDE",
+        "x": 320,
+        "y": 240,
+    })
+    assert action_response.status_code == 201
+
+    sync = await client.post("/api/page-repository/desktop/sync-workflows", json={
+        "session_id": session_id,
+        "include_recording_sessions": True,
+        "update_existing": True,
+    })
+    assert sync.status_code == 200
+    assert sync.json()["created"] == 1
+
+    listed = await client.get("/api/page-repository/desktop/objects")
+    assert listed.status_code == 200
+    objects = listed.json()
+    assert len(objects) == 1
+    assert objects[0]["object_key"] == "intellij_x_320_y_240"
+    assert objects[0]["name"] == "Desktop Object @ x=320,y=240"
+    assert objects[0]["locator_strategy"] == "coordinate"
+    assert objects[0]["primary_locator"] == "x=320,y=240"
+    assert any(item["strategy"] == "coordinate" for item in objects[0]["alternative_locators"])
+
+
+@pytest.mark.asyncio
+async def test_sync_desktop_recording_session_filters_to_selected_session(client: AsyncClient):
+    first_session_response = await client.post("/api/desktop-recorder/sessions", json={
+        "name": "Invoice",
+        "application_path": r"C:\Apps\Invoice.exe",
+        "window_title": "Invoice",
+        "driver_type": "uia3",
+    })
+    assert first_session_response.status_code == 201
+    first_session_id = first_session_response.json()["id"]
+
+    second_session_response = await client.post("/api/desktop-recorder/sessions", json={
+        "name": "Notes",
+        "application_path": r"C:\Apps\Notes.exe",
+        "window_title": "Notes",
+        "driver_type": "uia3",
+    })
+    assert second_session_response.status_code == 201
+    second_session_id = second_session_response.json()["id"]
+
+    first_action_response = await client.post(f"/api/desktop-recorder/sessions/{first_session_id}/actions", json={
+        "action_type": "click",
+        "object_key": "save_button",
+        "object_name": "Save",
+        "control_type": "Button",
+        "automation_id": "btnSave",
+        "name_text": "Save",
+        "locator_strategy": "accessibility id",
+        "window_title": "Invoice",
+        "screen": "Invoice",
+    })
+    assert first_action_response.status_code == 201
+
+    second_action_response = await client.post(f"/api/desktop-recorder/sessions/{second_session_id}/actions", json={
+        "action_type": "click",
+        "object_key": "open_button",
+        "object_name": "Open",
+        "control_type": "Button",
+        "automation_id": "btnOpen",
+        "name_text": "Open",
+        "locator_strategy": "accessibility id",
+        "window_title": "Notes",
+        "screen": "Notes",
+    })
+    assert second_action_response.status_code == 201
+
+    sync = await client.post("/api/page-repository/desktop/sync-workflows", json={
+        "session_id": first_session_id,
+        "include_recording_sessions": True,
+        "update_existing": True,
+    })
+    assert sync.status_code == 200
+    body = sync.json()
+    assert body["scanned_recording_sessions"] == 1
+    assert body["created"] == 1
+    assert body["objects"][0]["session_id"] == first_session_id
+
+    listed = await client.get("/api/page-repository/desktop/objects")
+    assert listed.status_code == 200
+    objects = listed.json()
+    assert len(objects) == 1
+    assert objects[0]["object_key"] == "save_button"

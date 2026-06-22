@@ -10,6 +10,8 @@ from app.database.models import (
     ApiCollectionModel,
     ApiEndpointModel,
     ArtifactModel,
+    DesktopRepositoryCaseModel,
+    DesktopRepositoryStepModel,
     ExecutionModel,
     ExecutionStepResultModel,
     ExecutionTestCaseResultModel,
@@ -203,6 +205,12 @@ class TestConfigurationRepository:
         step_ids: list[str],
     ) -> None:
         if case_ids:
+            await self.db.execute(
+                update(DesktopRepositoryCaseModel)
+                .where(DesktopRepositoryCaseModel.source_test_case_id.in_(case_ids))
+                .values(source_test_case_id=None)
+                .execution_options(synchronize_session=False)
+            )
             result_ids = await self._ids(
                 select(ExecutionTestCaseResultModel.id)
                 .where(ExecutionTestCaseResultModel.test_case_id.in_(case_ids))
@@ -237,6 +245,12 @@ class TestConfigurationRepository:
                 .execution_options(synchronize_session=False)
             )
         if step_ids:
+            await self.db.execute(
+                update(DesktopRepositoryStepModel)
+                .where(DesktopRepositoryStepModel.source_test_step_id.in_(step_ids))
+                .values(source_test_step_id=None)
+                .execution_options(synchronize_session=False)
+            )
             await self.db.execute(
                 update(ArtifactModel)
                 .where(ArtifactModel.test_step_id.in_(step_ids))
@@ -279,6 +293,12 @@ class TestConfigurationRepository:
         )
         if element_ids:
             await self.db.execute(
+                update(DesktopRepositoryStepModel)
+                .where(DesktopRepositoryStepModel.page_element_id.in_(element_ids))
+                .values(page_element_id=None)
+                .execution_options(synchronize_session=False)
+            )
+            await self.db.execute(
                 update(TestStepModel)
                 .where(TestStepModel.page_element_id.in_(element_ids))
                 .values(page_element_id=None)
@@ -290,6 +310,12 @@ class TestConfigurationRepository:
                 .values(page_element_id=None)
                 .execution_options(synchronize_session=False)
             )
+        await self.db.execute(
+            update(DesktopRepositoryStepModel)
+            .where(DesktopRepositoryStepModel.page_id.in_(page_ids))
+            .values(page_id=None)
+            .execution_options(synchronize_session=False)
+        )
         await self.db.execute(
             delete(PageElementModel)
             .where(PageElementModel.page_id.in_(page_ids))
@@ -349,8 +375,20 @@ class TestConfigurationRepository:
         values: dict[str, None] = {}
         if project_id is not None:
             values["project_id"] = None
+            await self.db.execute(
+                update(DesktopRepositoryCaseModel)
+                .where(DesktopRepositoryCaseModel.source_project_id == project_id)
+                .values(source_project_id=None)
+                .execution_options(synchronize_session=False)
+            )
         if module_ids:
             values["module_id"] = None
+            await self.db.execute(
+                update(DesktopRepositoryCaseModel)
+                .where(DesktopRepositoryCaseModel.source_module_id.in_(module_ids))
+                .values(source_module_id=None)
+                .execution_options(synchronize_session=False)
+            )
         if not values:
             return
         for model in (WorkflowModel, ExecutionModel, ExecutionTestCaseResultModel, AIWorkflowModel):
@@ -451,6 +489,8 @@ class TestConfigurationRepository:
         test_case = await self.db.get(TestCaseModel, case_id)
         if test_case is None:
             return False
+        step_ids = await self._step_ids_for_cases([case_id])
+        await self._clear_case_step_references([case_id], step_ids)
         await self.db.delete(test_case)
         await self.db.commit()
         return True

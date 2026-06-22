@@ -1,6 +1,7 @@
 """Tests for AI workflow element binding quality and data hints."""
 
 import asyncio
+from types import SimpleNamespace
 
 from app.ai_workflow.schemas import GeneratedTestCase, GeneratedTestStep, StepElementBindingDecision
 from app.ai_workflow.service import (
@@ -11,6 +12,7 @@ from app.ai_workflow.service import (
     _candidate_locator_paths,
     _enhance_scraped_candidates_with_ai,
     _infer_workflow_action,
+    _page_element_to_saved_candidate,
     _select_candidates_from_binding_decisions,
     _score_candidate,
     _step_binding_decision_prompt,
@@ -329,6 +331,7 @@ def test_desktop_candidate_metadata_marks_desktop_mcp_source():
     metadata = _candidate_discovery_metadata(
         workflow_id="wf-1",
         candidate={
+            "candidate_id": "scraped-1",
             "tags": ["desktop"],
             "best_locator": "btnSubmit",
             "xpath": "/Window/Button",
@@ -340,11 +343,53 @@ def test_desktop_candidate_metadata_marks_desktop_mcp_source():
     )
 
     assert metadata["source"] == "desktop_mcp_ai_workflow"
+    assert metadata["candidate_id"] == "scraped-1"
     assert metadata["platform"] == "desktop"
     assert metadata["object_key"] == "submit_button"
     assert metadata["automation_id"] == "btnSubmit"
     assert metadata["locator_context"]["parent_chain"] == ["Invoice"]
     assert metadata["locator_paths"][0]["locator"] == "btnSubmit"
+
+
+def test_page_repository_candidate_fetch_shape_preserves_ai_binding_key():
+    element = SimpleNamespace(
+        id="element-1",
+        name="Submit Invoice",
+        element_type="button",
+        description="",
+        locator_strategy="accessibility id",
+        xpath="/Window/Button[@AutomationId='btnSubmit']",
+        css_selector="Button",
+        id_attr="btnSubmit",
+        name_attr="Submit Invoice",
+        confidence_score=0.94,
+        alternative_locators=[
+            {"strategy": "accessibility id", "locator": "btnSubmit", "score": 1.0},
+            {"strategy": "name", "locator": "Submit Invoice", "score": 0.86},
+        ],
+        tags=["desktop", "ai-selected"],
+        discovery_metadata={
+            "workflow_id": "wf-1",
+            "candidate_id": "scraped-9",
+            "platform": "desktop",
+            "object_key": "submit_invoice_button",
+            "automation_id": "btnSubmit",
+            "name_text": "Submit Invoice",
+            "primary_locator": "btnSubmit",
+            "locator_context": {"parent_chain": ["Invoice"]},
+            "test_data_hints": {"input_type": "button"},
+            "matched_steps": ["Create invoice: step 3"],
+        },
+    )
+
+    saved = _page_element_to_saved_candidate(element)
+
+    assert saved["candidate_id"] == "scraped-9"
+    assert saved["element_id"] == "element-1"
+    assert saved["automation_id"] == "btnSubmit"
+    assert saved["object_key"] == "submit_invoice_button"
+    assert saved["locator_paths"][0]["locator"] == "btnSubmit"
+    assert saved["matched_steps"] == ["Create invoice: step 3"]
 
 
 def test_ai_binding_decision_selects_candidate_and_refines_step_value():

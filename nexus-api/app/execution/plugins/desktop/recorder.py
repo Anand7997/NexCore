@@ -53,6 +53,17 @@ NODE_TYPES = {
     "extract_property": "desktop.extract_property",
 }
 
+CUSTOM_CONTROL_ACTIONS = {
+    "click": "click",
+    "set_text": "set_text",
+    "type_text": "set_text",
+    "select": "select",
+    "assert_property": "assert_property",
+    "extract_property": "extract_property",
+    "table_cell_action": "table_cell_action",
+    "tree_action": "tree_action",
+}
+
 FORM_OPERATIONS = {"type_text", "select", "check", "uncheck", "clear"}
 VERIFY_OPERATIONS = {"assert_text", "assert_property", "extract_text", "extract_property"}
 SUBMIT_TOKENS = {
@@ -85,13 +96,6 @@ BAD_LAUNCH_WINDOW_TITLES = {
 }
 PLACEHOLDER_APPLICATIONS = {"desktop app", "desktop application", "app", "application"}
 LAUNCHABLE_EXTENSIONS = (".exe", ".bat", ".cmd", ".com", ".lnk", ".msc", ".ps1")
-KNOWN_APP_WINDOW_TITLES = {
-    "code.exe": "Visual Studio Code",
-    "code": "Visual Studio Code",
-    "vs code": "Visual Studio Code",
-    "idea64.exe": "IntelliJ IDEA",
-    "idea64": "IntelliJ IDEA",
-}
 
 
 def normalize_recorded_action(action_type: str) -> str:
@@ -115,6 +119,21 @@ def _app_name(value: str) -> str:
 def _is_bad_window_title(value: Any) -> bool:
     title = str(value or "").strip().lower()
     return not title or title in BAD_LAUNCH_WINDOW_TITLES
+
+
+def _is_placeholder_name(value: Any) -> bool:
+    return re.fullmatch(r"untitled\d*", str(value or "").strip().lower()) is not None
+
+
+def _coordinate_locator(action: Any) -> str:
+    x = _get(action, "x", None)
+    y = _get(action, "y", None)
+    if x is None or y is None:
+        return ""
+    try:
+        return f"x={round(float(x))},y={round(float(y))}"
+    except (TypeError, ValueError):
+        return ""
 
 
 def _is_launchable_app(value: Any) -> bool:
@@ -147,13 +166,19 @@ def _stable_process_name(value: Any, app: Any = "") -> str:
     return ""
 
 
-def _launch_window_title(app: str, recorded_title: Any) -> str:
+def _launch_window_title(app: str, recorded_title: Any, application_name: Any = "") -> str:
     title = str(recorded_title or "").strip()
     if title and not _is_bad_window_title(title):
         return title
+    display_name = str(application_name or "").strip()
+    if (
+        display_name
+        and display_name.lower() not in PLACEHOLDER_APPLICATIONS
+        and not _is_bad_window_title(display_name)
+        and not _is_launchable_app(display_name)
+    ):
+        return display_name
     app_name = _app_name(app).lower()
-    if app_name in KNOWN_APP_WINDOW_TITLES:
-        return KNOWN_APP_WINDOW_TITLES[app_name]
     if app_name and _is_launchable_app(app):
         return re.sub(r"[_-]+", " ", app_name.rsplit(".", 1)[0]).title()
     return ""
@@ -166,8 +191,6 @@ def _launch_args(app: str, existing_args: Any = None) -> list[str]:
         args = [part for part in existing_args.split() if part]
     else:
         args = []
-    if _app_name(app).lower() == "code.exe" and "--new-window" not in args:
-        args.append("--new-window")
     return args
 
 
@@ -201,16 +224,23 @@ def _locator(action: Any) -> tuple[str, str]:
     name_text = str(_get(action, "name_text", "") or _get(action, "object_name", "") or "").strip()
     uia_path = str(_get(action, "uia_path", "") or "").strip()
     class_name = str(_get(action, "class_name", "") or "").strip()
+    coordinate = _coordinate_locator(action)
     if automation_id:
         return "accessibility id", automation_id
     if strategy and str(_get(action, "value", "") or "").strip() and strategy in {"ocr", "visual"}:
         return strategy, str(_get(action, "value", "") or "").strip()
-    if name_text:
+    if strategy == "coordinate" and coordinate:
+        return "coordinate", coordinate
+    if name_text and not _is_placeholder_name(name_text):
         return "name", name_text
     if uia_path:
         return "xpath", uia_path
     if class_name:
         return "class name", class_name
+    if coordinate:
+        return "coordinate", coordinate
+    if name_text:
+        return "name", name_text
     return strategy or "name", str(_get(action, "object_key", "") or _get(action, "object_name", "") or "").strip()
 
 
@@ -247,25 +277,134 @@ def _locator_candidates(action: Any) -> list[dict[str, Any]]:
     add("name", _get(action, "name_text", "") or _get(action, "object_name", ""), "Recorded name/text", 0.86)
     add("xpath", _get(action, "uia_path", ""), "Recorded UIA path", 0.74)
     add("class name", _get(action, "class_name", ""), "Recorded class name", 0.56)
+    add("coordinate", _coordinate_locator(action), "Recorded screen coordinate fallback", 0.34)
     return candidates
+
+
+def _recording_metadata(action: Any) -> dict[str, Any]:
+    metadata = _get(action, "metadata", {}) or {}
+    return metadata if isinstance(metadata, dict) else {}
+
+
+def _analog_payload(action: Any, metadata: dict[str, Any]) -> dict[str, Any] | None:
+    analog = metadata.get("analog")
+    if isinstance(analog, dict) and analog:
+        return analog
+    coordinate = _coordinate_locator(action)
+    if not coordinate:
+        return None
+    x = _get(action, "x", None)
+    y = _get(action, "y", None)
+    point = None
+    try:
+        if x is not None and y is not None:
+            point = {"x": float(x), "y": float(y)}
+    except (TypeError, ValueError):
+        point = None
+    return {
+        "point": point,
+        "relative_locator": next(
+            (
+                str(item.get("locator") or "")
+                for item in _locator_candidates(action)
+                if str(item.get("strategy") or "").lower() == "relative"
+            ),
+            "",
+        ),
+        "low_level": True,
+    }
+
+
+def _virtual_object_payload(
+    action: Any,
+    metadata: dict[str, Any],
+    *,
+    object_name: str,
+    control_type: str,
+    class_name: str,
+    strategy: str,
+    selector: str,
+    locators: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    existing = metadata.get("virtual_object")
+    if isinstance(existing, dict) and existing:
+        virtual_object = dict(existing)
+        virtual_object.setdefault("locators", locators)
+        virtual_object.setdefault("primary_locator", selector)
+        return virtual_object
+
+    needs_virtual_object = (
+        str(metadata.get("capture_scope") or "") == "window_fallback"
+        or strategy in {"coordinate", "relative", "ocr", "visual"}
+        or any(str(item.get("strategy") or "").lower() in {"coordinate", "relative", "ocr", "visual"} for item in locators)
+    )
+    if not needs_virtual_object:
+        return None
+    return {
+        "name": object_name,
+        "object_class": class_name or control_type or "OwnerDrawnControl",
+        "control_type": control_type or "CustomControl",
+        "class_name": class_name,
+        "locator_strategy": strategy or "coordinate",
+        "primary_locator": selector,
+        "locators": locators,
+        "capture_scope": metadata.get("capture_scope") or "",
+    }
 
 
 def compile_recorded_action(action: Any, index: int) -> dict[str, Any]:
     operation = normalize_recorded_action(_get(action, "action_type", "click"))
-    node_type = NODE_TYPES.get(operation, "desktop.click")
     strategy, selector = _locator(action)
     value = str(_get(action, "value", "") or "")
     expected = str(_get(action, "expected", "") or value)
     property_name = str(_get(action, "property_name", "") or _get(action, "property", "") or "")
     variable = str(_get(action, "variable", "") or "")
-    object_name = str(_get(action, "object_name", "") or _get(action, "object_key", "") or selector or "Desktop Object")
+    raw_object_name = str(_get(action, "object_name", "") or "").strip()
+    name_text = str(_get(action, "name_text", "") or "").strip()
+    object_key = str(_get(action, "object_key", "") or "").strip()
+    control_type = str(_get(action, "control_type", "") or "").strip()
+    class_name = str(_get(action, "class_name", "") or "").strip()
+    coordinate = _coordinate_locator(action)
+    if raw_object_name and not _is_placeholder_name(raw_object_name):
+        object_name = raw_object_name
+    elif name_text and not _is_placeholder_name(name_text):
+        object_name = name_text
+    elif object_key and not _is_placeholder_name(object_key):
+        object_name = object_key
+    elif control_type and class_name:
+        object_name = f"{control_type} / {class_name}"
+    else:
+        object_name = (
+            control_type
+            or class_name
+            or (f"Desktop Object @ {coordinate}" if coordinate else "")
+            or raw_object_name
+            or object_key
+            or selector
+            or "Desktop Object"
+        )
 
+    metadata = _recording_metadata(action)
+    locators = _locator_candidates(action)
+    analog = _analog_payload(action, metadata)
+    virtual_object = _virtual_object_payload(
+        action,
+        metadata,
+        object_name=object_name,
+        control_type=control_type,
+        class_name=class_name,
+        strategy=strategy,
+        selector=selector,
+        locators=locators,
+    )
+
+    node_type = NODE_TYPES.get(operation, "desktop.click")
     config: dict[str, Any] = {
         "selector": selector,
         "strategy": strategy,
         "timeout_ms": 15000,
-        "locators": _locator_candidates(action),
-        "object_key": str(_get(action, "object_key", "") or ""),
+        "locators": locators,
+        "object_key": object_key,
     }
     x = _get(action, "x", None)
     y = _get(action, "y", None)
@@ -288,6 +427,23 @@ def compile_recorded_action(action: Any, index: int) -> dict[str, Any]:
         config["variable"] = variable or f"recorded_text_{index}"
     if operation == "extract_property":
         config.update({"property": property_name or "name", "variable": variable or f"recorded_property_{index}"})
+    if metadata.get("recording_mode"):
+        config["recording_mode"] = str(metadata.get("recording_mode") or "")
+    if analog:
+        config["analog"] = analog
+    if virtual_object:
+        config["virtual_object"] = virtual_object
+        custom_action = CUSTOM_CONTROL_ACTIONS.get(operation)
+        if custom_action:
+            node_type = "desktop.custom_control_action"
+            config["extension_pack"] = "custom_control"
+            config["object_class"] = str(
+                virtual_object.get("object_class")
+                or control_type
+                or class_name
+                or "OwnerDrawnControl"
+            )
+            config["action"] = custom_action
 
     keyword = {
         "step": index,
@@ -308,18 +464,23 @@ def compile_recorded_action(action: Any, index: int) -> dict[str, Any]:
         "position": {"x": 120 + ((index - 1) * 220), "y": 120},
     }
     repository_suggestion = {
-        "object_key": str(_get(action, "object_key", "") or re.sub(r"[^a-z0-9]+", "_", object_name.lower()).strip("_")),
+        "object_key": object_key or re.sub(r"[^a-z0-9]+", "_", object_name.lower()).strip("_"),
         "name": object_name,
-        "control_type": str(_get(action, "control_type", "") or "element"),
+        "control_type": control_type or "element",
         "automation_id": str(_get(action, "automation_id", "") or ""),
-        "name_text": str(_get(action, "name_text", "") or object_name),
-        "class_name": str(_get(action, "class_name", "") or ""),
+        "name_text": "" if _is_placeholder_name(name_text) else (name_text or object_name),
+        "class_name": class_name,
         "uia_path": str(_get(action, "uia_path", "") or ""),
         "locator_strategy": strategy,
         "primary_locator": selector,
-        "alternative_locators": config.get("locators", []),
+        "alternative_locators": locators,
         "window": str(_get(action, "window_title", "") or ""),
         "screen": str(_get(action, "screen", "") or ""),
+        "metadata": {
+            "recording_mode": metadata.get("recording_mode") or "",
+            "analog": analog or {},
+            "virtual_object": virtual_object or {},
+        },
     }
     return {"keyword": keyword, "node": node, "repository_suggestion": repository_suggestion}
 
@@ -519,7 +680,7 @@ def compile_recording(session: Any, actions: list[Any]) -> dict[str, Any]:
     compiled = [compile_recorded_action(action, index) for index, action in enumerate(sorted_actions, start=1)]
     driver_type = str(_get(session, "driver_type", "uia3") or "uia3")
     launch_app = _launch_app(session)
-    window_title = _launch_window_title(launch_app, _get(session, "window_title", ""))
+    window_title = _launch_window_title(launch_app, _get(session, "window_title", ""), _get(session, "application", ""))
     process_name = _stable_process_name(_get(session, "process_name", ""), launch_app)
     nodes: list[dict[str, Any]] = []
     if launch_app:

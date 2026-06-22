@@ -63,19 +63,19 @@ def test_null_provider_generates_actionable_steps_for_scraping():
     assert any(step.input_value for step in steps if step.action_type == "fill")
 
 
-def test_desktop_calculator_does_not_generate_authentication_steps():
+def test_desktop_generation_does_not_hardcode_application_or_authentication_steps():
     agent = TestCaseGenerationAgent(NullProvider())
     scenario = _scenario(
-        title="Calculator smoke",
-        business_requirement="Automate Calculator arithmetic",
-        pages_involved=["Calculator"],
+        title="Desktop workflow smoke",
+        business_requirement="Automate the requested desktop workflow",
+        pages_involved=["Main Screen"],
     )
     result = run(agent.run(
         scenario,
-        "Calculator",
+        "Main Screen",
         "No elements yet.",
         platform="desktop",
-        app_target="calc.exe",
+        app_target="sample-desktop.exe",
     ))
 
     step_text = " ".join(step.description.lower() for tc in result.test_cases for step in tc.steps)
@@ -84,9 +84,10 @@ def test_desktop_calculator_does_not_generate_authentication_steps():
     assert "password" not in step_text
     assert "sign" not in step_text
     assert "dashboard" not in step_text
-    assert "click digit 7" in step_text
-    assert "click add" in step_text
-    assert "click equals" in step_text
+    assert "launch the target desktop application" in step_text
+    assert "confirm or execute the requested workflow action" in step_text
+    assert "expected desktop result" in step_text
+    assert "calculator" not in step_text
 
 
 def test_unselected_scenarios_not_processed():

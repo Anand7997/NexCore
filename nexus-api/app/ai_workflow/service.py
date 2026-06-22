@@ -6,7 +6,6 @@ import importlib.util
 import json
 import logging
 import re as _re
-import uuid
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
 from typing import Any, TypeVar
@@ -368,10 +367,6 @@ def _application_learning_profile(
         for value in (platform_norm, app_target, target_name, page_name, project_name, brd_text, brd_summary)
     ).lower()
     is_desktop = _is_desktop_platform(platform_norm)
-    is_calculator = _context_has_any(
-        context,
-        ("calculator", "calc.exe", "windowscalculator", "\\calc", "/calc"),
-    ) or target_name.lower() == "calc"
     auth_explicit = _context_has_any(
         context,
         ("login", "log in", "sign in", "sign-in", "signin", "authentication", "credential", "password"),
@@ -381,44 +376,11 @@ def _application_learning_profile(
         "Profile source: deterministic pre-generation application learning.",
         f"Observed platform: {platform_norm}.",
         f"Observed target: {app_target or 'not provided'}.",
+        f"Observed target name: {target_name or 'not provided'}.",
         f"Observed screen/page: {page_name or 'not provided'}.",
     ]
 
-    if is_calculator:
-        profile.extend([
-            "Inferred application type: Windows Calculator desktop utility.",
-            "Core capabilities: numeric digit entry, arithmetic operators, equals/result display, clear/clear-entry, decimal and negative calculations.",
-            "Likely controls: digit buttons, operator buttons, Equals, Clear, Backspace, and calculator result/display text.",
-            "Generation guidance: create direct arithmetic workflows with observable result assertions.",
-            "Scraping guidance: later desktop scraping should prioritize buttons and display elements mentioned by the generated steps.",
-            "Out of scope unless explicitly stated: sign-in, email, password, account, dashboard, web portal, checkout, and customer-management flows.",
-        ])
-    elif is_desktop and _context_has_any(context, ("intellij", "idea64", "idea.exe", "jetbrains")):
-        profile.extend([
-            "Inferred application type: IntelliJ IDEA desktop IDE.",
-            "Core capabilities: open/create projects, navigate project tree, edit files, run/debug configurations, search, settings, plugins, build output, and VCS actions.",
-            "Likely controls: menus, toolbar buttons, project tree nodes, editor tabs, dialogs, run/debug buttons, and settings/plugin inputs.",
-            "Generation guidance: create IDE workflows tied to project, editor, run/debug, search, settings, or plugin tasks.",
-            "Scraping guidance: later desktop scraping should prioritize menu items, toolbar actions, tree nodes, tabs, dialogs, and editor controls referenced by the steps.",
-            "Out of scope unless explicitly stated: customer sign-in, email/password portal login, checkout, and dashboard flows.",
-        ])
-    elif is_desktop and _context_has_any(context, ("notepad", "text editor", "editor.exe")):
-        profile.extend([
-            "Inferred application type: desktop text editor.",
-            "Core capabilities: create/edit text, save/open files, find text, replace text, and verify document content.",
-            "Likely controls: document editor area, File/Edit menus, Save/Open dialogs, Find/Replace fields, and status messages.",
-            "Generation guidance: create file and text-editing workflows with visible content assertions.",
-            "Out of scope unless explicitly stated: sign-in, email, password, account, and dashboard flows.",
-        ])
-    elif is_desktop and _context_has_any(context, ("paint", "mspaint")):
-        profile.extend([
-            "Inferred application type: desktop drawing application.",
-            "Core capabilities: canvas drawing, tool selection, color selection, shape insertion, save/open image, and undo/redo.",
-            "Likely controls: canvas, ribbon/tool buttons, color swatches, shape tools, and save/open dialogs.",
-            "Generation guidance: create drawing/tool workflows with visible canvas or file assertions.",
-            "Out of scope unless explicitly stated: sign-in, email, password, account, and dashboard flows.",
-        ])
-    elif is_desktop:
+    if is_desktop:
         profile.extend([
             "Inferred application type: desktop application.",
             "Core capabilities: infer from executable/window title, BRD, project name, and page name before creating scenarios.",
@@ -428,27 +390,9 @@ def _application_learning_profile(
             "Out of scope unless explicitly stated: sign-in, email, password, account, and dashboard flows.",
         ])
     else:
-        domain = "web application"
-        capabilities = "infer business-critical navigation, form, validation, and confirmation flows from the BRD and target URL."
-        if _context_has_any(context, ("flight", "travel", "hotel", "booking", "reservation")):
-            domain = "travel or booking web application"
-            capabilities = "search, filter, select itinerary/options, passenger/details entry, pricing review, and booking confirmation."
-        elif _context_has_any(context, ("cart", "checkout", "order", "product", "shop", "ecommerce", "e-commerce")):
-            domain = "e-commerce web application"
-            capabilities = "product search/browse, cart updates, checkout validation, payment handoff, and order confirmation."
-        elif _context_has_any(context, ("invoice", "billing", "payment", "finance")):
-            domain = "finance or billing web application"
-            capabilities = "record search, invoice/payment entry, validation, approval, and confirmation/audit states."
-        elif _context_has_any(context, ("crm", "customer", "lead", "opportunity", "contact")):
-            domain = "CRM or customer-management web application"
-            capabilities = "customer/lead search, create/edit forms, status changes, validation, and record confirmation."
-        elif _context_has_any(context, ("admin", "settings", "role", "permission")):
-            domain = "administration web application"
-            capabilities = "configuration changes, user/role/permission updates, validation, audit, and confirmation states."
-
         profile.extend([
-            f"Inferred application type: {domain}.",
-            f"Core capabilities: {capabilities}",
+            "Inferred application type: web application.",
+            "Core capabilities: infer business-critical navigation, data entry, validation, state changes, and confirmations from the BRD and target URL.",
             "Likely controls: navigation links, buttons, inputs, dropdowns, tables/lists, dialogs, messages, and confirmation text.",
             "Generation guidance: create business-domain workflows from the BRD and target, not generic steps.",
             "Scraping guidance: later scraping should prioritize elements referenced by generated steps and collect resilient locator alternatives.",
@@ -463,111 +407,6 @@ def _application_learning_profile(
             )
 
     return "\n".join(profile)
-
-
-_SCENARIO_AUTH_TERMS = (
-    "auth",
-    "authenticate",
-    "authenticated",
-    "credential",
-    "dashboard",
-    "email",
-    "login",
-    "log in",
-    "password",
-    "sign in",
-    "sign-in",
-    "signin",
-)
-
-
-def _is_calculator_profile(application_profile: str) -> bool:
-    profile = (application_profile or "").lower()
-    return "calculator" in profile and ("desktop" in profile or "windows" in profile)
-
-
-def _scenario_list_has_auth_leak(scenario_list: ScenarioList) -> bool:
-    for scenario in scenario_list.scenarios:
-        text = " ".join(
-            str(value or "").lower()
-            for value in (
-                scenario.title,
-                scenario.business_requirement,
-                scenario.test_type,
-                scenario.classification,
-                " ".join(scenario.pages_involved or []),
-            )
-        )
-        if _context_has_any(text, _SCENARIO_AUTH_TERMS):
-            return True
-    return False
-
-
-def _scenario_list_has_calculator_focus(scenario_list: ScenarioList) -> bool:
-    calc_terms = ("calculator", "arithmetic", "digit", "operator", "equals", "result", "clear", "decimal")
-    text = " ".join(
-        " ".join(
-            str(value or "").lower()
-            for value in (
-                scenario.title,
-                scenario.business_requirement,
-                " ".join(scenario.pages_involved or []),
-            )
-        )
-        for scenario in scenario_list.scenarios
-    )
-    return _context_has_any(text, calc_terms)
-
-
-def _calculator_scenario_list(page_name: str = "Calculator") -> ScenarioList:
-    page = page_name or "Calculator"
-    scenarios = [
-        ScenarioPreview(
-            scenario_id=str(uuid.uuid4()),
-            title="Calculator basic addition",
-            business_requirement="Calculator must add two whole numbers and display the correct result.",
-            priority="high",
-            test_type="smoke",
-            classification="positive",
-            pages_involved=[page],
-            estimated_test_cases=1,
-            confidence=0.96,
-        ),
-        ScenarioPreview(
-            scenario_id=str(uuid.uuid4()),
-            title="Calculator subtraction result",
-            business_requirement="Calculator must subtract values and support negative or lower-than-starting results when applicable.",
-            priority="medium",
-            test_type="functional",
-            classification="positive",
-            pages_involved=[page],
-            estimated_test_cases=1,
-            confidence=0.9,
-        ),
-        ScenarioPreview(
-            scenario_id=str(uuid.uuid4()),
-            title="Calculator clear entry resets input",
-            business_requirement="Calculator must clear the current entry so the next calculation starts from a clean state.",
-            priority="medium",
-            test_type="regression",
-            classification="edge",
-            pages_involved=[page],
-            estimated_test_cases=1,
-            confidence=0.88,
-        ),
-        ScenarioPreview(
-            scenario_id=str(uuid.uuid4()),
-            title="Calculator decimal calculation",
-            business_requirement="Calculator must handle decimal inputs and display the expected decimal result.",
-            priority="medium",
-            test_type="functional",
-            classification="edge",
-            pages_involved=[page],
-            estimated_test_cases=1,
-            confidence=0.86,
-        ),
-    ]
-    return ScenarioList(scenarios=scenarios)
 
 
 # ---------------------------------------------------------------------------
@@ -658,15 +497,6 @@ async def _run_scenario_generation(workflow_id: str, ai_provider: str, ai_model:
                     )
 
             scenario_list = _parse_streamed_json("".join(chunks), ScenarioList)
-            if _is_calculator_profile(application_profile) and (
-                _scenario_list_has_auth_leak(scenario_list)
-                or not _scenario_list_has_calculator_focus(scenario_list)
-            ):
-                logger.info(
-                    "Scenario generation returned generic/auth scenarios for Calculator; replacing with calculator scenarios"
-                )
-                scenario_list = _calculator_scenario_list(page_name)
-
             scenarios_data = [s.model_dump() for s in scenario_list.scenarios]
             await _update_state(
                 db, workflow_id, WorkflowState.SCENARIOS_READY,
@@ -1663,10 +1493,7 @@ def _infer_workflow_action(step: GeneratedTestStep, element_type: str = "") -> s
         return "upload"
     if _has_action_phrase(text, ("clear", "remove text", "empty field")):
         return "clear"
-    if _has_action_phrase(text, ("enter", "input", "fill", "provide")) or (
-        _has_action_phrase(text, ("type",))
-        and not _has_action_phrase(text, ("trip type", "travel type", "fare type"))
-    ):
+    if _has_action_phrase(text, ("enter", "input", "fill", "provide", "type in", "type into")):
         return "select" if _is_dropdown_element(element) else "fill"
     if _has_action_phrase(text, ("select", "choose", "dropdown", "pick option")):
         if _is_dropdown_element(element) or _has_action_phrase(text, ("dropdown", "pick option", "choose option", "select option")):
@@ -2419,6 +2246,130 @@ def _saved_candidate_from_page_element(
     }
 
 
+def _page_element_to_saved_candidate(element: PageElementModel) -> dict[str, Any]:
+    metadata = element.discovery_metadata if isinstance(element.discovery_metadata, dict) else {}
+    locator_paths = [
+        dict(locator)
+        for locator in (element.alternative_locators or [])
+        if isinstance(locator, dict) and locator.get("locator")
+    ]
+    test_data_hints = metadata.get("test_data_hints") if isinstance(metadata.get("test_data_hints"), dict) else {}
+    automation_id = str(metadata.get("automation_id") or element.id_attr or "")
+    name_text = str(metadata.get("name_text") or element.name_attr or "")
+    class_name = str(metadata.get("class_name") or element.css_selector or "")
+    confidence_score = element.confidence_score
+    if confidence_score is None:
+        try:
+            confidence_score = float(metadata.get("locator_quality") or 0.0)
+        except (TypeError, ValueError):
+            confidence_score = 0.0
+    return {
+        "candidate_id": str(metadata.get("candidate_id") or element.id),
+        "element_id": element.id,
+        "name": element.name,
+        "element_type": element.element_type,
+        "description": element.description,
+        "locator_strategy": element.locator_strategy,
+        "best_locator": (
+            str(metadata.get("primary_locator") or "")
+            or automation_id
+            or element.xpath
+            or element.css_selector
+            or name_text
+        ),
+        "xpath": element.xpath,
+        "css_selector": element.css_selector,
+        "id_attr": element.id_attr,
+        "name_attr": element.name_attr,
+        "automation_id": automation_id,
+        "name_text": name_text,
+        "class_name": class_name,
+        "object_key": str(metadata.get("object_key") or ""),
+        "locator_context": metadata.get("locator_context") or {},
+        "discovery_metadata": metadata,
+        "confidence_score": confidence_score or 0.0,
+        "alternative_locators": locator_paths,
+        "locator_paths": locator_paths,
+        "tags": element.tags or [],
+        "test_data_hints": test_data_hints,
+        "input_type": metadata.get("input_type") or test_data_hints.get("input_type") or "",
+        "placeholder": metadata.get("placeholder") or "",
+        "label": metadata.get("label") or "",
+        "locator_quality": metadata.get("locator_quality") or confidence_score or 0.0,
+        "matched_steps": metadata.get("matched_steps") or [],
+        "matched_step_intents": metadata.get("matched_step_intents") or [],
+        "best_step_intent_score": metadata.get("best_step_intent_score") or 0.0,
+        "match_reason": metadata.get("match_reason") or "",
+        "selected": True,
+    }
+
+
+async def _fetch_saved_candidates_from_page_repository(
+    db: AsyncSession,
+    *,
+    page_id: str,
+    workflow_id: str,
+    selected_candidates: list[dict[str, Any]],
+    saved_candidates: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    result = await db.execute(select(PageElementModel).where(PageElementModel.page_id == page_id))
+    elements = []
+    for element in result.scalars().all():
+        metadata = element.discovery_metadata if isinstance(element.discovery_metadata, dict) else {}
+        if str(metadata.get("workflow_id") or "") == workflow_id:
+            elements.append(element)
+    selected_ids = [
+        str(candidate.get("candidate_id"))
+        for candidate in selected_candidates
+        if candidate.get("candidate_id")
+    ]
+    selected_id_set = set(selected_ids)
+    selected_order = {candidate_id: index for index, candidate_id in enumerate(selected_ids)}
+    elements_by_id = {str(element.id): element for element in elements}
+    elements_by_candidate_id = {
+        str((element.discovery_metadata or {}).get("candidate_id")): element
+        for element in elements
+        if isinstance(element.discovery_metadata, dict) and (element.discovery_metadata or {}).get("candidate_id")
+    }
+
+    ordered_source = saved_candidates or []
+    if ordered_source:
+        saved: list[dict[str, Any]] = []
+        for saved_candidate in ordered_source:
+            element = elements_by_id.get(str(saved_candidate.get("element_id") or ""))
+            if element is None:
+                element = elements_by_candidate_id.get(str(saved_candidate.get("candidate_id") or ""))
+            if element is None:
+                continue
+            item = _page_element_to_saved_candidate(element)
+            for key in (
+                "candidate_id",
+                "matched_steps",
+                "matched_step_intents",
+                "best_step_intent_score",
+                "match_reason",
+                "selected",
+                "test_data_hints",
+            ):
+                value = saved_candidate.get(key)
+                if value not in (None, "", [], {}):
+                    item[key] = value
+            saved.append(item)
+        if saved:
+            return saved
+
+    saved: list[dict[str, Any]] = []
+    for element in elements:
+        metadata = element.discovery_metadata if isinstance(element.discovery_metadata, dict) else {}
+        candidate_id = str(metadata.get("candidate_id") or "")
+        if selected_id_set and candidate_id not in selected_id_set:
+            continue
+        saved.append(_page_element_to_saved_candidate(element))
+
+    saved.sort(key=lambda item: selected_order.get(str(item.get("candidate_id") or ""), len(selected_order)))
+    return saved
+
+
 def _candidate_discovery_metadata(
     *,
     workflow_id: str,
@@ -2433,8 +2384,11 @@ def _candidate_discovery_metadata(
     )
     metadata.update({
         "workflow_id": workflow_id,
+        "candidate_id": candidate.get("candidate_id") or "",
         "source": source,
+        "selected": bool(candidate.get("selected", True)),
         "matched_steps": candidate.get("matched_steps", []),
+        "match_reason": candidate.get("match_reason") or "",
         "input_type": candidate.get("input_type") or "",
         "placeholder": candidate.get("placeholder") or "",
         "label": candidate.get("label") or "",
@@ -3035,13 +2989,22 @@ async def _run_testcase_generation(workflow_id: str) -> None:
                 selected_elements=selected_candidates,
             )
 
-            saved_elements = await _save_selected_candidates(
+            written_elements = await _save_selected_candidates(
                 db,
                 page_id=page.id,
                 workflow_id=workflow_id,
                 url=wf.webpage_url,
                 selected_candidates=selected_candidates,
             )
+            saved_elements = await _fetch_saved_candidates_from_page_repository(
+                db,
+                page_id=page.id,
+                workflow_id=workflow_id,
+                selected_candidates=selected_candidates,
+                saved_candidates=written_elements,
+            )
+            if selected_candidates and not saved_elements:
+                saved_elements = written_elements
             low_conf = sum(
                 1 for element in saved_elements
                 if float(element.get("confidence_score") or 0.0) < 0.6
@@ -3051,10 +3014,10 @@ async def _run_testcase_generation(workflow_id: str) -> None:
                 f"Saved {len(saved_elements)} necessary elements to '{page_name}'",
                 detail=(
                     f"Skipped {max(len(scraped_candidates) - len(saved_elements), 0)} desktop UIA candidates "
-                    "because no generated test step needed them."
+                    "because no generated test step needed them. Saved objects were fetched back from the Page Repository before binding."
                     if is_desktop else
                     f"Skipped {max(len(scraped_candidates) - len(saved_elements), 0)} scraped candidates "
-                    "because no generated test step needed them."
+                    "because no generated test step needed them. Saved elements were fetched back from the Page Repository before binding."
                 ),
                 elements_saved=len(saved_elements),
                 low_confidence_locators=low_conf,

@@ -54,7 +54,18 @@ const NODE_CONFIG: Record<string, {
   'api.extract':              { icon: Braces,        label: 'Extract',       color: 'from-purple-500/20 to-purple-600/10', border: 'border-purple-500/30',   glow: 'rgba(168,85,247,0.2)' },
   'api.assert_headers':       { icon: BadgeCheck,    label: 'Headers',       color: 'from-teal-500/20 to-teal-600/10',     border: 'border-teal-500/30',     glow: 'rgba(20,184,166,0.2)' },
   'api.assert_response_time': { icon: Timer,         label: 'Resp. Time',    color: 'from-amber-500/20 to-amber-600/10',   border: 'border-amber-500/30',    glow: 'rgba(245,158,11,0.2)' },
+  'desktop.data_iteration':   { icon: RefreshCw,     label: 'Data Loop',     color: 'from-fuchsia-500/20 to-fuchsia-600/10', border: 'border-fuchsia-500/30', glow: 'rgba(217,70,239,0.2)' },
+  'desktop.custom_control_action': { icon: Monitor,  label: 'Virtual Object', color: 'from-rose-500/20 to-rose-600/10',  border: 'border-rose-500/30',     glow: 'rgba(244,63,94,0.2)' },
 };
+
+function resolveNodeConfig(nodeType: string) {
+  if (NODE_CONFIG[nodeType]) return NODE_CONFIG[nodeType];
+  if (nodeType.startsWith('desktop.')) return NODE_CONFIG.desktopAction;
+  if (nodeType.startsWith('web.')) return NODE_CONFIG.webAction;
+  if (nodeType.startsWith('api.')) return NODE_CONFIG.apiValidation;
+  if (nodeType.startsWith('mobile.')) return NODE_CONFIG.mobileAction;
+  return NODE_CONFIG.webAction;
+}
 
 interface NexusNodeData {
   label: string;
@@ -66,8 +77,7 @@ interface NexusNodeData {
 }
 
 function NexusNode({ data, selected }: NodeProps & { data: NexusNodeData }) {
-  const nodeType = data.nodeType as keyof typeof NODE_CONFIG;
-  const cfg = NODE_CONFIG[nodeType] || NODE_CONFIG.webAction;
+  const cfg = resolveNodeConfig(String(data.nodeType || 'webAction'));
   const Icon = cfg.icon;
   const status = data.status;
   const progress = status && data.duration ? Math.min(1, data.duration / 5000) : 0;

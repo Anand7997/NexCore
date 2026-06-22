@@ -100,6 +100,7 @@ export default function TopBar() {
   const { executions } = useExecutionStore();
   const events = useRealtimeStore((s) => s.events);
   const unreadCount = Math.min(events.length, 9);
+  const isLight = theme === 'light';
 
   const running = executions.filter((e) => e.status === 'running').length;
   const queued  = executions.filter((e) => e.status === 'queued').length;
@@ -118,24 +119,28 @@ export default function TopBar() {
     <header
       className="nex-topbar relative z-20 flex h-[var(--shell-topbar-h)] shrink-0 items-center gap-4 px-5"
       style={{
-        background: 'var(--color-surface-overlay)',
-        backdropFilter: 'blur(16px) saturate(160%)',
-        WebkitBackdropFilter: 'blur(16px) saturate(160%)',
-        borderBottom: '1px solid var(--color-line-default)',
+        background: isLight ? '#ffffff' : 'var(--color-surface-overlay)',
+        backgroundColor: isLight ? '#ffffff' : undefined,
+        backgroundImage: isLight ? 'none' : undefined,
+        backdropFilter: isLight ? 'none' : 'blur(16px) saturate(160%)',
+        WebkitBackdropFilter: isLight ? 'none' : 'blur(16px) saturate(160%)',
+        borderBottom: isLight ? '1px solid rgba(15, 23, 42, 0.10)' : '1px solid var(--color-line-default)',
+        color: isLight ? '#111827' : undefined,
       }}
     >
       {/* Bottom accent line */}
       <div
         className="pointer-events-none absolute bottom-0 left-0 right-0 h-px"
         style={{
-          background:
-            'linear-gradient(90deg, transparent 0%, rgba(34,211,238,0.42) 30%, rgba(34,197,94,0.28) 70%, transparent 100%)',
+          background: isLight
+            ? 'none'
+            : 'linear-gradient(90deg, transparent 0%, rgba(34,211,238,0.42) 30%, rgba(34,197,94,0.28) 70%, transparent 100%)',
         }}
       />
 
       {/* ── Left: Breadcrumb ─────────────────────────────────────── */}
       <div className="flex min-w-0 items-center gap-2 shrink-0">
-        <span className="text-[12px] font-mono font-semibold uppercase tracking-[0.16em] text-[var(--color-accent-default)]">
+        <span className={cn('text-[12px] font-mono font-semibold uppercase tracking-[0.16em]', isLight ? 'text-[var(--color-fg-default)]' : 'text-[var(--color-accent-default)]')}>
           NEXCORE
         </span>
         <ChevronRight size={14} className="text-[var(--color-fg-subtle)] shrink-0" />
@@ -208,7 +213,9 @@ export default function TopBar() {
             className={cn(
               'flex h-9 items-center gap-2 rounded-lg px-3 text-[12px] font-mono transition-all duration-150',
               terminalOpen
-                ? 'border border-[rgba(34,211,238,0.35)] bg-[rgba(34,211,238,0.10)] text-[var(--color-accent-default)]'
+                ? isLight
+                  ? 'border border-[var(--color-line-default)] bg-[var(--color-surface-1)] text-[var(--color-fg-default)]'
+                  : 'border border-[rgba(34,211,238,0.35)] bg-[rgba(34,211,238,0.10)] text-[var(--color-accent-default)]'
                 : 'text-[var(--color-fg-subtle)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg-default)]',
             )}
           >
@@ -223,7 +230,9 @@ export default function TopBar() {
             className={cn(
               'flex h-9 w-9 items-center justify-center rounded-lg transition-all duration-150',
               inspectorOpen
-                ? 'border border-[rgba(34,211,238,0.35)] bg-[rgba(34,211,238,0.10)] text-[var(--color-accent-default)]'
+                ? isLight
+                  ? 'border border-[var(--color-line-default)] bg-[var(--color-surface-1)] text-[var(--color-fg-default)]'
+                  : 'border border-[rgba(34,211,238,0.35)] bg-[rgba(34,211,238,0.10)] text-[var(--color-accent-default)]'
                 : 'text-[var(--color-fg-subtle)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg-default)]',
             )}
           >
@@ -260,7 +269,7 @@ export default function TopBar() {
             className={cn(
               'relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg transition-all duration-150',
               theme === 'light'
-                ? 'border border-[rgba(34,211,238,0.30)] bg-[rgba(34,211,238,0.08)] text-[var(--color-accent-default)]'
+                ? 'border border-[var(--color-line-default)] bg-[var(--color-surface-1)] text-[var(--color-fg-default)]'
                 : 'text-[var(--color-fg-subtle)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg-default)]',
             )}
             aria-label="Toggle theme"

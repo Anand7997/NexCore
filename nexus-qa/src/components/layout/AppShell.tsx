@@ -289,12 +289,13 @@ const INITIAL_MESSAGES: ChatMessage[] = [
 
 function AICopilotPanel() {
   const pathname = usePathname();
-  const { closeInspector } = useUIStore();
+  const { closeInspector, theme } = useUIStore();
   const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES);
   const [inputValue, setInputValue] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const isLight = theme === 'light';
 
   const suggestions = COPILOT_SUGGESTIONS[pathname] ??
     COPILOT_SUGGESTIONS[Object.keys(COPILOT_SUGGESTIONS).find((k) => k !== '/' && pathname.startsWith(k)) ?? '/'] ??
@@ -366,16 +367,22 @@ function AICopilotPanel() {
       <div
         className="flex shrink-0 items-center justify-between border-b border-[var(--color-line-default)] px-4 py-3"
         style={{
-          background: 'linear-gradient(135deg, rgba(34,211,238,0.10) 0%, rgba(34,197,94,0.055) 100%)',
+          background: isLight
+            ? 'var(--color-surface-1)'
+            : 'linear-gradient(135deg, rgba(34,211,238,0.10) 0%, rgba(34,197,94,0.055) 100%)',
         }}
       >
         <div className="flex items-center gap-2.5">
           <div
             className="flex h-7 w-7 items-center justify-center rounded-lg"
             style={{
-              background: 'linear-gradient(135deg, rgba(34,211,238,0.25) 0%, rgba(34,197,94,0.15) 100%)',
-              border: '1px solid rgba(34,211,238,0.30)',
-              boxShadow: 'var(--glow-violet-sm)',
+              background: isLight
+                ? 'var(--color-surface-1)'
+                : 'linear-gradient(135deg, rgba(34,211,238,0.25) 0%, rgba(34,197,94,0.15) 100%)',
+              border: isLight
+                ? '1px solid var(--color-line-default)'
+                : '1px solid rgba(34,211,238,0.30)',
+              boxShadow: isLight ? 'none' : 'var(--glow-violet-sm)',
             }}
           >
             <Brain size={13} className="text-[var(--color-accent-default)]" />
@@ -549,6 +556,7 @@ function AICopilotPanel() {
 
 export default function AppShell({ children }: AppShellProps) {
   const { inspectorOpen, inspectorExecutionId, notifications, dismissNotification, theme, setTheme } = useUIStore();
+  const isLight = theme === 'light';
 
   useWebSocket();
 
@@ -561,12 +569,27 @@ export default function AppShell({ children }: AppShellProps) {
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
+    document.documentElement.style.colorScheme = theme;
+    if (theme === 'light') {
+      document.documentElement.style.backgroundColor = '#ffffff';
+      document.documentElement.style.color = '#111827';
+      document.body.style.backgroundColor = '#ffffff';
+      document.body.style.color = '#111827';
+    } else {
+      document.documentElement.style.removeProperty('background-color');
+      document.documentElement.style.removeProperty('color');
+      document.body.style.removeProperty('background-color');
+      document.body.style.removeProperty('color');
+    }
     localStorage.setItem('nexcore-theme', theme);
   }, [theme]);
 
   return (
     <TooltipProvider delayDuration={400}>
-      <div className="nex-shell relative flex h-screen w-screen overflow-hidden bg-[var(--color-bg-base)] noise-overlay">
+      <div
+        className="nex-shell relative flex h-screen w-screen overflow-hidden bg-[var(--color-bg-base)] noise-overlay"
+        style={isLight ? { background: '#ffffff', backgroundColor: '#ffffff', backgroundImage: 'none', color: '#111827' } : undefined}
+      >
         {/* Subtle dot grid */}
         <div className="pointer-events-none absolute inset-0 z-0 bg-grid opacity-100" />
 
@@ -574,24 +597,27 @@ export default function AppShell({ children }: AppShellProps) {
         <div
           className="pointer-events-none absolute left-[20%] top-[30%] h-px w-[200px] opacity-20 animate-beam-line"
           style={{
-            background: 'linear-gradient(90deg, transparent, rgba(34,211,238,0.50), transparent)',
+            background: isLight ? 'none' : 'linear-gradient(90deg, transparent, rgba(34,211,238,0.50), transparent)',
             animationDuration: '6s',
+            opacity: isLight ? 0 : undefined,
           }}
         />
         <div
           className="pointer-events-none absolute right-[25%] bottom-[40%] h-px w-[150px] opacity-15 animate-beam-line"
           style={{
-            background: 'linear-gradient(90deg, transparent, rgba(34,197,94,0.34), transparent)',
+            background: isLight ? 'none' : 'linear-gradient(90deg, transparent, rgba(34,197,94,0.34), transparent)',
             animationDuration: '8s',
             animationDelay: '3s',
+            opacity: isLight ? 0 : undefined,
           }}
         />
         <div
           className="pointer-events-none absolute left-[60%] top-[60%] h-px w-[100px] opacity-10 animate-beam-line"
           style={{
-            background: 'linear-gradient(90deg, transparent, rgba(103,232,249,0.35), transparent)',
+            background: isLight ? 'none' : 'linear-gradient(90deg, transparent, rgba(103,232,249,0.35), transparent)',
             animationDuration: '10s',
             animationDelay: '5s',
+            opacity: isLight ? 0 : undefined,
           }}
         />
 
@@ -599,9 +625,10 @@ export default function AppShell({ children }: AppShellProps) {
         <div
           className="pointer-events-none absolute left-1/4 top-0 h-[400px] w-[600px] rounded-full opacity-[0.035] animate-glow-breathe"
           style={{
-            background: 'radial-gradient(ellipse, rgba(34,211,238,0.85) 0%, transparent 70%)',
+            background: isLight ? 'none' : 'radial-gradient(ellipse, rgba(34,211,238,0.85) 0%, transparent 70%)',
             transform: 'translate(-50%, -30%)',
-            filter: 'blur(40px)',
+            filter: isLight ? 'none' : 'blur(40px)',
+            opacity: isLight ? 0 : undefined,
           }}
         />
 
@@ -609,7 +636,9 @@ export default function AppShell({ children }: AppShellProps) {
         <div
           className="pointer-events-none fixed left-0 right-0 top-0 z-50 h-px"
           style={{
-            background: 'linear-gradient(90deg, transparent 0%, rgba(34,211,238,0.45) 35%, rgba(34,197,94,0.30) 65%, transparent 100%)',
+            background: isLight
+              ? 'none'
+              : 'linear-gradient(90deg, transparent 0%, rgba(34,211,238,0.45) 35%, rgba(34,197,94,0.30) 65%, transparent 100%)',
           }}
         />
 

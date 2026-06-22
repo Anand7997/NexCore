@@ -36,7 +36,7 @@ TAG_CATALOG = [
     {
         "key": "component",
         "label": "Component",
-        "values": ["auth", "checkout", "payments", "orders", "profile"],
+        "values": ["core", "navigation", "forms", "data", "settings"],
     },
 ]
 

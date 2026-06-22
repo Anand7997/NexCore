@@ -174,6 +174,46 @@ async def test_desktop_discovery_waits_until_ui_tree_has_objects():
 
 
 @pytest.mark.asyncio
+async def test_desktop_discovery_skips_window_only_tree_until_controls_render():
+    """A bare top-level window (no child controls) must not be accepted as a
+    finished capture. UWP apps like Calculator expose the ApplicationFrameWindow
+    before their child controls are populated; the readiness gate must keep
+    polling until real (non-container) controls appear."""
+    window_only = (
+        '<UITree>'
+        '<control type="Window" name="Calculator" class_name="ApplicationFrameWindow" />'
+        '</UITree>'
+    )
+    full = (
+        '<UITree>'
+        '<control type="Window" name="Calculator" class_name="ApplicationFrameWindow" />'
+        '<control type="Button" name="One" auto_id="num1Button" class_name="Button" />'
+        '<control type="Button" name="Plus" auto_id="plusButton" class_name="Button" />'
+        '<control type="Text" name="Display is 0" auto_id="CalculatorResults" />'
+        '</UITree>'
+    )
+    driver = _driver_with_trees([window_only, window_only, window_only, full, full])
+
+    with patch("app.ai_workflow.discovery.desktop_adapter.get_driver", return_value=driver):
+        result = await DesktopDiscoveryAdapter(
+            driver_type="uia3",
+            poll_interval_ms=1,
+            settle_ms=0,
+        ).discover(
+            app=r"C:\Windows\System32\calc.exe",
+            page_name="Calculator",
+            platform="desktop",
+            save_mode="preview",
+            page_id="page-1",
+            db=MagicMock(),
+        )
+
+    ids = {element.id_attr for element in result.elements}
+    assert {"num1Button", "plusButton"} <= ids
+    assert result.summary.elements_found >= 3
+
+
+@pytest.mark.asyncio
 async def test_desktop_discovery_raises_when_no_objects_are_captured():
     driver = _driver_with_trees(["<UITree></UITree>", "<UITree></UITree>"])
 

@@ -611,7 +611,7 @@ function TriggerPanel({ onClose }: { onClose: () => void }) {
       initial={{ opacity: 0, y: 8, scale: 0.98 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: 8, scale: 0.98 }}
-      className="absolute right-4 top-16 z-30 w-72 rounded-2xl border border-[var(--color-line-default)] bg-[rgba(13,13,24,0.95)] p-4 shadow-2xl backdrop-blur-xl"
+      className="absolute right-4 top-16 z-30 w-72 rounded-2xl border border-[var(--color-line-default)] bg-[var(--color-surface-overlay)] p-4 shadow-2xl backdrop-blur-xl"
     >
       <h3 className="mb-4 text-sm font-semibold text-[var(--color-fg-default)]">Trigger Execution</h3>
       <div className="space-y-3">
@@ -747,7 +747,7 @@ function ExecutionLaunchPanel({ onClose, onLaunched }: { onClose: () => void; on
       initial={{ opacity: 0, y: 8, scale: 0.98 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: 8, scale: 0.98 }}
-      className="absolute right-4 top-16 z-30 w-80 rounded-2xl border border-[var(--color-line-default)] bg-[rgba(13,13,24,0.95)] p-4 shadow-2xl backdrop-blur-xl"
+      className="absolute right-4 top-16 z-30 w-80 rounded-2xl border border-[var(--color-line-default)] bg-[var(--color-surface-overlay)] p-4 shadow-2xl backdrop-blur-xl"
     >
       <div className="mb-4 flex items-center justify-between gap-3">
         <h3 className="text-sm font-semibold text-[var(--color-fg-default)]">Trigger Execution</h3>

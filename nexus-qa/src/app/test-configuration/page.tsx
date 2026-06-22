@@ -1,11 +1,12 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import type { DragEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  ArrowDown, ArrowUp, ChevronDown, ChevronRight, Eye, EyeOff, FileText,
+  ArrowDown, ArrowUp, BookOpen, ChevronDown, ChevronRight, CopyPlus, Eye, EyeOff, FileText,
   FolderOpen, Layers3, ListChecks, Package, Plus, Save, Search, Tag,
   TestTube, Trash2,
 } from 'lucide-react';
@@ -16,8 +17,22 @@ import {
   useTestConfigurationTree, useUpdateAnyTestStep, useUpdateTestCase,
   useUpdateTestModule, useUpdateTestProject,
 } from '@/lib/api/testConfiguration';
+import {
+  useDesktopRepositoryCases,
+  useInsertDesktopRepositoryCase,
+  useSaveTestCaseToDesktopRepository,
+} from '@/lib/api/desktopRepository';
 import { useAllPages } from '@/lib/api/pageRepository';
-import type { LocatorCandidate, PageDetail, PageElement, TestCase, TestModule, TestProject, TestStep } from '@/lib/api/types';
+import type {
+  DesktopRepositoryCase,
+  LocatorCandidate,
+  PageDetail,
+  PageElement,
+  TestCase,
+  TestModule,
+  TestProject,
+  TestStep,
+} from '@/lib/api/types';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -727,12 +742,84 @@ function CaseCard({ tc, isSelected, onClick }: { tc: TestCase; isSelected: boole
 
 // ── Main Page ──────────────────────────────────────────────────────────────────
 
+function DesktopRepositoryLibraryPanel({
+  cases,
+  selectedCase,
+  search,
+  onSearch,
+  onSave,
+  onInsert,
+  saving,
+  inserting,
+}: {
+  cases: DesktopRepositoryCase[];
+  selectedCase: TestCase | null;
+  search: string;
+  onSearch: (value: string) => void;
+  onSave: () => void;
+  onInsert: (item: DesktopRepositoryCase) => void;
+  saving: boolean;
+  inserting: boolean;
+}) {
+  return (
+    <div className="mt-5 border-t border-[var(--color-line-subtle)] pt-4">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <BookOpen size={12} className="text-[#4dd1e1]" />
+          <span className="text-[10px] font-mono uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]">Desktop Repo</span>
+        </div>
+        <Button variant="glass" size="xs" disabled={!selectedCase || saving} onClick={onSave}>
+          <CopyPlus size={10} /> Save
+        </Button>
+      </div>
+      <div className="relative mb-2">
+        <Search size={11} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-fg-subtle)]" />
+        <input
+          value={search}
+          onChange={(event) => onSearch(event.target.value)}
+          className="w-full rounded-md border border-[var(--color-line-default)] bg-[var(--color-surface-2)] py-1.5 pl-7 pr-3 text-[11px] text-[var(--color-fg-default)] outline-none focus:border-[var(--color-accent-default)]"
+          placeholder="Find reusable testcase"
+        />
+      </div>
+      <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
+        {cases.map((item) => (
+          <div
+            key={item.id}
+            draggable
+            onDragStart={(event) => {
+              event.dataTransfer.setData('application/x-nexcore-desktop-repository-case', item.id);
+              event.dataTransfer.setData('text/plain', item.name);
+            }}
+            className="rounded-lg border border-[var(--color-line-default)] bg-[var(--color-surface-2)] p-2.5"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="truncate text-xs font-medium text-[var(--color-fg-default)]">{item.name}</p>
+                <p className="mt-1 text-[10px] font-mono text-[var(--color-fg-subtle)]">{item.step_count} steps</p>
+              </div>
+              <Button variant="ghost" size="xs" disabled={!selectedCase || inserting} onClick={() => onInsert(item)}>
+                <Plus size={9} /> Insert
+              </Button>
+            </div>
+          </div>
+        ))}
+        {!cases.length && (
+          <div className="rounded-lg border border-dashed border-[var(--color-line-default)] px-3 py-5 text-center text-xs text-[var(--color-fg-subtle)]">
+            No saved desktop testcases.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 type EditorMode = 'project' | 'module' | 'case';
 
 export default function TestConfigurationPage() {
   const router = useRouter();
   useEffect(() => {
     router.prefetch('/page-repository');
+    router.prefetch('/desktop-repository');
     router.prefetch('/architecture');
     router.prefetch('/executions');
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -741,6 +828,8 @@ export default function TestConfigurationPage() {
   const projects   = data?.projects    ?? [];
   const tagCatalog = data?.tag_catalog ?? [];
   const { data: pageRepo = [] } = useAllPages();
+  const [librarySearch, setLibrarySearch] = useState('');
+  const { data: desktopLibrary = [] } = useDesktopRepositoryCases({ search: librarySearch });
 
   const [selProjectId, setSelProjectId] = useState<string | null>(null);
   const [selModuleId,  setSelModuleId]  = useState<string | null>(null);
@@ -774,6 +863,8 @@ export default function TestConfigurationPage() {
   const createStep     = useCreateTestStep(selCaseId ?? '');
   const updateAnyStep  = useUpdateAnyTestStep();
   const deleteStepHook = useDeleteTestStep();
+  const saveDesktopCase = useSaveTestCaseToDesktopRepository();
+  const insertDesktopCase = useInsertDesktopRepositoryCase();
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -904,6 +995,55 @@ export default function TestConfigurationPage() {
     });
   }
 
+  function saveSelectedCaseToDesktopRepository() {
+    if (!selCase) return;
+    saveDesktopCase.mutate(
+      {
+        test_case_id: selCase.id,
+        name: selCase.name,
+        description: selCase.description,
+        tags: ['desktop-repository'],
+      },
+      {
+        onSuccess: (item) => {
+          setLibrarySearch('');
+          void item;
+          setValidationError(null);
+        },
+        onError: (error) => {
+          setValidationError(error instanceof Error ? error.message : 'Desktop Repository save failed.');
+        },
+      },
+    );
+  }
+
+  function insertDesktopRepositoryCase(item: DesktopRepositoryCase, position?: number) {
+    if (!selCase) return;
+    insertDesktopCase.mutate(
+      {
+        caseId: item.id,
+        input: {
+          target_test_case_id: selCase.id,
+          position: position ?? sortedSteps.length + 1,
+          include_disabled: true,
+        },
+      },
+      {
+        onSuccess: () => setValidationError(null),
+        onError: (error) => {
+          setValidationError(error instanceof Error ? error.message : 'Desktop Repository insert failed.');
+        },
+      },
+    );
+  }
+
+  function handleDesktopRepositoryDrop(event: DragEvent<HTMLElement>) {
+    event.preventDefault();
+    const caseId = event.dataTransfer.getData('application/x-nexcore-desktop-repository-case');
+    const item = desktopLibrary.find((candidate) => candidate.id === caseId);
+    if (item) insertDesktopRepositoryCase(item);
+  }
+
   function saveEditor() {
     setValidationError(null);
     if (editorMode === 'project' && selProject) {
@@ -1029,6 +1169,9 @@ export default function TestConfigurationPage() {
                   { onSuccess: (c) => { setSelCaseId(c.id); setEditorMode('case'); } },
                 )}>
                 <Plus size={11} /> Case
+              </Button>
+              <Button variant="glass" size="sm" disabled={!selCase || saveDesktopCase.isPending} onClick={saveSelectedCaseToDesktopRepository}>
+                <CopyPlus size={11} /> Desktop Repo
               </Button>
               <Button variant="neon" size="sm" disabled={!selCase} onClick={() => addStep()}>
                 <Plus size={11} /> Step
@@ -1198,7 +1341,15 @@ export default function TestConfigurationPage() {
               )}
             </div>
 
-            <div className="flex-1 overflow-auto">
+            <div
+              className="flex-1 overflow-auto"
+              onDragOver={(event) => {
+                if (event.dataTransfer.types.includes('application/x-nexcore-desktop-repository-case')) {
+                  event.preventDefault();
+                }
+              }}
+              onDrop={handleDesktopRepositoryDrop}
+            >
               {!selCase
                 ? <p className="py-12 text-center text-xs text-[var(--color-fg-subtle)]">Choose a test case to edit its steps inline</p>
                 : sortedSteps.length === 0
@@ -1336,6 +1487,16 @@ export default function TestConfigurationPage() {
                 <div><label className={LBL}>Tags</label><input value={cd.tags} onChange={(e) => setCd((d) => ({ ...d, tags: e.target.value }))} className={INP} placeholder="smoke, checkout" /></div>
                 <div><label className={LBL}>Description</label><textarea value={cd.description} onChange={(e) => setCd((d) => ({ ...d, description: e.target.value }))} className={`${INP} min-h-20 resize-y`} placeholder="Business path under test" /></div>
                 <div><label className={LBL}>Default Variables (JSON)</label><textarea value={cd.vars} onChange={(e) => setCd((d) => ({ ...d, vars: e.target.value }))} className={`${INP} min-h-24 resize-y font-mono text-xs`} placeholder='{"baseUrl":"https://…"}' /></div>
+                <DesktopRepositoryLibraryPanel
+                  cases={desktopLibrary}
+                  selectedCase={selCase}
+                  search={librarySearch}
+                  onSearch={setLibrarySearch}
+                  onSave={saveSelectedCaseToDesktopRepository}
+                  onInsert={insertDesktopRepositoryCase}
+                  saving={saveDesktopCase.isPending}
+                  inserting={insertDesktopCase.isPending}
+                />
               </div>
             )}
 

@@ -154,15 +154,6 @@ def _launch_window_hints(app_path: str, capabilities: dict[str, Any]) -> set[str
         basename,
         stem,
     }
-    aliases = {
-        "calc": {"calculator"},
-        "calculator": {"calc"},
-        "idea64": {"intellij", "idea"},
-        "idea": {"intellij", "idea64"},
-        "notepad": {"notepad"},
-    }
-    for hint in list(hints):
-        hints.update(aliases.get(hint, set()))
     return {hint for hint in hints if hint}
 
 

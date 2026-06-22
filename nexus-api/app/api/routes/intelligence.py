@@ -418,29 +418,21 @@ def _infer_process_name_from_app(app: str) -> str:
     return name if name.lower().endswith(".exe") else ""
 
 
-def _infer_window_title_from_app(app: str, current: str = "") -> str:
+def _infer_window_title_from_app(app: str, current: str = "", display_name: str = "") -> str:
     app_name = os.path.basename(str(app or "").strip().strip('"')).lower()
     current_clean = str(current or "").strip()
     if current_clean and current_clean.lower() not in _DESKTOP_LAUNCH_BAD_WINDOW_TITLES:
         return current_clean
-    if app_name == "code.exe":
-        return "Visual Studio Code"
+    display_clean = str(display_name or "").strip()
+    if (
+        display_clean
+        and display_clean.lower() not in _DESKTOP_LAUNCH_BAD_WINDOW_TITLES
+        and not os.path.splitext(os.path.basename(display_clean))[1]
+    ):
+        return display_clean
     if app_name:
         return os.path.splitext(os.path.basename(app_name))[0].replace("_", " ").replace("-", " ").title()
     return current_clean
-
-
-def _append_launch_arg(config: dict[str, Any], arg: str) -> None:
-    raw_args = config.get("args") or config.get("appArguments")
-    if isinstance(raw_args, list):
-        args = [str(item) for item in raw_args if str(item).strip()]
-    elif isinstance(raw_args, str) and raw_args.strip():
-        args = [part for part in raw_args.split() if part]
-    else:
-        args = []
-    if arg not in args:
-        args.append(arg)
-    config["args"] = args
 
 
 def _desktop_launch_config_suggestion(
@@ -457,7 +449,11 @@ def _desktop_launch_config_suggestion(
     current_window = str(config.get("window_title") or "").strip()
     current_process = str(config.get("process_name") or "").strip()
     inferred_process = _infer_process_name_from_app(app)
-    inferred_window = _infer_window_title_from_app(app, current_window)
+    inferred_window = _infer_window_title_from_app(
+        app,
+        current_window,
+        str(config.get("application") or config.get("application_name") or config.get("app_name") or ""),
+    )
     error_text = f"{execution_node.status} {execution_node.error or ''}".lower()
     next_config = dict(config)
     next_config["attach_if_running"] = True
@@ -476,11 +472,9 @@ def _desktop_launch_config_suggestion(
     if needs_timeout_buffer:
         next_config["timeout_ms"] = 90000
     no_windows_for_process = "no windows for that process" in error_text
-    is_vs_code = os.path.basename(app.strip().strip('"')).lower() == "code.exe"
-    if no_windows_for_process and is_vs_code:
+    if no_windows_for_process and current_process and current_window:
         if current_process and current_window:
             next_config.pop("process_name", None)
-        _append_launch_arg(next_config, "--new-window")
 
     changed = next_config != config
     if not changed:
@@ -502,13 +496,12 @@ def _desktop_launch_config_suggestion(
             "The launch scope is already stable, but the node is still returning Cancelled with no artifact evidence. "
             "This raises the desktop driver timeout to 90 seconds; implementation also expands the workflow node hard timeout so the plugin is not cancelled first."
         )
-    if no_windows_for_process and is_vs_code:
-        title = "Attach VS Code by window title and force a visible new window"
-        confidence = 0.86
+    if no_windows_for_process and current_process and current_window:
+        title = "Attach desktop app by stable window title"
+        confidence = 0.82
         reason_bits.append(
-            "The runner found a Code.exe process but pywinauto could not find a top-level window for that process. "
-            "VS Code can delegate startup to an existing process, so the process-only fallback is unstable. "
-            "This patch keeps the Visual Studio Code window-title scope, removes the process-only fallback, and launches VS Code with --new-window if attach still needs to start it."
+            "The runner found a process but pywinauto could not find a top-level window for that process. "
+            "When a stable window title is available, window-title attach is safer than a process-only retry."
         )
     return FixSuggestionResponse(
         id=f"{execution_id}:{workflow_node.node_key}:desktop_launch_config",

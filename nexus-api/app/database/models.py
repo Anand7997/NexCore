@@ -221,6 +221,74 @@ class TestStepModel(Base):
     api_endpoint: Mapped["ApiEndpointModel | None"] = relationship("ApiEndpointModel")
 
 
+class DesktopRepositoryCaseModel(Base):
+    """Reusable desktop testcase/flow stored as a library item."""
+    __tablename__ = "desktop_repository_cases"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    source_test_case_id: Mapped[str | None] = mapped_column(ForeignKey("test_cases.id"), index=True)
+    source_project_id: Mapped[str | None] = mapped_column(ForeignKey("test_projects.id"), index=True)
+    source_module_id: Mapped[str | None] = mapped_column(ForeignKey("test_modules.id"), index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    description: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(30), default="active", index=True)
+    test_type: Mapped[str] = mapped_column(String(50), default="functional")
+    priority: Mapped[str] = mapped_column(String(20), default="p2")
+    execution_mode: Mapped[str] = mapped_column(String(20), default="automated")
+    platforms: Mapped[list[str]] = mapped_column(JSON, default=list)
+    tags: Mapped[list[str]] = mapped_column(JSON, default=list)
+    default_variables: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    library_metadata: Mapped[dict[str, Any]] = mapped_column("metadata", JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    source_test_case: Mapped["TestCaseModel | None"] = relationship("TestCaseModel")
+    steps: Mapped[list["DesktopRepositoryStepModel"]] = relationship(
+        "DesktopRepositoryStepModel",
+        back_populates="repository_case",
+        cascade="all, delete-orphan",
+        order_by="DesktopRepositoryStepModel.step_order",
+    )
+
+
+class DesktopRepositoryStepModel(Base):
+    """Reusable desktop testcase step that keeps Page Repository references."""
+    __tablename__ = "desktop_repository_steps"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    repository_case_id: Mapped[str] = mapped_column(ForeignKey("desktop_repository_cases.id"), nullable=False, index=True)
+    source_test_step_id: Mapped[str | None] = mapped_column(ForeignKey("test_steps.id"), index=True)
+    step_order: Mapped[int] = mapped_column(Integer, default=1)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str] = mapped_column(Text, default="")
+    action_type: Mapped[str] = mapped_column(String(100), default="")
+    page_id: Mapped[str | None] = mapped_column(ForeignKey("page_repository.id"), index=True)
+    page_element_id: Mapped[str | None] = mapped_column(ForeignKey("page_elements.id"), index=True)
+    api_endpoint_id: Mapped[str | None] = mapped_column(ForeignKey("api_endpoints.id"), index=True)
+    input_value: Mapped[str] = mapped_column(Text, default="")
+    expected_result: Mapped[str] = mapped_column(Text, default="")
+    assertion_type: Mapped[str] = mapped_column(String(100), default="")
+    secondary_action: Mapped[str] = mapped_column(String(100), default="")
+    secondary_value: Mapped[str] = mapped_column(Text, default="")
+    intent: Mapped[str] = mapped_column(String(100), default="action")
+    target: Mapped[str] = mapped_column(String(255), default="")
+    test_data: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    tags: Mapped[list[str]] = mapped_column(JSON, default=list)
+    bindings: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    step_metadata: Mapped[dict[str, Any]] = mapped_column("metadata", JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    repository_case: Mapped["DesktopRepositoryCaseModel"] = relationship(
+        "DesktopRepositoryCaseModel",
+        back_populates="steps",
+    )
+    page: Mapped["PageRepositoryModel | None"] = relationship("PageRepositoryModel")
+    page_element: Mapped["PageElementModel | None"] = relationship("PageElementModel")
+    api_endpoint: Mapped["ApiEndpointModel | None"] = relationship("ApiEndpointModel")
+
+
 # ── Page Object Repository ────────────────────────────────────────────────────
 
 class PageRepositoryModel(Base):

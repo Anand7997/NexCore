@@ -16,6 +16,7 @@ from app.ai_workflow.models import AIWorkflowModel
 from app.database.models import (
     DesktopObjectHealingSuggestionModel,
     DesktopObjectHistoryModel,
+    DesktopRepositoryStepModel,
     DesktopRecordedActionModel,
     DesktopRecordingSessionModel,
     ExecutionStepResultModel,
@@ -338,6 +339,7 @@ class DesktopObjectResponse(BaseModel):
 
 class DesktopWorkflowSyncRequest(BaseModel):
     workflow_id: Optional[str] = None
+    session_id: Optional[str] = None
     include_archived: bool = False
     include_recording_sessions: bool = True
     update_existing: bool = True
@@ -466,6 +468,12 @@ async def _detach_page_references(page_id: str, db: AsyncSession) -> list[str]:
             .execution_options(synchronize_session=False)
         )
         await db.execute(
+            update(DesktopRepositoryStepModel)
+            .where(DesktopRepositoryStepModel.page_element_id.in_(element_ids))
+            .values(page_element_id=None)
+            .execution_options(synchronize_session=False)
+        )
+        await db.execute(
             update(ExecutionStepResultModel)
             .where(ExecutionStepResultModel.page_element_id.in_(element_ids))
             .values(page_element_id=None)
@@ -480,6 +488,12 @@ async def _detach_page_references(page_id: str, db: AsyncSession) -> list[str]:
     await db.execute(
         update(DesktopObjectHealingSuggestionModel)
         .where(DesktopObjectHealingSuggestionModel.page_id == page_id)
+        .values(page_id=None)
+        .execution_options(synchronize_session=False)
+    )
+    await db.execute(
+        update(DesktopRepositoryStepModel)
+        .where(DesktopRepositoryStepModel.page_id == page_id)
         .values(page_id=None)
         .execution_options(synchronize_session=False)
     )
@@ -1481,6 +1495,17 @@ def _desktop_sync_key(value: Any, fallback: str = "desktop_object") -> str:
     return slug or fallback
 
 
+def _recorded_coordinate_locator(action: Any) -> str:
+    x = getattr(action, "x", None)
+    y = getattr(action, "y", None)
+    if x is None or y is None:
+        return ""
+    try:
+        return f"x={round(float(x))},y={round(float(y))}"
+    except (TypeError, ValueError):
+        return ""
+
+
 def _is_placeholder_window_name(value: Any) -> bool:
     text = re.sub(r"\s+", "", str(value or "").strip().lower())
     return bool(re.fullmatch(r"untitled\d*", text))
@@ -1581,6 +1606,17 @@ def _desktop_locator_details(
         fields["uia_path"] = primary_locator
     elif primary_strategy == "class name" and primary_locator and not fields["class_name"]:
         fields["class_name"] = primary_locator
+
+    if primary_strategy == "name" and _is_placeholder_window_name(primary_locator):
+        if fields["automation_id"]:
+            primary_strategy = "accessibility id"
+            primary_locator = fields["automation_id"]
+        elif fields["uia_path"]:
+            primary_strategy = "xpath"
+            primary_locator = fields["uia_path"]
+        elif fields["class_name"]:
+            primary_strategy = "class name"
+            primary_locator = fields["class_name"]
 
     return {
         **fields,
@@ -1806,6 +1842,20 @@ def _desktop_values_from_recorded_action(
     action: DesktopRecordedActionModel,
 ) -> dict[str, Any] | None:
     locators = [dict(item) for item in (getattr(action, "locators", None) or []) if isinstance(item, dict)]
+    coordinate = _recorded_coordinate_locator(action)
+    if coordinate and not any(
+        _canonical_desktop_strategy(item.get("strategy") or item.get("locator_strategy")) == "coordinate"
+        and _locator_text(item) == coordinate
+        for item in locators
+    ):
+        locators.append({
+            "strategy": "coordinate",
+            "locator": coordinate,
+            "verified": False,
+            "element_count": 0,
+            "score": 0.34,
+            "reason": "Recorded screen coordinate fallback",
+        })
     locator_details = _desktop_locator_details(
         strategy=getattr(action, "locator_strategy", ""),
         locator=None,
@@ -1814,21 +1864,29 @@ def _desktop_values_from_recorded_action(
     primary_locator = _text_value(
         locator_details.get("primary_locator"),
         getattr(action, "automation_id", ""),
-        getattr(action, "name_text", ""),
         getattr(action, "uia_path", ""),
         getattr(action, "class_name", ""),
+        getattr(action, "name_text", ""),
     )
     application = _text_value(getattr(session, "application", ""), getattr(session, "name", ""), "Desktop Application")
     raw_name = _text_value(getattr(action, "object_name", ""), getattr(action, "object_key", ""), primary_locator, "Desktop Object")
     control_type = _text_value(getattr(action, "control_type", ""), "element")
+    raw_key = _text_value(getattr(action, "object_key", ""))
+    if coordinate and _is_placeholder_window_name(raw_name) and str(control_type).strip().lower() == "element":
+        raw_name = f"Desktop Object @ {coordinate}"
+    if coordinate and _is_placeholder_window_name(raw_key) and str(control_type).strip().lower() == "element":
+        raw_key = f"{application} {coordinate}"
     object_key, name = _desktop_repository_identity(
         application=application,
-        raw_key=getattr(action, "object_key", ""),
+        raw_key=raw_key,
         raw_name=raw_name,
         primary_locator=primary_locator,
         control_type=control_type,
         locators=locators,
     )
+    recorded_name_text = _text_value(getattr(action, "name_text", ""), locator_details.get("name_text"))
+    if _is_placeholder_window_name(recorded_name_text):
+        recorded_name_text = ""
     metadata = dict(getattr(action, "action_metadata", None) or {})
     metadata.update({
         "source": "desktop_recorder_sync",
@@ -1850,7 +1908,7 @@ def _desktop_values_from_recorded_action(
         "name": name,
         "control_type": control_type,
         "automation_id": _text_value(getattr(action, "automation_id", ""), locator_details.get("automation_id")),
-        "name_text": _text_value(getattr(action, "name_text", ""), locator_details.get("name_text"), raw_name),
+        "name_text": _text_value(recorded_name_text, raw_name if not _is_placeholder_window_name(raw_name) else ""),
         "class_name": _text_value(getattr(action, "class_name", ""), locator_details.get("class_name")),
         "uia_path": _text_value(getattr(action, "uia_path", ""), locator_details.get("uia_path")),
         "locator_strategy": locator_details["locator_strategy"],
@@ -1969,6 +2027,12 @@ async def delete_element(element_id: str, db: AsyncSession = Depends(get_db)):
         .execution_options(synchronize_session=False)
     )
     await db.execute(
+        update(DesktopRepositoryStepModel)
+        .where(DesktopRepositoryStepModel.page_element_id == element_id)
+        .values(page_element_id=None)
+        .execution_options(synchronize_session=False)
+    )
+    await db.execute(
         update(ExecutionStepResultModel)
         .where(ExecutionStepResultModel.page_element_id == element_id)
         .values(page_element_id=None)
@@ -1989,26 +2053,27 @@ async def sync_desktop_workflows_to_repository(
     body: DesktopWorkflowSyncRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    workflow_query = (
-        select(WorkflowModel)
-        .options(selectinload(WorkflowModel.nodes))
-        .order_by(WorkflowModel.created_at.desc())
-    )
-    if body.workflow_id:
-        workflow_query = workflow_query.where(WorkflowModel.id == body.workflow_id)
-    if not body.include_archived:
-        workflow_query = workflow_query.where(WorkflowModel.status != "archived")
-    workflow_result = await db.execute(workflow_query)
     workflows = []
-    for workflow in workflow_result.scalars().all():
-        platforms = {str(item).lower() for item in (getattr(workflow, "platforms", None) or [])}
-        tags = {str(item).lower() for item in (getattr(workflow, "tags", None) or [])}
-        has_desktop_node = any(
-            str(getattr(node, "type", "") or "").startswith("desktop.")
-            for node in (getattr(workflow, "nodes", None) or [])
+    if not body.session_id or body.workflow_id:
+        workflow_query = (
+            select(WorkflowModel)
+            .options(selectinload(WorkflowModel.nodes))
+            .order_by(WorkflowModel.created_at.desc())
         )
-        if "desktop" in platforms or "desktop" in tags or has_desktop_node:
-            workflows.append(workflow)
+        if body.workflow_id:
+            workflow_query = workflow_query.where(WorkflowModel.id == body.workflow_id)
+        if not body.include_archived:
+            workflow_query = workflow_query.where(WorkflowModel.status != "archived")
+        workflow_result = await db.execute(workflow_query)
+        for workflow in workflow_result.scalars().all():
+            platforms = {str(item).lower() for item in (getattr(workflow, "platforms", None) or [])}
+            tags = {str(item).lower() for item in (getattr(workflow, "tags", None) or [])}
+            has_desktop_node = any(
+                str(getattr(node, "type", "") or "").startswith("desktop.")
+                for node in (getattr(workflow, "nodes", None) or [])
+            )
+            if "desktop" in platforms or "desktop" in tags or has_desktop_node:
+                workflows.append(workflow)
 
     session_query = (
         select(DesktopRecordingSessionModel)
@@ -2018,7 +2083,9 @@ async def sync_desktop_workflows_to_repository(
     session_ids = {_text_value(_dict_value(getattr(workflow, "variables", None)).get("desktop_recorder_session_id")) for workflow in workflows}
     session_ids.discard("")
     if body.include_recording_sessions:
-        if body.workflow_id and session_ids:
+        if body.session_id:
+            session_query = session_query.where(DesktopRecordingSessionModel.id == body.session_id)
+        elif body.workflow_id and session_ids:
             session_query = session_query.where(DesktopRecordingSessionModel.id.in_(list(session_ids)))
         elif body.workflow_id:
             session_query = session_query.where(DesktopRecordingSessionModel.id == "__no_session__")
@@ -2535,6 +2602,12 @@ async def delete_desktop_object(object_key: str, db: AsyncSession = Depends(get_
     await db.execute(
         update(TestStepModel)
         .where(TestStepModel.page_element_id == element.id)
+        .values(page_element_id=None)
+        .execution_options(synchronize_session=False)
+    )
+    await db.execute(
+        update(DesktopRepositoryStepModel)
+        .where(DesktopRepositoryStepModel.page_element_id == element.id)
         .values(page_element_id=None)
         .execution_options(synchronize_session=False)
     )

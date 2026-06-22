@@ -38,6 +38,7 @@ from app.api.routes import (
     runtime,
     enterprise,
     test_configuration,
+    desktop_repository,
     page_repository,
     master_sheets,
     desktop_spy,
@@ -257,6 +258,7 @@ app.include_router(adapters.router, prefix="/api")
 app.include_router(runtime.router, prefix="/api")
 app.include_router(enterprise.router, prefix="/api")
 app.include_router(test_configuration.router, prefix="/api")
+app.include_router(desktop_repository.router, prefix="/api")
 app.include_router(page_repository.router, prefix="/api")
 app.include_router(master_sheets.router, prefix="/api")
 app.include_router(desktop_spy.router, prefix="/api")

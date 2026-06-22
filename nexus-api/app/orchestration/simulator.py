@@ -57,10 +57,10 @@ _OUTPUT_TEMPLATES: dict[str, dict[str, Any]] = {
 # Realistic error messages by node type
 _ERROR_MESSAGES: dict[str, list[str]] = {
     "webAction":     [
-        "Element not found: .checkout-btn (timeout 5000ms)",
+        "Element not found: .primary-action (timeout 5000ms)",
         "Navigation timeout: page did not load in 8s",
         "Network error: ERR_CONNECTION_RESET",
-        "Selector .price matched 0 elements",
+        "Selector .result-value matched 0 elements",
     ],
     "apiValidation": [
         "API returned 503 Service Unavailable",
@@ -81,7 +81,7 @@ _ERROR_MESSAGES: dict[str, list[str]] = {
     "assertion":     [
         "Assertion failed: expected 'Welcome' to equal 'Dashboard'",
         "Visual diff exceeded threshold: 8.4% != 2%",
-        "Price assertion failed: $99.00 != $89.00",
+        "Value assertion failed: expected value did not match actual value",
     ],
 }
 _DEFAULT_ERRORS = ["Internal error: unexpected exception in test runner"]

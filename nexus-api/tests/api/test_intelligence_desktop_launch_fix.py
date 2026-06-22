@@ -17,7 +17,7 @@ async def test_ai_inspector_suggests_and_applies_desktop_launch_attach_fix(
 ):
     async with AsyncSessionLocal() as db:
         workflow = WorkflowModel(
-            name="VS Code desktop workflow",
+            name="Generic desktop workflow",
             description="",
             platforms=["desktop"],
             variables={},
@@ -28,9 +28,9 @@ async def test_ai_inspector_suggests_and_applies_desktop_launch_attach_fix(
             workflow_id=workflow.id,
             node_key="desktop_launch",
             type="desktop.launch",
-            label="Launch VS Code",
+            label="Launch Generic Editor",
             config={
-                "app": r"C:\Users\VAnand\AppData\Local\Programs\Microsoft VS Code\Code.exe",
+                "app": r"C:\Tools\generic-editor.exe",
                 "driver_type": "uia3",
                 "window_title": "Snap Assist",
                 "process_name": "17880",
@@ -49,7 +49,7 @@ async def test_ai_inspector_suggests_and_applies_desktop_launch_attach_fix(
         execution_node = ExecutionNodeModel(
             execution_id=execution.id,
             node_key="desktop_launch",
-            node_label="Launch VS Code",
+            node_label="Launch Generic Editor",
             node_type="desktop.launch",
             status="cancelled",
             attempt_count=3,
@@ -69,11 +69,11 @@ async def test_ai_inspector_suggests_and_applies_desktop_launch_attach_fix(
     assert suggestion["target_type"] == "workflow_node"
     new_config = json.loads(suggestion["new_value"])
     assert new_config["attach_if_running"] is True
-    assert new_config["window_title"] == "Visual Studio Code"
-    assert new_config["process_name"] == "Code.exe"
+    assert new_config["window_title"] == "Generic Editor"
+    assert new_config["process_name"] == "generic-editor.exe"
 
     async def no_llm_answer(**_kwargs):
-        return None, None, None, "No provider in test"
+        return None, None, None, "No provider in test", []
 
     monkeypatch.setattr(intelligence_routes, "_assistant_llm_answer", no_llm_answer)
     assistant_response = await client.post(
@@ -93,13 +93,14 @@ async def test_ai_inspector_suggests_and_applies_desktop_launch_attach_fix(
         fix = kwargs["fixes"][0]
         return (
             intelligence_routes.AssistantLLMAnswer(
-                answer="LLM answer: desktop.launch was cancelled before VS Code interactions, so use the attach-first patch.",
+                answer="LLM answer: desktop.launch was cancelled before app interactions, so use the attach-first patch.",
                 confidence=0.93,
                 recommended_fix_id=fix.id,
             ),
             "openai",
             "gpt-5.5",
             None,
+            [],
         )
 
     monkeypatch.setattr(intelligence_routes, "_assistant_llm_answer", fake_llm_answer)
@@ -125,15 +126,15 @@ async def test_ai_inspector_suggests_and_applies_desktop_launch_attach_fix(
         node = await db.get(WorkflowNodeModel, workflow_node.id)
         assert node is not None
         assert node.config["attach_if_running"] is True
-        assert node.config["window_title"] == "Visual Studio Code"
-        assert node.config["process_name"] == "Code.exe"
+        assert node.config["window_title"] == "Generic Editor"
+        assert node.config["process_name"] == "generic-editor.exe"
 
 
 @pytest.mark.asyncio
-async def test_ai_inspector_suggests_visible_vs_code_window_fix(client: AsyncClient):
+async def test_ai_inspector_suggests_visible_desktop_window_fix(client: AsyncClient):
     async with AsyncSessionLocal() as db:
         workflow = WorkflowModel(
-            name="VS Code desktop workflow visible window",
+            name="Generic desktop workflow visible window",
             description="",
             platforms=["desktop"],
             variables={},
@@ -146,12 +147,12 @@ async def test_ai_inspector_suggests_visible_vs_code_window_fix(client: AsyncCli
             type="desktop.launch",
             label="Launch Desktop Application",
             config={
-                "app": r'"C:\Users\VAnand\AppData\Local\Programs\Microsoft VS Code\Code.exe"',
+                "app": r'"C:\Tools\generic-editor.exe"',
                 "attach_if_running": True,
                 "driver_type": "uia3",
-                "process_name": "Code.exe",
+                "process_name": "generic-editor.exe",
                 "timeout_ms": 90000,
-                "window_title": "Visual Studio Code",
+                "window_title": "Generic Editor",
             },
             timeout_seconds=120,
         )
@@ -183,12 +184,12 @@ async def test_ai_inspector_suggests_visible_vs_code_window_fix(client: AsyncCli
     suggestions = response.json()
     assert len(suggestions) == 1
     suggestion = suggestions[0]
-    assert suggestion["title"] == "Attach VS Code by window title and force a visible new window"
+    assert suggestion["title"] == "Attach desktop app by stable window title"
     new_config = json.loads(suggestion["new_value"])
     assert new_config["attach_if_running"] is True
-    assert new_config["window_title"] == "Visual Studio Code"
+    assert new_config["window_title"] == "Generic Editor"
     assert "process_name" not in new_config
-    assert "--new-window" in new_config["args"]
+    assert "args" not in new_config
 
     apply_response = await client.post(
         f"/api/intelligence/executions/{execution_id}/fix-suggestions/desktop_launch/implement",
@@ -200,6 +201,6 @@ async def test_ai_inspector_suggests_visible_vs_code_window_fix(client: AsyncCli
     async with AsyncSessionLocal() as db:
         node = await db.get(WorkflowNodeModel, workflow_node.id)
         assert node is not None
-        assert node.config["window_title"] == "Visual Studio Code"
+        assert node.config["window_title"] == "Generic Editor"
         assert "process_name" not in node.config
-        assert "--new-window" in node.config["args"]
+        assert "args" not in node.config

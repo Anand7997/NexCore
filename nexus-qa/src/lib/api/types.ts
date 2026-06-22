@@ -36,6 +36,7 @@ export interface WorkflowEdge {
   source_key: string;
   target_key: string;
   condition?: string | null;
+  execution_order?: number;
 }
 
 export interface WorkflowListItem {
@@ -260,6 +261,67 @@ export interface TestProjectListItem {
 export interface TestConfigurationTree {
   projects: TestProject[];
   tag_catalog: TestTagCatalogDimension[];
+}
+
+export interface DesktopRepositoryStep {
+  id: string;
+  repository_case_id: string;
+  source_test_step_id?: string | null;
+  step_order: number;
+  name: string;
+  description: string;
+  action_type: string;
+  page_id?: string | null;
+  page_element_id?: string | null;
+  api_endpoint_id?: string | null;
+  input_value: string;
+  expected_result: string;
+  assertion_type: string;
+  secondary_action: string;
+  secondary_value: string;
+  intent: string;
+  target: string;
+  test_data: Record<string, unknown>;
+  tags: string[];
+  bindings: Record<string, Record<string, unknown>>;
+  is_enabled: boolean;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DesktopRepositoryCase {
+  id: string;
+  source_test_case_id?: string | null;
+  source_project_id?: string | null;
+  source_module_id?: string | null;
+  name: string;
+  description: string;
+  status: string;
+  test_type: string;
+  priority: string;
+  execution_mode: string;
+  platforms: string[];
+  tags: string[];
+  default_variables: Record<string, unknown>;
+  metadata: Record<string, unknown>;
+  step_count: number;
+  created_at: string;
+  updated_at: string;
+  steps: DesktopRepositoryStep[];
+}
+
+export interface DesktopRepositorySaveInput {
+  test_case_id: string;
+  name?: string;
+  description?: string;
+  tags?: string[];
+}
+
+export interface DesktopRepositoryInsertInput {
+  target_test_case_id: string;
+  position?: number | null;
+  include_disabled?: boolean;
 }
 
 export interface TestProjectCreateInput {
@@ -653,6 +715,7 @@ export type DesktopObjectUpdateInput = Partial<DesktopObjectCreateInput>;
 
 export interface DesktopWorkflowSyncInput {
   workflow_id?: string | null;
+  session_id?: string | null;
   include_archived?: boolean;
   include_recording_sessions?: boolean;
   update_existing?: boolean;
