@@ -91,6 +91,35 @@ class MobileExecutionPlugin(ExecutionPlugin):
                 },
             ),
             PluginNodeSpec(
+                type="mobile.select_option",
+                plugin="mobile",
+                label="Select Option",
+                category="Mobile Automation",
+                description="Open a dropdown/picker and choose an option by its visible text.",
+                icon="list",
+                color="#0891b2",
+                config_schema={
+                    **platform,
+                    **selector,
+                    "value": {"type": "string", "required": True, "supports_template": True},
+                    "option_selector": {"type": "string", "supports_template": True},
+                    "option_strategy": {
+                        "type": "string",
+                        "enum": ["accessibility id", "id", "xpath", "class name", "-android uiautomator", "-ios predicate string"],
+                    },
+                },
+            ),
+            PluginNodeSpec(
+                type="mobile.assert_visible",
+                plugin="mobile",
+                label="Assert Mobile Visible",
+                category="Mobile Automation",
+                description="Verify a mobile element is present and displayed on screen.",
+                icon="eye",
+                color="#22c55e",
+                config_schema={**platform, **selector},
+            ),
+            PluginNodeSpec(
                 type="mobile.extract_text",
                 plugin="mobile",
                 label="Extract Mobile Text",
@@ -140,9 +169,15 @@ class MobileExecutionPlugin(ExecutionPlugin):
             raise PluginValidationError("`platform` must be `android` or `ios`")
         if nt == "mobile.launch" and not isinstance(cfg.get("capabilities"), dict):
             raise PluginValidationError("`capabilities` object is required")
-        if nt in {"mobile.tap", "mobile.type_text", "mobile.assert_text"} and not cfg.get("selector"):
+        if nt in {
+            "mobile.tap",
+            "mobile.type_text",
+            "mobile.assert_text",
+            "mobile.assert_visible",
+            "mobile.select_option",
+        } and not cfg.get("selector"):
             raise PluginValidationError("`selector` is required")
-        if nt == "mobile.type_text" and cfg.get("value") in (None, ""):
+        if nt in {"mobile.type_text", "mobile.select_option"} and cfg.get("value") in (None, ""):
             raise PluginValidationError("`value` is required")
         if nt == "mobile.assert_text" and cfg.get("expected") in (None, ""):
             raise PluginValidationError("`expected` is required")
@@ -181,6 +216,8 @@ class MobileExecutionPlugin(ExecutionPlugin):
             "mobile.tap": MobileExecutionPlugin._do_tap,
             "mobile.type_text": MobileExecutionPlugin._do_type_text,
             "mobile.assert_text": MobileExecutionPlugin._do_assert_text,
+            "mobile.assert_visible": MobileExecutionPlugin._do_assert_visible,
+            "mobile.select_option": MobileExecutionPlugin._do_select_option,
             "mobile.extract_text": MobileExecutionPlugin._do_extract_text,
             "mobile.screenshot": MobileExecutionPlugin._do_screenshot,
             "mobile.deep_link": MobileExecutionPlugin._do_deep_link,
@@ -242,6 +279,43 @@ class MobileExecutionPlugin(ExecutionPlugin):
         if not ok:
             raise AssertionError(f"expected text {match} {expected!r}, got {actual!r}")
         return {"platform": platform, "selector": cfg["selector"], "actual": actual, "match": match}
+
+    async def _do_assert_visible(self, envelope: ExecutionEnvelope, cfg: dict[str, Any], platform: str) -> dict[str, Any]:
+        session = await self._require_session(envelope, cfg, platform)
+        element = await self._find(session, cfg)
+        visible = await session.element_displayed(element)
+        if not visible:
+            raise AssertionError(f"element {cfg['selector']!r} is present but not displayed")
+        return {"platform": platform, "selector": cfg["selector"], "visible": True}
+
+    async def _do_select_option(self, envelope: ExecutionEnvelope, cfg: dict[str, Any], platform: str) -> dict[str, Any]:
+        session = await self._require_session(envelope, cfg, platform)
+        # Open the dropdown / picker control first.
+        control = await self._find(session, cfg)
+        await session.click(control)
+        # Locate the option element, defaulting to a text-based lookup per platform.
+        value = str(cfg["value"])
+        strategy, selector = self._option_locator(cfg, platform, value)
+        option = await session.find_element(strategy, selector)
+        await session.click(option)
+        return {
+            "platform": platform,
+            "selector": cfg["selector"],
+            "value": value,
+            "option_strategy": strategy,
+            "option_selector": selector,
+        }
+
+    @staticmethod
+    def _option_locator(cfg: dict[str, Any], platform: str, value: str) -> tuple[str, str]:
+        if cfg.get("option_selector"):
+            strategy = str(cfg.get("option_strategy") or cfg.get("strategy", "accessibility id"))
+            return strategy, str(cfg["option_selector"])
+        if cfg.get("option_strategy"):
+            return str(cfg["option_strategy"]), value
+        if platform == "android":
+            return "-android uiautomator", f'new UiSelector().text("{value}")'
+        return "-ios predicate string", f'label == "{value}" OR name == "{value}" OR value == "{value}"'
 
     async def _do_extract_text(self, envelope: ExecutionEnvelope, cfg: dict[str, Any], platform: str) -> dict[str, Any]:
         session = await self._require_session(envelope, cfg, platform)

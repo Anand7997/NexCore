@@ -38,8 +38,8 @@ const WINAPPDRIVER_PATHS = [
 
 /** Capabilities supported by each mobile/desktop adapter */
 const ADAPTER_CAPABILITIES: Record<string, readonly string[]> = {
-  android: ['tap', 'type_text', 'assert_text', 'extract_text', 'screenshot', 'deep_link'],
-  ios: ['tap', 'type_text', 'assert_text', 'extract_text', 'screenshot', 'universal_link', 'deep_link'],
+  android: ['tap', 'type_text', 'select_option', 'assert_text', 'assert_visible', 'extract_text', 'screenshot', 'deep_link'],
+  ios: ['tap', 'type_text', 'select_option', 'assert_text', 'assert_visible', 'extract_text', 'screenshot', 'universal_link', 'deep_link'],
   desktop: ['click', 'type_text', 'assert_text', 'extract_text', 'screenshot', 'file_dialog'],
 };
 

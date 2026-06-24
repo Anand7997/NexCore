@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import subprocess
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
@@ -41,7 +42,10 @@ ADAPTER_RUNTIMES: dict[str, AdapterRuntime] = {
         default_endpoint="http://127.0.0.1:4723",
         required_env=("ANDROID_HOME", "JAVA_HOME"),
         isolation=("emulator_or_device_id", "app_package", "app_activity", "system_port"),
-        capabilities=("tap", "type_text", "assert_text", "extract_text", "screenshot", "deep_link"),
+        capabilities=(
+            "tap", "type_text", "select_option", "assert_text", "assert_visible",
+            "extract_text", "screenshot", "deep_link",
+        ),
     ),
     "ios": AdapterRuntime(
         platform="ios",
@@ -52,7 +56,10 @@ ADAPTER_RUNTIMES: dict[str, AdapterRuntime] = {
         default_endpoint="http://127.0.0.1:4723",
         required_env=("XCODE_DEVELOPER_DIR",),
         isolation=("simulator_udid", "bundle_id", "wda_local_port"),
-        capabilities=("tap", "type_text", "assert_text", "extract_text", "screenshot", "universal_link", "deep_link"),
+        capabilities=(
+            "tap", "type_text", "select_option", "assert_text", "assert_visible",
+            "extract_text", "screenshot", "universal_link", "deep_link",
+        ),
     ),
     "desktop": AdapterRuntime(
         platform="desktop",
@@ -94,6 +101,40 @@ def _endpoint_reachable(endpoint: str | None) -> bool:
         return False
 
 
+def _list_android_devices() -> list[dict[str, str]] | None:
+    """Return connected Android devices via `adb devices -l`.
+
+    Returns None when adb itself is missing (distinct from "adb ran but no
+    devices are attached", which returns an empty list).
+    """
+    adb = shutil.which("adb")
+    if not adb:
+        return None
+    try:
+        completed = subprocess.run(
+            [adb, "devices", "-l"],
+            capture_output=True,
+            text=True,
+            timeout=3.0,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    devices: list[dict[str, str]] = []
+    for line in completed.stdout.splitlines()[1:]:
+        line = line.strip()
+        if not line or line.startswith("*"):
+            continue
+        parts = line.split()
+        serial, state = parts[0], (parts[1] if len(parts) > 1 else "offline")
+        model = next((p.split(":", 1)[1] for p in parts if p.startswith("model:")), None)
+        entry = {"serial": serial, "state": state}
+        if model:
+            entry["model"] = model
+        devices.append(entry)
+    return devices
+
+
 def _runtime_status(runtime: AdapterRuntime) -> dict[str, Any]:
     command_path = _command_path(runtime)
     endpoint = os.getenv(runtime.endpoint_env or "") or runtime.default_endpoint
@@ -101,10 +142,24 @@ def _runtime_status(runtime: AdapterRuntime) -> dict[str, Any]:
     missing_env = [name for name in runtime.required_env if not os.getenv(name)]
     configured = bool(command_path or os.getenv(runtime.endpoint_env or ""))
 
+    # Device availability — only Android can be probed locally via adb. iOS
+    # simulators require macOS/xcrun (validated on the Nest side), and desktop
+    # targets the host machine itself, so both are treated as "device present".
+    devices: list[dict[str, str]] | None = None
+    device_available = True
+    adb_missing = False
+    if runtime.platform == "android":
+        devices = _list_android_devices()
+        if devices is None:
+            adb_missing = True
+            device_available = False
+        else:
+            device_available = any(d["state"] in {"device", "emulator"} for d in devices)
+
     status: AdapterStatus
-    if endpoint_reachable or (command_path and not missing_env):
+    if endpoint_reachable and (command_path and not missing_env) and device_available:
         status = "available"
-    elif configured:
+    elif endpoint_reachable or configured:
         status = "configured"
     else:
         status = "unavailable"
@@ -114,10 +169,14 @@ def _runtime_status(runtime: AdapterRuntime) -> dict[str, Any]:
         diagnostics.append(f"{runtime.runtime} command was not found on PATH.")
     if missing_env:
         diagnostics.append("Missing environment variables: " + ", ".join(missing_env))
+    if adb_missing:
+        diagnostics.append("adb not found on PATH. Install Android SDK platform-tools to enumerate devices.")
+    elif runtime.platform == "android" and not device_available:
+        diagnostics.append("No connected Android device or running emulator found (adb devices is empty).")
     if status == "configured" and not diagnostics:
         diagnostics.append("Runtime endpoint is configured, but local executable discovery is incomplete.")
 
-    return {
+    report: dict[str, Any] = {
         "platform": runtime.platform,
         "adapter": runtime.adapter,
         "runtime": runtime.runtime,
@@ -126,10 +185,14 @@ def _runtime_status(runtime: AdapterRuntime) -> dict[str, Any]:
         "endpoint_reachable": endpoint_reachable,
         "command_path": command_path,
         "missing_env": missing_env,
+        "device_available": device_available,
         "isolation": list(runtime.isolation),
         "capabilities": list(runtime.capabilities),
         "diagnostics": diagnostics,
     }
+    if devices is not None:
+        report["devices"] = devices
+    return report
 
 
 def adapter_status_report() -> dict[str, Any]:

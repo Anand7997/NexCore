@@ -470,10 +470,56 @@ npx playwright test tests/regression/cross-platform-parity
 - [ ] Temporal UI accessible for workflow debugging
 
 ### Mobile/Desktop (Phase 8)
-- [ ] Appium server deployed for Android/iOS
-- [ ] WinAppDriver deployed on Windows nodes
-- [ ] Devices/emulators registered with agents
-- [ ] Platform runtime validators returning `ready` status
+
+**Code-complete (✅ implemented & unit-tested):**
+- [x] Mobile plugin node parity with the Nest intent registry — `mobile.launch`,
+      `tap`, `type_text`, `select_option`, `assert_text`, `assert_visible`,
+      `extract_text`, `screenshot`, `deep_link`
+      (`nexus-api/app/execution/plugins/mobile/plugin.py`).
+      A parity unit test asserts every advertised node spec has a handler.
+- [x] `select_option` (open dropdown/picker → tap option; platform-aware default
+      locator: `-android uiautomator` text on Android, `-ios predicate string`
+      on iOS) and `assert_visible` (W3C `/element/{id}/displayed`).
+- [x] Capability advertising synchronized across both sides
+      (`platform_adapters/runtime.py` ⇄ `platform-runtime-validator.service.ts`),
+      guarded by tests on each side.
+- [x] **Runtime readiness validation against the real machine:**
+  - Python `GET /api/adapters/runtimes` now probes `adb devices` and returns
+    `available` / `configured` / `unavailable` with `device_available`, the
+    device list, and actionable diagnostics
+    (`available` requires server reachable **and** env set **and** a live device;
+    server-up-but-no-device degrades to `configured`).
+  - Nest `GET /intent/runtime/validate[/:platform]` and
+    `POST /intent/runtime/readiness` return `ready` / `configured` / `partial` /
+    `unavailable`, probing Appium `/status`, the `appium`/`adb`/`xcrun` binaries,
+    and connected devices/simulators, plus suggested capabilities.
+- [x] Real-device E2E smoke test
+      (`tests/execution/plugins/mobile/test_e2e_smoke.py`) driving
+      `mobile.launch → tap → type_text → assert_visible → screenshot`. It is
+      **skipped by default** and only runs when `NEXUS_MOBILE_E2E=1` and the
+      android runtime validates as ready — so CI without a device farm stays green.
+
+**Remaining = runtime / infrastructure only (cannot be satisfied by code):**
+- [ ] Local Appium stack installed: Appium server, Android SDK platform-tools
+      (`adb`), JDK, with `ANDROID_HOME` / `JAVA_HOME` set.
+- [ ] At least one Android emulator/device registered and visible via
+      `adb devices`; iOS requires a separate macOS + Xcode + simulator host.
+- [ ] Validators observed returning `ready` against that live setup
+      (the logic is in place — it reports `configured`/`unavailable` until a
+      server + device are actually present).
+- [ ] One real workflow executed end-to-end through Appium (run the guarded
+      smoke test with `NEXUS_MOBILE_E2E=1` once a device is attached).
+- [ ] WinAppDriver deployed on Windows nodes for desktop targets.
+
+**CI / device-farm decision (recommended path):**
+- **PR / unit CI:** run the mocked mobile + runtime unit tests (always green,
+  no device needed). The real E2E stays skipped here.
+- **Nightly / pre-release:** run `test_e2e_smoke.py` with `NEXUS_MOBILE_E2E=1` on
+  a dedicated self-hosted agent that has the Appium stack + an always-on AVD, or
+  against a **cloud device provider** (BrowserStack / Sauce Labs / AWS Device
+  Farm) by pointing `APPIUM_SERVER_URL` + `NEXUS_E2E_CAPS` at the provider's hub.
+- **iOS:** schedule on a macOS runner (GitHub macOS / Mac mini agent) only — the
+  validator already reports the macOS/Xcode requirement on non-darwin hosts.
 
 ---
 

@@ -124,6 +124,11 @@ class WebDriverClient:
         data = await self.get(f"/session/{session_id}/element/{element.element_id}/text")
         return str(data.get("value") or "")
 
+    async def element_displayed(self, element: WebDriverElement) -> bool:
+        session_id = self.require_session()
+        data = await self.get(f"/session/{session_id}/element/{element.element_id}/displayed")
+        return bool(data.get("value"))
+
     async def element_attribute(self, element: WebDriverElement, name: str) -> str:
         session_id = self.require_session()
         data = await self.get(f"/session/{session_id}/element/{element.element_id}/attribute/{name}")
