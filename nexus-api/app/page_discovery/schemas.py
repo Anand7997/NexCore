@@ -20,6 +20,7 @@ class DiscoveryRequest(BaseModel):
     min_confidence: float = Field(0.75, ge=0.0, le=1.0, description="Minimum confidence threshold for auto-save")
     include_hidden: bool = Field(False, description="Whether to include hidden/non-visible elements")
     page_id: Optional[str] = Field(None, description="Existing page ID to update; if omitted, creates a new page")
+    step_intents: list[dict[str, Any]] = Field(default_factory=list, description="Generated test-step intents used to limit discovery")
 
     @field_validator("url")
     @classmethod

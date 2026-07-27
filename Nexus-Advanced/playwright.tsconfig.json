@@ -1,0 +1,18 @@
+﻿{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "moduleResolution": "node",
+    "experimentalDecorators": true,
+    "paths": {
+      "@/*": ["./src/*"],
+      "@nestjs/common": ["./tests/__shims__/nestjs-common.ts"],
+      "@nestjs/common/*": ["./tests/__shims__/nestjs-common.ts"]
+    }
+  },
+  "include": [
+    "tests/**/*.ts",
+    "tests/**/*.tsx"
+  ],
+  "exclude": ["node_modules", ".next", ""]
+}
+

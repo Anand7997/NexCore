@@ -16,7 +16,7 @@ TAG_CATALOG = [
     {
         "key": "platform",
         "label": "Platform",
-        "values": ["web", "android", "ios", "desktop", "windows", "api"],
+        "values": ["web", "mobile", "android", "ios", "desktop", "windows", "api"],
     },
     {
         "key": "framework",
@@ -51,6 +51,7 @@ class TestProjectCreateSchema(BaseModel):
     name: str
     description: str = ""
     status: str = "active"
+    automation_space: str = "web"
     tags: list[str] = Field(default_factory=list)
 
 
@@ -58,6 +59,7 @@ class TestProjectUpdateSchema(BaseModel):
     name: str | None = None
     description: str | None = None
     status: str | None = None
+    automation_space: str | None = None
     tags: list[str] | None = None
 
 
@@ -65,6 +67,7 @@ class TestModuleCreateSchema(BaseModel):
     name: str
     description: str = ""
     status: str = "active"
+    automation_space: str | None = None
     tags: list[str] = Field(default_factory=list)
 
 
@@ -72,6 +75,7 @@ class TestModuleUpdateSchema(BaseModel):
     name: str | None = None
     description: str | None = None
     status: str | None = None
+    automation_space: str | None = None
     tags: list[str] | None = None
 
 
@@ -79,6 +83,7 @@ class TestCaseCreateSchema(BaseModel):
     name: str
     description: str = ""
     status: str = "draft"
+    automation_space: str | None = None
     test_type: str = "functional"
     priority: str = "p2"
     execution_mode: str = "automated"
@@ -93,6 +98,7 @@ class TestCaseUpdateSchema(BaseModel):
     name: str | None = None
     description: str | None = None
     status: str | None = None
+    automation_space: str | None = None
     test_type: str | None = None
     priority: str | None = None
     execution_mode: str | None = None
@@ -106,6 +112,7 @@ class TestCaseUpdateSchema(BaseModel):
 class TestStepCreateSchema(BaseModel):
     name: str
     description: str = ""
+    automation_space: str | None = None
     step_order: int | None = None
     # Normalized explicit fields
     action_type: str = ""
@@ -129,6 +136,7 @@ class TestStepCreateSchema(BaseModel):
 class TestStepUpdateSchema(BaseModel):
     name: str | None = None
     description: str | None = None
+    automation_space: str | None = None
     step_order: int | None = None
     # Normalized explicit fields
     action_type: str | None = None
@@ -151,6 +159,7 @@ class TestStepUpdateSchema(BaseModel):
 
 class TestStepResponse(BaseModel):
     id: str
+    automation_space: str = "web"
     step_order: int
     name: str
     description: str
@@ -187,6 +196,7 @@ class TestCaseResponse(BaseModel):
     name: str
     description: str
     status: str
+    automation_space: str = "web"
     test_type: str
     priority: str
     execution_mode: str
@@ -206,6 +216,7 @@ class TestModuleResponse(BaseModel):
     name: str
     description: str
     status: str
+    automation_space: str = "web"
     tags: list[str]
     created_at: datetime
     updated_at: datetime
@@ -219,6 +230,7 @@ class TestProjectResponse(BaseModel):
     name: str
     description: str
     status: str
+    automation_space: str = "web"
     tags: list[str]
     created_at: datetime
     updated_at: datetime
@@ -232,6 +244,7 @@ class TestProjectListItem(BaseModel):
     name: str
     description: str
     status: str
+    automation_space: str = "web"
     tags: list[str]
     module_count: int = 0
     case_count: int = 0
@@ -243,5 +256,6 @@ class TestProjectListItem(BaseModel):
 
 
 class TestConfigurationTreeResponse(BaseModel):
+    automation_space: str | None = None
     projects: list[TestProjectResponse] = Field(default_factory=list)
     tag_catalog: list[TagCatalogDimensionResponse] = Field(default_factory=list)

@@ -1,4 +1,4 @@
-#!/usr/bin/env pwsh
+﻿#!/usr/bin/env pwsh
 <#
 .SYNOPSIS
     NexCore - Complete Stack Startup Script
@@ -12,7 +12,7 @@
 .EXAMPLE
     .\start-nexus.ps1 -WithAiExtras  # Install optional LangGraph/Qdrant/OpenAI worker deps
 .EXAMPLE
-    .\start-nexus.ps1 -ApplyBackendSchema  # Run NestJS drizzle push against PostgreSQL
+    .\start-nexus.ps1 -ApplyBackendSchema  # Reserved for future .NET schema migration
 .EXAMPLE
     .\start-nexus.ps1 -RunTests  # Run Playwright verification after startup
 #>
@@ -88,43 +88,24 @@ if ($UseDocker) {
 Write-Host ""
 
 # ------------------------------------------------------------------------
-# Step 2: Setup NestJS Backend
+# Step 2: Setup .NET Backend
 # ------------------------------------------------------------------------
 
-Write-Host "[2/8] Setting up NestJS backend..." -ForegroundColor Yellow
+Write-Host "[2/8] Setting up .NET control backend..." -ForegroundColor Yellow
 
-Push-Location "$workspaceRoot\nexus-backend"
+Push-Location "$workspaceRoot\nexus-dotnet-backend"
 try {
-    if (-not (Test-Path "node_modules")) {
-        Write-Host "    Installing npm dependencies..." -ForegroundColor Gray
-        npm install
-        if ($LASTEXITCODE -ne 0) {
-            throw "npm install failed in nexus-backend"
-        }
+    dotnet restore
+    if ($LASTEXITCODE -ne 0) {
+        throw "dotnet restore failed in nexus-dotnet-backend"
     }
 
-    if (-not (Test-Path ".env")) {
-        if (Test-Path ".env.example") {
-            throw "nexus-backend/.env is required. Copy .env.example and point DATABASE_URL to your PostgreSQL instance."
-        }
-
-        throw "nexus-backend/.env is required for backend startup."
-    }
-    
     if ($ApplyBackendSchema) {
-        Write-Host "    Running database push against configured PostgreSQL..." -ForegroundColor Gray
-        $dbPushOutput = npm run db:push 2>&1
-        $dbPushOutput | ForEach-Object { Write-Host $_ }
-
-        $dbPushText = ($dbPushOutput | Out-String)
-        if ($LASTEXITCODE -ne 0 -or $dbPushText -match '(?im)^error:') {
-            throw "npm run db:push failed in nexus-backend"
-        }
+        Write-Host "    .NET backend currently uses in-memory stores; schema migration is skipped" -ForegroundColor Gray
     } else {
-        Write-Host "    Skipping automatic database push for existing PostgreSQL schema" -ForegroundColor Gray
-        Write-Host "    Re-run with -ApplyBackendSchema if you want NestJS Drizzle changes applied" -ForegroundColor Gray
+        Write-Host "    Using migrated .NET control-plane API on port 3001" -ForegroundColor Gray
     }
-    
+
     Write-Host "[OK] Backend setup complete" -ForegroundColor Green
 }
 finally {
@@ -189,13 +170,13 @@ Write-Host ""
 
 Write-Host "[4/8] Setting up Next.js frontend..." -ForegroundColor Yellow
 
-Push-Location "$workspaceRoot\nexus-qa"
+Push-Location "$workspaceRoot\Nexus-Advanced"
 try {
     if (-not (Test-Path "node_modules")) {
         Write-Host "    Installing npm dependencies..." -ForegroundColor Gray
         npm install
         if ($LASTEXITCODE -ne 0) {
-            throw "npm install failed in nexus-qa"
+            throw "npm install failed in Nexus-Advanced"
         }
     }
     
@@ -244,15 +225,15 @@ Write-Host "[6/8] Launching application services..." -ForegroundColor Yellow
 
 $services = @(
     @{
-        Name = "NestJS API"
-        Path = "$workspaceRoot\nexus-backend"
-        Command = "npm run start:dev"
+        Name = ".NET Control API"
+        Path = "$workspaceRoot\nexus-dotnet-backend"
+        Command = "dotnet run"
         Color = "Blue"
     },
     @{
-        Name = "Temporal Worker"
-        Path = "$workspaceRoot\nexus-backend"
-        Command = "npm run start:worker"
+        Name = "Temporal Worker (deferred)"
+        Path = "$workspaceRoot\nexus-dotnet-backend"
+        Command = "Write-Host 'Temporal worker migration to .NET is pending; API is running in-process.'"
         Color = "Cyan"
     },
     @{
@@ -262,14 +243,14 @@ $services = @(
         Color = "Yellow"
     },
     @{
-        Name = "Runtime Agent (Web/API)"
-        Path = "$workspaceRoot\nexus-backend"
-        Command = "`$env:AGENT_CAPABILITIES='[`"web`",`"api`"]'; `$env:AGENT_NAME='local-web-agent'; npm run start:agent"
+        Name = "Runtime Agent (deferred)"
+        Path = "$workspaceRoot\nexus-dotnet-backend"
+        Command = "Write-Host 'Runtime agent migration to .NET is pending; use /api/runtime endpoints.'"
         Color = "Green"
     },
     @{
         Name = "Next.js Frontend"
-        Path = "$workspaceRoot\nexus-qa"
+        Path = "$workspaceRoot\Nexus-Advanced"
         Command = "npm run dev"
         Color = "DarkCyan"
     }
@@ -322,7 +303,7 @@ Write-Host ""
 Write-Host "[8/8] Verifying application health..." -ForegroundColor Yellow
 
 $appServices = @(
-    @{ Name = "NestJS API"; Url = "http://localhost:3001/api/health/live" }
+    @{ Name = ".NET Control API"; Url = "http://localhost:3001/api/health/live" }
     @{ Name = "Python AI Service"; Url = "http://localhost:8000/api/health" }
     @{ Name = "Next.js Frontend"; Url = "http://localhost:3000" }
 )
@@ -352,7 +333,7 @@ if ($RunTests) {
     Write-Host ""
     
     Write-Host "Running Playwright tests..." -ForegroundColor Yellow
-    Push-Location "$workspaceRoot\nexus-qa"
+    Push-Location "$workspaceRoot\Nexus-Advanced"
     try {
         npx playwright test --reporter=list
         $playwrightExitCode = $LASTEXITCODE
@@ -380,7 +361,7 @@ Write-Host ""
 
 Write-Host "Service URLs:" -ForegroundColor White
 Write-Host "  Frontend:         http://localhost:3000" -ForegroundColor Cyan
-Write-Host "  NestJS API:       http://localhost:3001" -ForegroundColor Cyan
+Write-Host "   .NET Control API: http://localhost:3001" -ForegroundColor Cyan
 Write-Host "  Python AI API:    http://localhost:8000/docs" -ForegroundColor Cyan
 Write-Host "  Temporal UI:      http://localhost:8233" -ForegroundColor Cyan
 Write-Host "  NATS Monitoring:  http://localhost:8222" -ForegroundColor Cyan
@@ -414,3 +395,4 @@ Write-Host ""
 Write-Host "Happy Testing!" -ForegroundColor Green
 
 $global:LASTEXITCODE = 0
+

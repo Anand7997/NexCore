@@ -68,6 +68,7 @@ class TestProjectModel(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[str] = mapped_column(String(20), default="active")
+    automation_space: Mapped[str] = mapped_column(String(30), default="web", index=True)
     tags: Mapped[list[str]] = mapped_column(JSON, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
@@ -88,6 +89,7 @@ class TestModuleModel(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[str] = mapped_column(String(20), default="active")
+    automation_space: Mapped[str] = mapped_column(String(30), default="web", index=True)
     tags: Mapped[list[str]] = mapped_column(JSON, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
@@ -112,6 +114,7 @@ class TestCaseModel(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[str] = mapped_column(String(20), default="draft")
+    automation_space: Mapped[str] = mapped_column(String(30), default="web", index=True)
     test_type: Mapped[str] = mapped_column(String(50), default="functional")
     priority: Mapped[str] = mapped_column(String(20), default="p2")
     execution_mode: Mapped[str] = mapped_column(String(20), default="automated")
@@ -132,6 +135,24 @@ class TestCaseModel(Base):
 
 
 # ── API Testing ───────────────────────────────────────────────────────────────
+
+class RequirementDocumentModel(Base):
+    __tablename__ = "requirements_documents"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str] = mapped_column(Text, default="")
+    original_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    stored_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    file_type: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    upload_mode: Mapped[str] = mapped_column(String(50), nullable=False, default="brd-generation", index=True)
+    automation_space: Mapped[str] = mapped_column(String(30), nullable=False, default="web", index=True)
+    file_path: Mapped[str] = mapped_column(Text, nullable=False)
+    file_size: Mapped[int] = mapped_column(Integer, default=0)
+    uploaded_by: Mapped[str] = mapped_column(String(255), default="local")
+    status: Mapped[str] = mapped_column(String(30), default="uploaded")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
 
 class ApiCollectionModel(Base):
     """Grouped set of API endpoints for a project/module."""
@@ -189,6 +210,7 @@ class TestStepModel(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     test_case_id: Mapped[str] = mapped_column(ForeignKey("test_cases.id"), nullable=False, index=True)
+    automation_space: Mapped[str] = mapped_column(String(30), default="web", index=True)
     step_order: Mapped[int] = mapped_column(Integer, default=1)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text, default="")

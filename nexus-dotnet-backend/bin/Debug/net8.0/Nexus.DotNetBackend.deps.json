@@ -1,0 +1,23 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v8.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v8.0": {
+      "Nexus.DotNetBackend/1.0.0": {
+        "runtime": {
+          "Nexus.DotNetBackend.dll": {}
+        }
+      }
+    }
+  },
+  "libraries": {
+    "Nexus.DotNetBackend/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    }
+  }
+}

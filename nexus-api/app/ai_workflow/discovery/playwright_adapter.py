@@ -29,7 +29,6 @@ class PlaywrightDiscoveryAdapter:
         *,
         step_intents: list[dict] | None = None,
     ) -> DiscoveryResponse:
-        del step_intents
         request = DiscoveryRequest(
             url=url,
             page_name=page_name,
@@ -38,6 +37,7 @@ class PlaywrightDiscoveryAdapter:
             min_confidence=0.3,
             include_hidden=False,
             page_id=page_id,
+            step_intents=step_intents or [],
         )
         logger.info("PlaywrightDiscoveryAdapter: starting discovery for %s", url)
         result = await discover_elements(request)

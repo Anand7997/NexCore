@@ -44,6 +44,18 @@ class WorkflowCreateRequest(BaseModel):
         return value
 
 
+class WorkflowRollbackRequest(BaseModel):
+    target_stage: str
+
+    @field_validator("target_stage")
+    @classmethod
+    def validate_target_stage(cls, value: str) -> str:
+        clean = value.strip()
+        if not clean:
+            raise ValueError("target_stage is required")
+        return clean
+
+
 class BrdExtractResponse(BaseModel):
     filename: str
     text: str

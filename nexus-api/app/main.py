@@ -50,6 +50,7 @@ from app.api.routes import (
     desktop_reporting,
     desktop_nl_compiler,
     desktop_agents,
+    requirements_documents,
 )
 
 logging.basicConfig(
@@ -270,6 +271,7 @@ app.include_router(desktop_recovery_rules.router, prefix="/api")
 app.include_router(desktop_reporting.router, prefix="/api")
 app.include_router(desktop_nl_compiler.router, prefix="/api")
 app.include_router(desktop_agents.router, prefix="/api")
+app.include_router(requirements_documents.router, prefix="/api")
 app.include_router(websocket.router)
 
 

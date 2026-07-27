@@ -1,4 +1,4 @@
-# NexCore - Enterprise Execution Intelligence Platform
+﻿# NexCore - Enterprise Execution Intelligence Platform
 
 <div align="center">
 
@@ -8,38 +8,38 @@
 
 **AI-Powered Cross-Platform Test Automation and Workflow Intelligence**
 
-[Quick Start](#-quick-start) • [Documentation](#-documentation) • [Architecture](#-architecture) • [Features](#-features)
+[Quick Start](#-quick-start) â€¢ [Documentation](#-documentation) â€¢ [Architecture](#-architecture) â€¢ [Features](#-features)
 
 </div>
 
 ---
 
-## 🎉 Project Status
+## ðŸŽ‰ Project Status
 
 **ALL 10 PHASES ARE COMPLETE!**
 
 NexCore is a **production-ready** enterprise platform for intelligent, cross-platform test automation with AI-driven failure analysis and distributed execution.
 
-### ✅ Completed Phases
+### âœ… Completed Phases
 
 | Phase | Name | Status | Production Readiness |
 |-------|------|--------|---------------------|
-| **1** | Product Foundation | ✅ Complete | 100% |
-| **2** | Frontend Design System | ✅ Complete | 100% |
-| **3** | Workflow Builder UX | ✅ Complete | 100% |
-| **4** | Temporal Orchestration | ✅ Complete | 95% |
-| **5** | Web & API Plugins | ✅ Complete | 95% |
-| **6** | AI Intelligence (LangGraph) | ✅ Complete | 90% |
-| **7** | Intent Layer | ✅ Complete | 100% |
-| **8** | Mobile & Desktop Support | ✅ Complete | 85% |
-| **9** | Distributed Execution | ✅ Complete | 90% |
-| **10** | Enterprise Platform (Keycloak) | ✅ Complete | 85% |
+| **1** | Product Foundation | âœ… Complete | 100% |
+| **2** | Frontend Design System | âœ… Complete | 100% |
+| **3** | Workflow Builder UX | âœ… Complete | 100% |
+| **4** | Temporal Orchestration | âœ… Complete | 95% |
+| **5** | Web & API Plugins | âœ… Complete | 95% |
+| **6** | AI Intelligence (LangGraph) | âœ… Complete | 90% |
+| **7** | Intent Layer | âœ… Complete | 100% |
+| **8** | Mobile & Desktop Support | âœ… Complete | 85% |
+| **9** | Distributed Execution | âœ… Complete | 90% |
+| **10** | Enterprise Platform (Keycloak) | âœ… Complete | 85% |
 
 **Overall Production Readiness: 93%**
 
 ---
 
-## 🚀 Quick Start
+## ðŸš€ Quick Start
 
 ### Prerequisites
 
@@ -62,12 +62,12 @@ NexCore is a **production-ready** enterprise platform for intelligent, cross-pla
 ```
 
 This script automatically:
-1. ✅ Starts infrastructure (PostgreSQL, Temporal, NATS, Qdrant, Keycloak)
-2. ✅ Sets up NestJS backend + Temporal worker
-3. ✅ Sets up the Python API service
-4. ✅ Optionally installs and launches the LangGraph AI worker
-5. ✅ Sets up Next.js frontend + runtime agent
-6. ✅ Verifies all services are healthy
+1. âœ… Starts infrastructure (PostgreSQL, Temporal, NATS, Qdrant, Keycloak)
+2. âœ… Sets up .NET backend
+3. âœ… Sets up the Python API service
+4. âœ… Optionally installs and launches the LangGraph AI worker
+5. âœ… Sets up Next.js frontend + runtime agent
+6. âœ… Verifies all services are healthy
 
 **Ready in under 5 minutes!**
 
@@ -79,7 +79,7 @@ See [QUICK_START_GUIDE.md](QUICK_START_GUIDE.md) for detailed step-by-step instr
 
 ---
 
-## 📚 Documentation
+## ðŸ“š Documentation
 
 - **[IMPLEMENTATION_STATUS_REPORT.md](IMPLEMENTATION_STATUS_REPORT.md)** - Comprehensive verification of all 10 phases
 - **[QUICK_START_GUIDE.md](QUICK_START_GUIDE.md)** - Step-by-step deployment guide
@@ -87,59 +87,59 @@ See [QUICK_START_GUIDE.md](QUICK_START_GUIDE.md) for detailed step-by-step instr
 
 ---
 
-## 🏗️ Architecture
+## ðŸ—ï¸ Architecture
 
 NEXUS QA is a **microservices architecture** with clear separation of concerns:
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                      Next.js Frontend (nexus-qa)                │
-│              React Flow • shadcn/ui • TailwindCSS               │
-└────────────────────────────┬────────────────────────────────────┘
-                             │ HTTP + WebSocket
-┌────────────────────────────┴────────────────────────────────────┐
-│              NestJS Backend (nexus-backend)                     │
-│   TypeScript Control Plane • REST API • Socket.IO Gateway      │
-│                                                                 │
-│  ┌──────────────┐  ┌──────────────┐  ┌────────────────────┐   │
-│  │ Orchestration│  │ Intent Layer │  │ Enterprise (RBAC)  │   │
-│  │   Module     │  │    Module    │  │   + Audit Module   │   │
-│  └──────┬───────┘  └──────┬───────┘  └────────┬───────────┘   │
-│         │                  │                    │               │
-│  ┌──────┴──────────────────┴────────────────────┴───────────┐  │
-│  │            PostgreSQL (Drizzle ORM)                       │  │
-│  └───────────────────────────────────────────────────────────┘  │
-└──────────┬─────────────────┬──────────────────┬────────────────┘
-           │                 │                  │
-  ┌────────┴─────┐  ┌────────┴────────┐  ┌──────┴────────┐
-  │   Temporal   │  │  NATS Messaging │  │   Keycloak    │
-  │  Workflows   │  │   (JetStream)   │  │ (JWT + SSO)   │
-  └────────┬─────┘  └────────┬────────┘  └───────────────┘
-           │                 │
-  ┌────────┴─────────────────┴────────────────────────────────┐
-  │         Temporal Worker (nexus-backend/temporal-worker)    │
-  │           Durable DAG Execution • Node Orchestration       │
-  └────────┬───────────────────────────────────────────────────┘
-           │
-  ┌────────┴────────────────────────────────────────────────────┐
-  │         Python AI Service (nexus-api)                       │
-  │      FastAPI • LangGraph • Qdrant • Platform Adapters      │
-  │                                                             │
-  │  ┌──────────────┐  ┌──────────────┐  ┌─────────────────┐  │
-  │  │  LangGraph   │  │   Qdrant     │  │ Execution       │  │
-  │  │  RCA Engine  │  │ Vector Store │  │ Plugins (Web/API)│  │
-  │  └──────────────┘  └──────────────┘  └─────────────────┘  │
-  │                                                             │
-  │  ┌──────────────┐  ┌──────────────┐  ┌─────────────────┐  │
-  │  │   Appium     │  │ WinAppDriver │  │  Playwright     │  │
-  │  │  (Mobile)    │  │  (Desktop)   │  │   (Web)         │  │
-  │  └──────────────┘  └──────────────┘  └─────────────────┘  │
-  └─────────────────────────────────────────────────────────────┘
-           │
-  ┌────────┴─────────────────────────────────────────────────────┐
-  │     External Runtime Agents (runtime-agent.ts)               │
-  │   Distributed Execution • Capability-Based Routing           │
-  └──────────────────────────────────────────────────────────────┘
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚                      Next.js Frontend (Nexus-Advanced)                â”‚
+â”‚              React Flow â€¢ shadcn/ui â€¢ TailwindCSS               â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                             â”‚ HTTP + WebSocket
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚              .NET Backend (nexus-dotnet-backend)                     â”‚
+â”‚   TypeScript Control Plane â€¢ REST API â€¢ Socket.IO Gateway      â”‚
+â”‚                                                                 â”‚
+â”‚  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”   â”‚
+â”‚  â”‚ Orchestrationâ”‚  â”‚ Intent Layer â”‚  â”‚ Enterprise (RBAC)  â”‚   â”‚
+â”‚  â”‚   Module     â”‚  â”‚    Module    â”‚  â”‚   + Audit Module   â”‚   â”‚
+â”‚  â””â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”˜  â””â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”˜  â””â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜   â”‚
+â”‚         â”‚                  â”‚                    â”‚               â”‚
+â”‚  â”Œâ”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”  â”‚
+â”‚  â”‚            PostgreSQL (Drizzle ORM)                       â”‚  â”‚
+â”‚  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜  â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+           â”‚                 â”‚                  â”‚
+  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”  â”Œâ”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”
+  â”‚   Temporal   â”‚  â”‚  NATS Messaging â”‚  â”‚   Keycloak    â”‚
+  â”‚  Workflows   â”‚  â”‚   (JetStream)   â”‚  â”‚ (JWT + SSO)   â”‚
+  â””â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”˜  â””â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”˜  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+           â”‚                 â”‚
+  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+  â”‚         Temporal Worker (deferred to .NET migration)    â”‚
+  â”‚           Durable DAG Execution â€¢ Node Orchestration       â”‚
+  â””â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+           â”‚
+  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+  â”‚         Python AI Service (nexus-api)                       â”‚
+  â”‚      FastAPI â€¢ LangGraph â€¢ Qdrant â€¢ Platform Adapters      â”‚
+  â”‚                                                             â”‚
+  â”‚  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”  â”‚
+  â”‚  â”‚  LangGraph   â”‚  â”‚   Qdrant     â”‚  â”‚ Execution       â”‚  â”‚
+  â”‚  â”‚  RCA Engine  â”‚  â”‚ Vector Store â”‚  â”‚ Plugins (Web/API)â”‚  â”‚
+  â”‚  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜  â”‚
+  â”‚                                                             â”‚
+  â”‚  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”  â”‚
+  â”‚  â”‚   Appium     â”‚  â”‚ WinAppDriver â”‚  â”‚  Playwright     â”‚  â”‚
+  â”‚  â”‚  (Mobile)    â”‚  â”‚  (Desktop)   â”‚  â”‚   (Web)         â”‚  â”‚
+  â”‚  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜  â”‚
+  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+           â”‚
+  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+  â”‚     External Runtime Agents (runtime-agent.ts)               â”‚
+  â”‚   Distributed Execution â€¢ Capability-Based Routing           â”‚
+  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 ```
 
 ### Technology Stack
@@ -147,7 +147,7 @@ NEXUS QA is a **microservices architecture** with clear separation of concerns:
 | Layer | Technologies |
 |-------|-------------|
 | **Frontend** | Next.js 14, React 18, TypeScript, TailwindCSS, shadcn/ui, React Flow |
-| **Backend** | NestJS, TypeScript, Drizzle ORM, Socket.IO, Zod |
+| **Backend** | .NET 8, ASP.NET Core Minimal APIs |
 | **Orchestration** | Temporal.io (durable workflows), NATS (messaging) |
 | **AI/ML** | LangGraph, Qdrant (vector DB), sentence-transformers, OpenAI SDK |
 | **Execution Runtimes** | Playwright (web), Appium (mobile), WinAppDriver (desktop) |
@@ -158,9 +158,9 @@ NEXUS QA is a **microservices architecture** with clear separation of concerns:
 
 ---
 
-## ✨ Features
+## âœ¨ Features
 
-### 🎯 Core Capabilities
+### ðŸŽ¯ Core Capabilities
 
 - **Visual Workflow Builder** - Drag-and-drop DAG editor with React Flow
 - **Durable Execution** - Temporal workflows ensure execution continuity across crashes
@@ -171,7 +171,7 @@ NEXUS QA is a **microservices architecture** with clear separation of concerns:
 - **Real-Time Observability** - Socket.IO streams + Temporal UI + NATS monitoring
 - **Enterprise-Grade Auth** - Keycloak SSO, JWT validation, RBAC, multi-tenancy
 
-### 🔌 Execution Plugins
+### ðŸ”Œ Execution Plugins
 
 #### Web Plugin (Playwright)
 - `web.navigate`, `web.click`, `web.fill`, `web.select`
@@ -193,7 +193,7 @@ NEXUS QA is a **microservices architecture** with clear separation of concerns:
 - `desktop.click`, `desktop.type`, `desktop.screenshot`
 - `desktop.assert_text`, `desktop.wait`
 
-### 🧠 AI Intelligence Features
+### ðŸ§  AI Intelligence Features
 
 #### LangGraph Root Cause Analysis
 6-node state machine:
@@ -209,7 +209,7 @@ NEXUS QA is a **microservices architecture** with clear separation of concerns:
 - Semantic search for similar issues
 - Automatic memory updates on resolution
 
-### 🏢 Enterprise Features
+### ðŸ¢ Enterprise Features
 
 - **Multi-Tenancy** - Tenant isolation at DB and API level
 - **RBAC** - Roles: admin, operator, viewer, auditor
@@ -219,74 +219,74 @@ NEXUS QA is a **microservices architecture** with clear separation of concerns:
 
 ---
 
-## 📂 Repository Structure
+## ðŸ“‚ Repository Structure
 
 ```
 NexCore/
-├── nexus-backend/          # NestJS TypeScript control plane
-│   ├── src/
-│   │   ├── temporal/       # Workflows, activities, worker
-│   │   ├── modules/
-│   │   │   ├── orchestration/
-│   │   │   ├── intent/
-│   │   │   ├── ai-gateway/
-│   │   │   ├── runtime/
-│   │   │   ├── enterprise/
-│   │   │   └── health/
-│   │   ├── common/
-│   │   │   └── auth/       # Keycloak guard, JWT validation
-│   │   ├── temporal-worker.ts
-│   │   └── runtime-agent.ts
-│   ├── migrations/         # Drizzle SQL migrations
-│   └── package.json
-│
-├── nexus-api/              # Python AI + execution service
-│   ├── app/
-│   │   ├── intelligence/   # LangGraph, Qdrant, RCA engine
-│   │   ├── execution/      # Plugins (web, api, mobile, desktop)
-│   │   ├── platform_adapters/
-│   │   └── main.py
-│   ├── requirements.txt    # Base API + execution plugin dependencies
-│   └── requirements-ai.txt # Optional Phase 6 AI worker dependencies
-│
-├── nexus-qa/               # Next.js frontend
-│   ├── src/
-│   │   ├── app/            # Next.js 14 app router
-│   │   ├── components/     # shadcn/ui + custom components
-│   │   └── lib/
-│   ├── tests/              # Playwright E2E tests
-│   │   ├── web/
-│   │   ├── api/
-│   │   └── regression/
-│   └── playwright.config.ts
-│
-├── infra/
-│   └── k8s/                # Kubernetes manifests
-│       ├── nexus-api-deployment.yaml
-│       ├── temporal-worker-deployment.yaml
-│       ├── python-worker-deployment.yaml
-│       └── backup-cronjobs.yaml
-│
-├── plans/                  # Architecture documentation
-│   ├── phase-1/ through phase-10/
-│   └── nexus-qa-master-execution-checklist.md
-│
-├── docker-compose.yml      # Infrastructure services
-├── start-nexus.ps1         # One-command startup script
-├── stop-nexus.ps1          # Graceful shutdown script
-├── IMPLEMENTATION_STATUS_REPORT.md
-├── QUICK_START_GUIDE.md
-└── README.md               # This file
+â”œâ”€â”€ nexus-dotnet-backend/   # .NET control plane
+â”‚   â”œâ”€â”€ src/
+â”‚   â”‚   â”œâ”€â”€ temporal/       # Workflows, activities, worker
+â”‚   â”‚   â”œâ”€â”€ modules/
+â”‚   â”‚   â”‚   â”œâ”€â”€ orchestration/
+â”‚   â”‚   â”‚   â”œâ”€â”€ intent/
+â”‚   â”‚   â”‚   â”œâ”€â”€ ai-gateway/
+â”‚   â”‚   â”‚   â”œâ”€â”€ runtime/
+â”‚   â”‚   â”‚   â”œâ”€â”€ enterprise/
+â”‚   â”‚   â”‚   â””â”€â”€ health/
+â”‚   â”‚   â”œâ”€â”€ common/
+â”‚   â”‚   â”‚   â””â”€â”€ auth/       # Keycloak guard, JWT validation
+â”‚   â”‚   â”œâ”€â”€ temporal-worker.ts
+â”‚   â”‚   â””â”€â”€ runtime-agent.ts
+â”‚   â”œâ”€â”€ migrations/         # Drizzle SQL migrations
+â”‚   â””â”€â”€ package.json
+â”‚
+â”œâ”€â”€ nexus-api/              # Python AI + execution service
+â”‚   â”œâ”€â”€ app/
+â”‚   â”‚   â”œâ”€â”€ intelligence/   # LangGraph, Qdrant, RCA engine
+â”‚   â”‚   â”œâ”€â”€ execution/      # Plugins (web, api, mobile, desktop)
+â”‚   â”‚   â”œâ”€â”€ platform_adapters/
+â”‚   â”‚   â””â”€â”€ main.py
+â”‚   â”œâ”€â”€ requirements.txt    # Base API + execution plugin dependencies
+â”‚   â””â”€â”€ requirements-ai.txt # Optional Phase 6 AI worker dependencies
+â”‚
+â”œâ”€â”€ Nexus-Advanced/         # Restored command-center frontend
+â”‚   â”œâ”€â”€ src/
+â”‚   â”‚   â”œâ”€â”€ app/            # Next.js 14 app router
+â”‚   â”‚   â”œâ”€â”€ components/     # shadcn/ui + custom components
+â”‚   â”‚   â””â”€â”€ lib/
+â”‚   â”œâ”€â”€ tests/              # Playwright E2E tests
+â”‚   â”‚   â”œâ”€â”€ web/
+â”‚   â”‚   â”œâ”€â”€ api/
+â”‚   â”‚   â””â”€â”€ regression/
+â”‚   â””â”€â”€ playwright.config.ts
+â”‚
+â”œâ”€â”€ infra/
+â”‚   â””â”€â”€ k8s/                # Kubernetes manifests
+â”‚       â”œâ”€â”€ nexus-api-deployment.yaml
+â”‚       â”œâ”€â”€ temporal-worker-deployment.yaml
+â”‚       â”œâ”€â”€ python-worker-deployment.yaml
+â”‚       â””â”€â”€ backup-cronjobs.yaml
+â”‚
+â”œâ”€â”€ plans/                  # Architecture documentation
+â”‚   â”œâ”€â”€ phase-1/ through phase-10/
+â”‚   â””â”€â”€ nexus-qa-master-execution-checklist.md
+â”‚
+â”œâ”€â”€ docker-compose.yml      # Infrastructure services
+â”œâ”€â”€ start-nexus.ps1         # One-command startup script
+â”œâ”€â”€ stop-nexus.ps1          # Graceful shutdown script
+â”œâ”€â”€ IMPLEMENTATION_STATUS_REPORT.md
+â”œâ”€â”€ QUICK_START_GUIDE.md
+â””â”€â”€ README.md               # This file
 ```
 
 ---
 
-## 🧪 Testing
+## ðŸ§ª Testing
 
 ### Run All Tests
 
 ```powershell
-cd nexus-qa
+cd Nexus-Advanced
 npx playwright test
 ```
 
@@ -308,21 +308,21 @@ npx playwright show-report
 
 ### Test Coverage
 
-- ✅ **Web Plugin**: 10 node types, 100% coverage
-- ✅ **API Plugin**: 9 contract scenarios
-- ✅ **Cross-Platform**: Intent parity verification
-- ✅ **Regression**: Platform isolation tests
+- âœ… **Web Plugin**: 10 node types, 100% coverage
+- âœ… **API Plugin**: 9 contract scenarios
+- âœ… **Cross-Platform**: Intent parity verification
+- âœ… **Regression**: Platform isolation tests
 
 ---
 
-## 🌐 Service URLs
+## ðŸŒ Service URLs
 
 After running `.\start-nexus.ps1`:
 
 | Service | URL | Purpose |
 |---------|-----|---------|
 | **Frontend** | http://localhost:3000 | Main UI, workflow builder |
-| **NestJS API** | http://localhost:3001 | Backend REST API |
+| **.NET Control API** | http://localhost:3001 | Backend REST API |
 | **Python AI API** | http://localhost:8000/docs | FastAPI docs, AI endpoints |
 | **Temporal UI** | http://localhost:8233 | Workflow monitoring |
 | **NATS Monitoring** | http://localhost:8222 | NATS stats |
@@ -330,7 +330,7 @@ After running `.\start-nexus.ps1`:
 
 ---
 
-## 🚢 Production Deployment
+## ðŸš¢ Production Deployment
 
 ### Option 1: Docker Compose (Recommended for Testing)
 
@@ -350,7 +350,7 @@ kubectl get pods -n nexus
 
 ### Production Checklist
 
-- [ ] Set `AUTH_DISABLED=false` in nexus-backend/.env
+- [ ] Set `AUTH_DISABLED=false` in nexus-dotnet-backend/.env
 - [ ] Configure Keycloak realm: `nexus`
 - [ ] Deploy Temporal cluster (not dev server)
 - [ ] Deploy NATS cluster with JetStream persistence
@@ -363,7 +363,7 @@ kubectl get pods -n nexus
 
 ---
 
-## 📊 Monitoring
+## ðŸ“Š Monitoring
 
 ### Temporal Workflows
 
@@ -384,14 +384,14 @@ Access http://localhost:8222 to view:
 ### Application Logs
 
 Each service outputs structured logs:
-- **NestJS**: Pino JSON logs
+- ** .NET**: Pino JSON logs
 - **Python**: Uvicorn + custom logging
 - **Temporal Worker**: Temporal SDK logs
 - **Runtime Agent**: Agent lifecycle events
 
 ---
 
-## 🤝 Contributing
+## ðŸ¤ Contributing
 
 This is a **proprietary codebase** for internal use only.
 
@@ -399,13 +399,13 @@ For questions or support, contact the platform team.
 
 ---
 
-## 📝 License
+## ðŸ“ License
 
 Proprietary - All Rights Reserved
 
 ---
 
-## 🎓 Learning Resources
+## ðŸŽ“ Learning Resources
 
 ### Temporal
 - **Docs**: https://docs.temporal.io
@@ -415,7 +415,7 @@ Proprietary - All Rights Reserved
 - **Docs**: https://langchain-ai.github.io/langgraph
 - **Tutorials**: https://langchain-ai.github.io/langgraph/tutorials
 
-### NestJS
+###  .NET
 - **Docs**: https://docs.nestjs.com
 - **Best Practices**: https://docs.nestjs.com/techniques
 
@@ -425,22 +425,23 @@ Proprietary - All Rights Reserved
 
 ---
 
-## 🏆 Achievements
+## ðŸ† Achievements
 
-✅ **100% Phase Completion** - All 10 phases implemented  
-✅ **93% Production Ready** - Ready for deployment  
-✅ **Zero Critical Bugs** - Clean codebase verification  
-✅ **Comprehensive Tests** - Full plugin coverage  
-✅ **Enterprise-Grade Auth** - Keycloak SSO integrated  
-✅ **AI-Powered Intelligence** - LangGraph RCA operational  
-✅ **Cross-Platform Support** - Web, Mobile, Desktop ready  
-✅ **Durable Orchestration** - Temporal workflows live  
-✅ **Distributed Execution** - External agents functional  
+âœ… **100% Phase Completion** - All 10 phases implemented  
+âœ… **93% Production Ready** - Ready for deployment  
+âœ… **Zero Critical Bugs** - Clean codebase verification  
+âœ… **Comprehensive Tests** - Full plugin coverage  
+âœ… **Enterprise-Grade Auth** - Keycloak SSO integrated  
+âœ… **AI-Powered Intelligence** - LangGraph RCA operational  
+âœ… **Cross-Platform Support** - Web, Mobile, Desktop ready  
+âœ… **Durable Orchestration** - Temporal workflows live  
+âœ… **Distributed Execution** - External agents functional  
 
 ---
 
 <div align="center">
 
-**Built with ❤️ by the NexCore Team**
+**Built with â¤ï¸ by the NexCore Team**
 
 </div>
+

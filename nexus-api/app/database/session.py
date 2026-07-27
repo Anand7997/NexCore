@@ -80,6 +80,21 @@ async def get_db():
 _MIGRATIONS: list[str] = [
     # ── testing_types ── new table, handled by create_all
 
+    # Per-automation workspace isolation for planning/development hierarchies.
+    "ALTER TABLE test_projects ADD COLUMN IF NOT EXISTS automation_space VARCHAR(30) DEFAULT 'web'",
+    "ALTER TABLE test_modules ADD COLUMN IF NOT EXISTS automation_space VARCHAR(30) DEFAULT 'web'",
+    "ALTER TABLE test_cases ADD COLUMN IF NOT EXISTS automation_space VARCHAR(30) DEFAULT 'web'",
+    "ALTER TABLE test_steps ADD COLUMN IF NOT EXISTS automation_space VARCHAR(30) DEFAULT 'web'",
+    "UPDATE test_projects SET automation_space = 'web' WHERE automation_space IS NULL OR automation_space = ''",
+    "UPDATE test_modules SET automation_space = 'web' WHERE automation_space IS NULL OR automation_space = ''",
+    "UPDATE test_cases SET automation_space = 'web' WHERE automation_space IS NULL OR automation_space = ''",
+    "UPDATE test_steps SET automation_space = 'web' WHERE automation_space IS NULL OR automation_space = ''",
+    "CREATE INDEX IF NOT EXISTS ix_test_projects_automation_space ON test_projects(automation_space)",
+    "CREATE INDEX IF NOT EXISTS ix_test_modules_automation_space ON test_modules(automation_space)",
+    "CREATE INDEX IF NOT EXISTS ix_test_cases_automation_space ON test_cases(automation_space)",
+    "CREATE INDEX IF NOT EXISTS ix_test_steps_automation_space ON test_steps(automation_space)",
+
+    # Existing hierarchy columns.
     # ── test_cases: add project_id + testing_type_id ──
     "ALTER TABLE test_cases ADD COLUMN IF NOT EXISTS project_id VARCHAR(36) REFERENCES test_projects(id)",
     "ALTER TABLE test_cases ADD COLUMN IF NOT EXISTS testing_type_id VARCHAR(36) REFERENCES testing_types(id)",

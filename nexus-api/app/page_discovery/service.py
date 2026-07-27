@@ -27,6 +27,11 @@ logger = logging.getLogger(__name__)
 
 _NAVIGATION_TIMEOUT = 30000
 _ROLE_SELECTOR = re.compile(r'^role=([^\[]+)(?:\[name="((?:\\.|[^"])*)"\])?$')
+_DISCOVERY_INTENT_STOPWORDS = {
+    "a", "an", "and", "are", "as", "be", "by", "click", "enter", "fill",
+    "for", "from", "in", "into", "is", "it", "of", "on", "open", "select",
+    "should", "submit", "the", "to", "type", "user", "verify", "with",
+}
 
 
 class DiscoveryUrlError(ValueError):
@@ -66,6 +71,114 @@ async def _validate_discovery_url(url: str) -> None:
         ip = info[4][0]
         if _is_private_host(ip):
             raise DiscoveryUrlError("URL resolves to a private or local network address")
+
+
+def _intent_tokens(*values: Any) -> set[str]:
+    tokens: set[str] = set()
+    for value in values:
+        for token in re.findall(r"[a-z0-9]+", str(value or "").lower()):
+            if len(token) > 1 and token not in _DISCOVERY_INTENT_STOPWORDS:
+                tokens.add(token)
+    return tokens
+
+
+def _raw_element_text(raw: dict[str, Any]) -> str:
+    attrs = raw.get("attributes") if isinstance(raw.get("attributes"), dict) else {}
+    roles = raw.get("roles") if isinstance(raw.get("roles"), list) else []
+    class_list = attrs.get("class_list") if isinstance(attrs.get("class_list"), list) else []
+    values = [
+        raw.get("tag"),
+        raw.get("role"),
+        " ".join(str(role) for role in roles),
+        attrs.get("id"),
+        attrs.get("name"),
+        attrs.get("type"),
+        attrs.get("placeholder"),
+        attrs.get("title"),
+        attrs.get("alt"),
+        attrs.get("aria-label"),
+        attrs.get("data-testid"),
+        attrs.get("data-test"),
+        attrs.get("data-qa"),
+        attrs.get("data-cy"),
+        attrs.get("role"),
+        attrs.get("text_content"),
+        attrs.get("label_text"),
+        " ".join(str(value) for value in class_list),
+    ]
+    return " ".join(str(value) for value in values if value)
+
+
+def _raw_element_action_bonus(raw: dict[str, Any], intent: dict[str, Any]) -> float:
+    action = str(intent.get("action_type") or "").lower()
+    attrs = raw.get("attributes") if isinstance(raw.get("attributes"), dict) else {}
+    tag = str(raw.get("tag") or "").lower()
+    input_type = str(attrs.get("type") or "").lower()
+    roles = {str(role).lower() for role in (raw.get("roles") or [])}
+    role = str(attrs.get("role") or "").lower()
+    if role:
+        roles.add(role)
+
+    is_text_entry = tag in {"input", "textarea"} and input_type not in {"button", "submit", "reset", "checkbox", "radio"}
+    is_choice = tag in {"button", "a", "option"} or roles & {"button", "link", "tab", "menuitem", "checkbox", "radio"}
+    is_select = tag == "select" or "combobox" in roles or "listbox" in roles
+
+    if action in {"fill", "clear"}:
+        return 0.34 if is_text_entry else -0.22
+    if action == "select":
+        return 0.28 if is_select else 0.04 if is_choice else -0.08
+    if action in {"click", "submit", "upload"}:
+        return 0.26 if is_choice else -0.10 if is_text_entry else 0.02
+    if action.startswith("assert"):
+        return 0.10
+    return 0.0
+
+
+def _raw_element_intent_score(raw: dict[str, Any], intent: dict[str, Any]) -> float:
+    element_text = _raw_element_text(raw)
+    element_tokens = _intent_tokens(element_text)
+    intent_text = " ".join(
+        str(intent.get(field) or "")
+        for field in ("description", "target_hint", "input_value", "expected_result", "data_intent")
+    )
+    intent_tokens = _intent_tokens(intent_text)
+    if not intent_tokens:
+        return 0.0
+    overlap = len(element_tokens & intent_tokens) / max(len(intent_tokens), 1)
+    target_hint = str(intent.get("target_hint") or "").strip().lower()
+    target_match = bool(target_hint and target_hint in element_text.lower())
+    semantic_score = overlap + (0.18 if target_match else 0.0)
+    action_bonus = _raw_element_action_bonus(raw, intent)
+    score = semantic_score + (action_bonus if semantic_score > 0 else min(action_bonus, 0.02))
+    attrs = raw.get("attributes") if isinstance(raw.get("attributes"), dict) else {}
+    if attrs.get("data-testid") or attrs.get("data-test") or attrs.get("data-qa") or attrs.get("data-cy"):
+        score += 0.06
+    if attrs.get("id") or attrs.get("name"):
+        score += 0.04
+    return max(0.0, min(score, 1.0))
+
+
+def _filter_raw_elements_for_step_intents(
+    raw_elements: list[dict[str, Any]],
+    step_intents: list[dict[str, Any]] | None,
+) -> list[dict[str, Any]]:
+    intents = [intent for intent in (step_intents or []) if isinstance(intent, dict)]
+    if not raw_elements or not intents:
+        return raw_elements
+
+    scored: list[tuple[dict[str, Any], float]] = []
+    for raw in raw_elements:
+        best_score = max((_raw_element_intent_score(raw, intent) for intent in intents), default=0.0)
+        if best_score >= 0.24:
+            scored.append((raw, best_score))
+
+    fallback_limit = min(len(raw_elements), max(len(intents) * 6, 20))
+    if not scored:
+        return raw_elements[:fallback_limit]
+
+    scored.sort(key=lambda item: item[1], reverse=True)
+    targeted_limit = min(len(scored), max(len(intents) * 6, 20), 120)
+    return [raw for raw, _ in scored[:targeted_limit]]
 
 
 def _get_extraction_script() -> str:
@@ -306,6 +419,14 @@ async def discover_elements(request: DiscoveryRequest) -> DiscoveryResponse:
             try:
                 script = _get_extraction_script()
                 raw_elements = await page.evaluate(script, request.include_hidden)
+                extracted_count = len(raw_elements)
+                raw_elements = _filter_raw_elements_for_step_intents(raw_elements, request.step_intents)
+                if request.step_intents and len(raw_elements) != extracted_count:
+                    logger.info(
+                        "Step-intent discovery filter reduced raw elements from %d to %d",
+                        extracted_count,
+                        len(raw_elements),
+                    )
             except Exception as exc:
                 error_msg = f"Extraction failed: {exc}"
 

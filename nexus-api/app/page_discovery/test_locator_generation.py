@@ -1,6 +1,7 @@
 import unittest
 
 from app.page_discovery.locators import ElementDiscoveryAgent
+from app.page_discovery.service import _filter_raw_elements_for_step_intents
 
 
 class LocatorGenerationTests(unittest.TestCase):
@@ -85,6 +86,34 @@ class LocatorGenerationTests(unittest.TestCase):
         self.assertIn("/html/body/main/form/input[1]", locators)
         self.assertIn("body > main > form:nth-of-type(1) > input:nth-of-type(1)", locators)
 
+
+    def test_step_intent_filter_keeps_only_relevant_raw_elements(self) -> None:
+        raw_elements = [
+            {
+                "tag": "input",
+                "attributes": {"label_text": "Project Name", "type": "text", "id": "projectName"},
+                "roles": ["textbox"],
+            },
+            {
+                "tag": "button",
+                "attributes": {"text_content": "Create", "id": "create"},
+                "roles": ["button"],
+            },
+            {
+                "tag": "button",
+                "attributes": {"text_content": "Help", "id": "help"},
+                "roles": ["button"],
+            },
+        ]
+        intents = [
+            {"step_number": 2, "action_type": "fill", "description": "Enter project name", "target_hint": "project name"},
+            {"step_number": 3, "action_type": "click", "description": "Click Create project", "target_hint": "create project"},
+        ]
+
+        filtered = _filter_raw_elements_for_step_intents(raw_elements, intents)
+        labels = {item["attributes"].get("label_text") or item["attributes"].get("text_content") for item in filtered}
+
+        self.assertEqual(labels, {"Project Name", "Create"})
 
 if __name__ == "__main__":
     unittest.main()

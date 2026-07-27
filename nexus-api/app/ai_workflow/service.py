@@ -6,6 +6,7 @@ import importlib.util
 import json
 import logging
 import re as _re
+from contextvars import ContextVar
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
 from typing import Any, TypeVar
@@ -91,11 +92,161 @@ _AI_LOCATOR_ALTERNATIVE_LIMIT = 10
 _MIN_HEALING_LOCATOR_PATHS = 3
 _DESKTOP_REPOSITORY_PREFETCH_MIN = 12
 _DESKTOP_REPOSITORY_PREFETCH_MAX = 80
+_TARGETED_CANDIDATE_MAX_PER_STEP = 4
+_TARGETED_CANDIDATE_FALLBACK_PER_STEP = 2
+_TARGETED_CANDIDATE_GLOBAL_MAX = 80
+_TARGETED_CANDIDATE_FALLBACK_MAX = 24
+_AI_PROVIDER_CALL_TIMEOUT_SECONDS = 90
 _STEP_INTENT_STOPWORDS = {
     "a", "an", "and", "are", "as", "be", "by", "click", "enter", "fill",
     "for", "from", "in", "into", "is", "it", "of", "on", "open", "select",
     "should", "submit", "the", "to", "type", "user", "verify", "with",
 }
+
+_CANCELLED_WORKFLOWS: set[str] = set()
+_WORKFLOW_RUN_TOKENS: dict[str, int] = {}
+_WORKFLOW_RUN_TOKEN: ContextVar[int | None] = ContextVar("ai_workflow_run_token", default=None)
+_ROLLBACK_MESSAGE_PREFIX = "Rolled back to pipeline stage:"
+_ROLLBACK_STAGE_LABELS: dict[str, str] = {
+    "project": "Creating Project",
+    "module": "Creating Module",
+    "model": "Selecting LLM",
+    "testcases": "Generating Test Cases",
+    "teststeps": "Generating Test Steps",
+    "page": "Creating Page",
+    "mcp": "Triggering MCP",
+    "appLaunch": "Launching Desktop App",
+    "scrape": "Step Candidate Panel",
+    "pageConfig": "Configuring Page",
+    "stepConfig": "Configuring Test Steps",
+}
+_ROLLBACK_STAGE_STATES: dict[str, WorkflowState] = {
+    "project": WorkflowState.CREATED,
+    "module": WorkflowState.PROJECT_READY,
+    "model": WorkflowState.MODULE_READY,
+    "testcases": WorkflowState.AWAITING_CONFIRMATION,
+    "teststeps": WorkflowState.TESTCASES_READY,
+    "page": WorkflowState.PAGE_CREATED,
+    "mcp": WorkflowState.PAGE_CREATED,
+    "appLaunch": WorkflowState.DISCOVERY_RUNNING,
+    "scrape": WorkflowState.DISCOVERY_DONE,
+    "pageConfig": WorkflowState.LOCATORS_RANKED,
+    "stepConfig": WorkflowState.PAGE_SAVED,
+}
+_ROLLBACK_STAGE_ORDER: dict[str, int] = {
+    "project": 0,
+    "module": 1,
+    "model": 2,
+    "testcases": 3,
+    "teststeps": 4,
+    "page": 5,
+    "mcp": 6,
+    "appLaunch": 7,
+    "scrape": 8,
+    "pageConfig": 9,
+    "stepConfig": 10,
+}
+
+
+def _start_workflow_run(workflow_id: str) -> int:
+    _CANCELLED_WORKFLOWS.discard(workflow_id)
+    run_token = _WORKFLOW_RUN_TOKENS.get(workflow_id, 0) + 1
+    _WORKFLOW_RUN_TOKENS[workflow_id] = run_token
+    return run_token
+
+
+def _cancel_workflow_run(workflow_id: str) -> None:
+    _CANCELLED_WORKFLOWS.add(workflow_id)
+    _WORKFLOW_RUN_TOKENS[workflow_id] = _WORKFLOW_RUN_TOKENS.get(workflow_id, 0) + 1
+
+
+def _workflow_run_is_current(workflow_id: str) -> bool:
+    run_token = _WORKFLOW_RUN_TOKEN.get()
+    return run_token is None or _WORKFLOW_RUN_TOKENS.get(workflow_id) == run_token
+
+
+async def _run_with_workflow_token(run_token: int, coro: Any) -> None:
+    context_token = _WORKFLOW_RUN_TOKEN.set(run_token)
+    try:
+        await coro
+    finally:
+        _WORKFLOW_RUN_TOKEN.reset(context_token)
+
+
+def _rollback_stage_key(target_stage: str) -> str:
+    stage = (target_stage or "").strip()
+    if stage not in _ROLLBACK_STAGE_STATES:
+        raise ValueError(f"Unknown workflow rollback stage '{target_stage}'")
+    return stage
+
+
+def _rollback_message(stage: str) -> str:
+    label = _ROLLBACK_STAGE_LABELS[stage]
+    return (
+        f"{_ROLLBACK_MESSAGE_PREFIX} {stage} ({label}). "
+        "Current in-progress step was terminated."
+    )
+
+
+def _append_workflow_activity(
+    wf: AIWorkflowModel,
+    state: WorkflowState,
+    message: str,
+    detail: str | None = None,
+) -> None:
+    activity_log: list[dict[str, Any]] = list(wf.activity_log or [])
+    activity_log.append({
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "state": state.value,
+        "message": message,
+        "detail": detail,
+    })
+    wf.activity_log = activity_log[-80:]
+
+
+def _apply_rollback_fields(wf: AIWorkflowModel, target_stage: str) -> WorkflowState:
+    stage = _rollback_stage_key(target_stage)
+    target_state = _ROLLBACK_STAGE_STATES[stage]
+    stage_rank = _ROLLBACK_STAGE_ORDER[stage]
+
+    wf.state = target_state.value
+    wf.progress_percent = STATE_PROGRESS.get(target_state, wf.progress_percent)
+    wf.current_message = _rollback_message(stage)
+    wf.errors = []
+    wf.review_data = {}
+
+    if stage_rank <= _ROLLBACK_STAGE_ORDER["model"]:
+        wf.scenarios = []
+
+    if stage_rank <= _ROLLBACK_STAGE_ORDER["testcases"]:
+        wf.testcases_created = 0
+        wf.teststeps_created = 0
+        wf.unmapped_steps = 0
+
+    if stage_rank <= _ROLLBACK_STAGE_ORDER["page"]:
+        wf.page_id = None
+        wf.elements_saved = 0
+        wf.scraped_candidates = []
+        wf.selected_elements = []
+        wf.low_confidence_locators = 0
+        wf.unmapped_steps = 0
+    elif stage_rank <= _ROLLBACK_STAGE_ORDER["appLaunch"]:
+        wf.elements_saved = 0
+        wf.scraped_candidates = []
+        wf.selected_elements = []
+        wf.low_confidence_locators = 0
+        wf.unmapped_steps = 0
+    elif stage_rank == _ROLLBACK_STAGE_ORDER["scrape"]:
+        wf.elements_saved = 0
+        wf.selected_elements = []
+        wf.low_confidence_locators = 0
+        wf.unmapped_steps = 0
+    elif stage_rank == _ROLLBACK_STAGE_ORDER["pageConfig"]:
+        wf.elements_saved = 0
+        wf.low_confidence_locators = 0
+        wf.unmapped_steps = 0
+
+    return target_state
 
 
 def _parse_streamed_json(raw: str, schema: type[T]) -> T:
@@ -229,8 +380,15 @@ async def _update_state(
         select(AIWorkflowModel).where(AIWorkflowModel.id == workflow_id)
     )
     wf = result.scalar_one()
+    if not _workflow_run_is_current(workflow_id):
+        return
+    if workflow_id in _CANCELLED_WORKFLOWS and state != WorkflowState.STOPPED:
+        return
+    if wf.state == WorkflowState.STOPPED.value and state != WorkflowState.STOPPED:
+        return
     wf.state = state.value
-    wf.progress_percent = STATE_PROGRESS.get(state, wf.progress_percent)
+    if state != WorkflowState.STOPPED:
+        wf.progress_percent = STATE_PROGRESS.get(state, wf.progress_percent)
     wf.current_message = message
     if log_event:
         activity_log: list[dict[str, Any]] = list(wf.activity_log or [])
@@ -317,11 +475,19 @@ async def _run_workspace_phase(workflow_id: str) -> None:
 
         except Exception as exc:
             logger.exception("Workspace phase failed for workflow %s", workflow_id)
-            await _append_error(db, workflow_id, str(exc))
-            await _update_state(
-                db, workflow_id, WorkflowState.FAILED,
-                f"Workspace setup failed: {exc}",
-            )
+            await db.rollback()
+            try:
+                await _append_error(db, workflow_id, str(exc))
+                await _update_state(
+                    db, workflow_id, WorkflowState.FAILED,
+                    f"Workspace setup failed: {exc}",
+                )
+            except Exception:
+                logger.exception(
+                    "Could not record failure state for workflow %s after workspace phase "
+                    "error; workflow may be stuck until manually reset",
+                    workflow_id,
+                )
 
 
 def _extract_page_name(url: str, fallback: str) -> str:
@@ -509,12 +675,20 @@ async def _run_scenario_generation(workflow_id: str, ai_provider: str, ai_model:
 
         except Exception as exc:
             logger.exception("Scenario generation failed for workflow %s", workflow_id)
-            error_detail = _format_provider_error(exc)
-            await _append_error(db, workflow_id, error_detail)
-            await _update_state(
-                db, workflow_id, WorkflowState.FAILED,
-                f"Scenario generation failed with {ai_provider}/{ai_model}: {error_detail}",
-            )
+            await db.rollback()
+            try:
+                error_detail = _format_provider_error(exc)
+                await _append_error(db, workflow_id, error_detail)
+                await _update_state(
+                    db, workflow_id, WorkflowState.FAILED,
+                    f"Scenario generation failed with {ai_provider}/{ai_model}: {error_detail}",
+                )
+            except Exception:
+                logger.exception(
+                    "Could not record failure state for workflow %s after scenario generation "
+                    "error; workflow may be stuck until manually reset",
+                    workflow_id,
+                )
 
 
 async def _build_elements_summary(db: AsyncSession, page_id: str | None) -> str:
@@ -1796,6 +1970,210 @@ def _select_candidates_for_steps(
     return list(selected_by_id.values())
 
 
+def _candidate_quality_for_targeting(candidate: dict[str, Any]) -> float:
+    if _candidate_is_desktop(candidate):
+        return _desktop_repository_score(candidate)
+    return max(
+        min(float(candidate.get("locator_quality") or 0.0), 1.0),
+        min(float(candidate.get("confidence_score") or 0.0), 1.0),
+    )
+
+
+def _candidate_has_step_semantic_signal(step: GeneratedTestStep, candidate: dict[str, Any]) -> bool:
+    step_text = " ".join(
+        part for part in (
+            step.description,
+            step.action_type,
+            step.input_value or "",
+            step.expected_result or "",
+        ) if part
+    )
+    candidate_text = _candidate_text(candidate)
+    name = str(candidate.get("name") or candidate.get("name_text") or candidate.get("name_attr") or "")
+    if name and name.lower() in step_text.lower():
+        return True
+    if _text_similarity(step.description, name) >= 0.34:
+        return True
+    if _token_overlap(step_text, candidate_text) >= 0.16:
+        return True
+    return _data_type_bonus(step, candidate) > 0
+
+
+def _candidate_explicit_step_intent_score(
+    candidate: dict[str, Any],
+    test_case: GeneratedTestCase,
+    step: GeneratedTestStep,
+) -> float:
+    matched_intents = (
+        candidate.get("matched_step_intents")
+        or (candidate.get("test_data_hints") or {}).get("matched_step_intents")
+        or (candidate.get("discovery_metadata") or {}).get("matched_step_intents")
+        or []
+    )
+    best = 0.0
+    test_case_title = str(test_case.title or "").strip().lower()
+    for intent in matched_intents:
+        if not isinstance(intent, dict):
+            continue
+        try:
+            intent_step = int(intent.get("step_number") or 0)
+        except (TypeError, ValueError):
+            intent_step = 0
+        intent_case = str(intent.get("test_case_title") or "").strip().lower()
+        if intent_step != int(step.step_number or 0):
+            continue
+        if intent_case and intent_case != test_case_title:
+            continue
+        try:
+            score = float(intent.get("score") or 0.0)
+        except (TypeError, ValueError):
+            score = 0.0
+        best = max(best, score or 0.5)
+    return min(best, 1.0)
+
+
+def _add_targeted_candidate(
+    targeted_by_id: dict[str, dict[str, Any]],
+    candidate: dict[str, Any],
+    *,
+    test_case: GeneratedTestCase,
+    step: GeneratedTestStep,
+    score: float,
+    reason: str,
+) -> bool:
+    candidate_id = _candidate_id(candidate)
+    if not candidate_id:
+        return False
+    existing = targeted_by_id.setdefault(candidate_id, {**candidate})
+    existing_score = float(existing.get("targeting_score") or 0.0)
+    existing["targeting_score"] = round(max(existing_score, score), 4)
+    targeted_step = f"{test_case.title}: step {step.step_number}"
+    if targeted_step not in existing.setdefault("targeted_steps", []):
+        existing["targeted_steps"].append(targeted_step)
+    if not existing.get("match_reason"):
+        existing["match_reason"] = reason
+    tags = set(existing.get("tags") or [])
+    tags.add("step-targeted-scrape")
+    if "intent" in reason.lower():
+        tags.add("step-intent-match")
+    existing["tags"] = sorted(tags)
+    hints = dict(existing.get("test_data_hints") or {})
+    hints["scrape_scope"] = "generated_step_intents"
+    hints["targeted_steps"] = existing["targeted_steps"]
+    existing["test_data_hints"] = hints
+    return True
+
+
+def _target_scraped_candidates_for_steps(
+    test_cases: list[GeneratedTestCase],
+    candidates: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    if not candidates:
+        return candidates
+    actionable_steps = _actionable_case_steps(test_cases)
+    if not actionable_steps:
+        return []
+
+    has_desktop_candidates = any(_candidate_is_desktop(candidate) for candidate in candidates)
+    threshold = 0.24 if has_desktop_candidates else 0.30
+    fallback_threshold = 0.18 if has_desktop_candidates else 0.24
+    targeted_by_id: dict[str, dict[str, Any]] = {}
+
+    for test_case, step, inferred_action in actionable_steps:
+        step_added_ids: set[str] = set()
+        explicit_matches: list[tuple[dict[str, Any], float]] = []
+        for candidate in candidates:
+            explicit_score = _candidate_explicit_step_intent_score(candidate, test_case, step)
+            if explicit_score <= 0:
+                continue
+            score = max(explicit_score, _score_candidate(step, candidate))
+            explicit_matches.append((candidate, min(score, 1.0)))
+        explicit_matches.sort(key=lambda item: item[1], reverse=True)
+        for candidate, score in explicit_matches[:_TARGETED_CANDIDATE_MAX_PER_STEP]:
+            if _add_targeted_candidate(
+                targeted_by_id,
+                candidate,
+                test_case=test_case,
+                step=step,
+                score=score,
+                reason=f"Explicit generated step-intent match for {inferred_action} step",
+            ):
+                step_added_ids.add(_candidate_id(candidate))
+
+        ranked = _rank_candidates_for_step(step, candidates)
+        for candidate, score in ranked:
+            if len(step_added_ids) >= _TARGETED_CANDIDATE_MAX_PER_STEP:
+                break
+            candidate_id = _candidate_id(candidate)
+            if not candidate_id or candidate_id in step_added_ids or score < threshold:
+                continue
+            if not _candidate_has_step_semantic_signal(step, candidate):
+                continue
+            if _add_targeted_candidate(
+                targeted_by_id,
+                candidate,
+                test_case=test_case,
+                step=step,
+                score=score,
+                reason=f"Ranked against generated {inferred_action} step before MCP save",
+            ):
+                step_added_ids.add(candidate_id)
+
+        if step_added_ids:
+            continue
+        for candidate, score in ranked[:_TARGETED_CANDIDATE_FALLBACK_PER_STEP]:
+            if score < fallback_threshold:
+                continue
+            _add_targeted_candidate(
+                targeted_by_id,
+                candidate,
+                test_case=test_case,
+                step=step,
+                score=score,
+                reason=f"Fallback locator kept for generated {inferred_action} step",
+            )
+
+    if not targeted_by_id:
+        fallback_limit = min(
+            len(candidates),
+            _TARGETED_CANDIDATE_FALLBACK_MAX,
+            max(_TARGETED_CANDIDATE_FALLBACK_PER_STEP * len(actionable_steps), 1),
+        )
+        fallback_step = actionable_steps[0]
+        ranked_fallbacks = sorted(
+            candidates,
+            key=_candidate_quality_for_targeting,
+            reverse=True,
+        )[:fallback_limit]
+        for candidate in ranked_fallbacks:
+            _add_targeted_candidate(
+                targeted_by_id,
+                candidate,
+                test_case=fallback_step[0],
+                step=fallback_step[1],
+                score=_candidate_quality_for_targeting(candidate),
+                reason="Bounded high-quality fallback because no generated step matched directly",
+            )
+
+    original_order = {
+        _candidate_id(candidate): index
+        for index, candidate in enumerate(candidates)
+        if _candidate_id(candidate)
+    }
+    targeted = list(targeted_by_id.values())
+    targeted.sort(
+        key=lambda candidate: (
+            -float(candidate.get("targeting_score") or 0.0),
+            original_order.get(_candidate_id(candidate), len(candidates)),
+        )
+    )
+    global_limit = min(
+        _TARGETED_CANDIDATE_GLOBAL_MAX,
+        max(_TARGETED_CANDIDATE_MAX_PER_STEP * len(actionable_steps), _TARGETED_CANDIDATE_FALLBACK_MAX),
+    )
+    return targeted[:global_limit]
+
+
 def _compact_binding_step(test_case: GeneratedTestCase, step: GeneratedTestStep) -> dict[str, Any]:
     return {
         "test_case_title": test_case.title,
@@ -1885,15 +2263,24 @@ async def _ai_step_binding_decisions(
     if not candidates:
         return []
     try:
-        result = await provider.generate(
-            _step_binding_decision_prompt(
-                test_cases=test_cases,
-                candidates=candidates,
-                platform=platform,
-                page_name=page_name,
+        result = await asyncio.wait_for(
+            provider.generate(
+                _step_binding_decision_prompt(
+                    test_cases=test_cases,
+                    candidates=candidates,
+                    platform=platform,
+                    page_name=page_name,
+                ),
+                StepElementBindingDecisionList,
             ),
-            StepElementBindingDecisionList,
+            timeout=_AI_PROVIDER_CALL_TIMEOUT_SECONDS,
         )
+    except asyncio.TimeoutError:
+        logger.warning(
+            "AI step binding timed out for %s after %ss; falling back to heuristic matching",
+            ai_model, _AI_PROVIDER_CALL_TIMEOUT_SECONDS,
+        )
+        return []
     except Exception as exc:
         logger.warning("AI step binding skipped for %s: %s", ai_model, _format_provider_error(exc))
         return []
@@ -2000,16 +2387,53 @@ def _coerce_ai_action(
 def _best_saved_element_for_step(
     step: GeneratedTestStep,
     saved_elements: list[dict[str, Any]],
+    test_case: GeneratedTestCase | None = None,
 ) -> tuple[dict[str, Any] | None, float]:
     best: dict[str, Any] | None = None
     best_score = 0.0
     for element in saved_elements:
         score = _score_candidate(step, element)
+        if test_case and _saved_element_targets_step(element, test_case, step):
+            score = max(score, 0.72)
         if score > best_score:
             best = element
             best_score = score
     return best, best_score
 
+
+def _saved_element_targets_step(
+    element: dict[str, Any],
+    test_case: GeneratedTestCase,
+    step: GeneratedTestStep,
+) -> bool:
+    expected = _decision_key(test_case.title, step.step_number)
+    metadata = element.get("discovery_metadata") if isinstance(element.get("discovery_metadata"), dict) else {}
+    hints = element.get("test_data_hints") if isinstance(element.get("test_data_hints"), dict) else {}
+    metadata_hints = metadata.get("test_data_hints") if isinstance(metadata.get("test_data_hints"), dict) else {}
+    refs = [
+        *(element.get("matched_steps") or []),
+        *(metadata.get("matched_steps") or []),
+        *(hints.get("targeted_steps") or []),
+        *(metadata_hints.get("targeted_steps") or []),
+        *(element.get("matched_step_intents") or []),
+        *(metadata.get("matched_step_intents") or []),
+        *(hints.get("matched_step_intents") or []),
+        *(metadata_hints.get("matched_step_intents") or []),
+    ]
+    for ref in refs:
+        if isinstance(ref, str):
+            ref_text = ref.strip().lower()
+            if test_case.title.strip().lower() in ref_text and f"step {int(step.step_number or 0)}" in ref_text:
+                return True
+        elif isinstance(ref, dict):
+            try:
+                ref_step = int(ref.get("step_number") or 0)
+            except (TypeError, ValueError):
+                ref_step = 0
+            ref_case = str(ref.get("test_case_title") or "").strip().lower()
+            if (ref_case, ref_step) == expected:
+                return True
+    return False
 
 def _bind_cases_with_ai_decisions(
     test_cases: list[GeneratedTestCase],
@@ -2039,6 +2463,7 @@ def _bind_cases_with_ai_decisions(
                 action = _coerce_ai_action(decision.action_type, step, element)
                 input_value = decision.input_value or _fallback_input_value_for_step(step, element, action)
                 expected_result = decision.expected_result or step.expected_result
+                has_saved_element = bool(element.get("element_id"))
                 bound_steps.append(step.model_copy(update={
                     "page_id": page_id,
                     "page_element_id": element.get("element_id"),
@@ -2046,14 +2471,50 @@ def _bind_cases_with_ai_decisions(
                     "input_value": input_value or step.input_value,
                     "assertion_type": decision.assertion_type or step.assertion_type,
                     "expected_result": expected_result,
-                    "needs_review": bool(decision.needs_review),
-                    "review_reason": decision.reason if decision.needs_review else None,
+                    "needs_review": bool(decision.needs_review and not has_saved_element),
+                    "review_reason": decision.reason if decision.needs_review and not has_saved_element else None,
                     "confidence": max(0.0, min(float(decision.confidence or 0.0), 1.0)),
                 }))
                 continue
 
+            inferred_action = _infer_workflow_action(step)
+            if inferred_action in {"navigate", "wait", "scroll"}:
+                update = {
+                    "page_id": page_id,
+                    "action_type": inferred_action,
+                    "needs_review": False,
+                    "review_reason": None,
+                }
+                if decision:
+                    update.update({
+                        "input_value": decision.input_value or step.input_value,
+                        "assertion_type": decision.assertion_type or step.assertion_type,
+                        "expected_result": decision.expected_result or step.expected_result,
+                        "confidence": max(0.0, min(float(decision.confidence or step.confidence or 0.0), 1.0)),
+                    })
+                bound_steps.append(step.model_copy(update=update))
+                continue
+
             if decision and decision.needs_review:
-                inferred_action = _infer_workflow_action(step)
+                fallback, fallback_score = _best_saved_element_for_step(step, saved_elements, test_case)
+                if fallback and fallback_score >= 0.34:
+                    final_action = _coerce_ai_action(decision.action_type or inferred_action, step, fallback)
+                    input_value = decision.input_value or _fallback_input_value_for_step(step, fallback, final_action)
+                    bound_steps.append(step.model_copy(update={
+                        "page_id": page_id,
+                        "page_element_id": fallback.get("element_id"),
+                        "action_type": final_action,
+                        "input_value": input_value or step.input_value,
+                        "assertion_type": decision.assertion_type or step.assertion_type,
+                        "expected_result": decision.expected_result or step.expected_result,
+                        "needs_review": False,
+                        "review_reason": None,
+                        "confidence": max(
+                            fallback_score,
+                            max(0.0, min(float(decision.confidence or 0.0), 1.0)),
+                        ),
+                    }))
+                    continue
                 bound_steps.append(step.model_copy(update={
                     "page_id": page_id,
                     "action_type": _coerce_ai_action(decision.action_type or inferred_action, step, None),
@@ -2066,15 +2527,7 @@ def _bind_cases_with_ai_decisions(
                 }))
                 continue
 
-            inferred_action = _infer_workflow_action(step)
-            if inferred_action in {"navigate", "wait", "scroll"}:
-                bound_steps.append(step.model_copy(update={
-                    "page_id": page_id,
-                    "action_type": inferred_action,
-                }))
-                continue
-
-            fallback, fallback_score = _best_saved_element_for_step(step, saved_elements)
+            fallback, fallback_score = _best_saved_element_for_step(step, saved_elements, test_case)
             if fallback and fallback_score >= 0.34:
                 final_action = _infer_workflow_action(step, str(fallback.get("element_type") or ""))
                 input_value = _fallback_input_value_for_step(step, fallback, final_action)
@@ -2084,6 +2537,8 @@ def _bind_cases_with_ai_decisions(
                     "action_type": final_action,
                     "input_value": input_value or step.input_value,
                     "confidence": fallback_score,
+                    "needs_review": False,
+                    "review_reason": None,
                 }))
             else:
                 bound_steps.append(step.model_copy(update={
@@ -2095,7 +2550,6 @@ def _bind_cases_with_ai_decisions(
                 }))
         bound_cases.append(test_case.model_copy(update={"steps": bound_steps}))
     return bound_cases
-
 
 async def _save_selected_candidates(
     db: AsyncSession,
@@ -2680,6 +3134,13 @@ async def _run_testcase_generation(workflow_id: str) -> None:
                 select(AIWorkflowModel).where(AIWorkflowModel.id == workflow_id)
             )
             wf = result.scalar_one()
+            workflow_provider = wf.ai_provider
+            workflow_model = wf.ai_model
+            workflow_platform = wf.platform or "web"
+            workflow_url = wf.webpage_url or ""
+            workflow_project_name = wf.project_name
+            workflow_module_name = wf.module_name or wf.project_name
+            workflow_scenarios = list(wf.scenarios or [])
 
             await _update_state(
                 db, workflow_id, WorkflowState.TESTCASES_GENERATING,
@@ -2687,10 +3148,10 @@ async def _run_testcase_generation(workflow_id: str) -> None:
                 detail="Selected scenarios are being converted before page scraping starts.",
             )
 
-            provider = _build_provider(wf.ai_provider, wf.ai_model)
+            provider = _build_provider(workflow_provider, workflow_model)
             selected = [
                 ScenarioPreview(**s)
-                for s in (wf.scenarios or [])
+                for s in workflow_scenarios
                 if s.get("selected")
             ]
 
@@ -2705,12 +3166,12 @@ async def _run_testcase_generation(workflow_id: str) -> None:
                 "Page elements are intentionally unavailable at this stage. Draft clear "
                 "business-level test steps; locator binding will happen after scraping."
             )
-            page_name = wf.page_name or _extract_page_name(wf.webpage_url, wf.project_name)
+            page_name = wf.page_name or _extract_page_name(workflow_url, workflow_project_name)
             application_profile = _application_learning_profile(
-                platform=wf.platform or "web",
-                app_target=wf.webpage_url or "",
+                platform=workflow_platform,
+                app_target=workflow_url,
                 page_name=page_name,
-                project_name=wf.project_name,
+                project_name=workflow_project_name,
                 brd_text=wf.brd_text,
             )
 
@@ -2729,8 +3190,8 @@ async def _run_testcase_generation(workflow_id: str) -> None:
                             scenario,
                             page_name,
                             elements_summary,
-                            platform=wf.platform or "web",
-                            app_target=wf.webpage_url or "",
+                            platform=workflow_platform,
+                            app_target=workflow_url,
                             application_profile=application_profile,
                         )
                     except Exception as exc:
@@ -2802,12 +3263,14 @@ async def _run_testcase_generation(workflow_id: str) -> None:
             )
 
             page_cfg = PageConfigurationAgent()
-            project = await page_cfg.ensure_project(db, wf.project_name)
+            project = await page_cfg.ensure_project(db, workflow_project_name)
+            project_id = str(project.id)
             module = await page_cfg.ensure_module(
-                db, project.id, wf.module_name or wf.project_name
+                db, project_id, workflow_module_name
             )
-            wf.project_id = project.id
-            wf.module_id = module.id
+            module_id = str(module.id)
+            wf.project_id = project_id
+            wf.module_id = module_id
             await db.commit()
 
             await _update_state(
@@ -2819,25 +3282,26 @@ async def _run_testcase_generation(workflow_id: str) -> None:
                     f"Page Repository entry is created only after {total_steps} drafted steps exist. "
                     f"{len(scrape_step_intents)} actionable step intent(s) will guide scraping."
                 ),
-                project_id=project.id,
-                module_id=module.id,
+                project_id=project_id,
+                module_id=module_id,
             )
             page = await page_cfg.ensure_page(
-                db, project.id, module.id, page_name, wf.webpage_url, wf.platform
+                db, project_id, module_id, page_name, workflow_url, workflow_platform
             )
+            page_id = str(page.id)
             await _update_state(
                 db,
                 workflow_id,
                 WorkflowState.PAGE_CREATED,
                 f"Page '{page_name}' created",
                 detail=(
-                    "Scraping starts now with generated test-step intent context; raw candidates "
+                    "Scraping starts now with generated test-step intent context; only step-targeted candidates "
                     "will stay in the workflow panel first."
                 ),
-                page_id=page.id,
+                page_id=page_id,
             )
 
-            is_desktop = _is_desktop_platform(wf.platform)
+            is_desktop = _is_desktop_platform(workflow_platform)
             discovery_engine = (
                 "Desktop MCP scanner"
                 if is_desktop
@@ -2856,7 +3320,7 @@ async def _run_testcase_generation(workflow_id: str) -> None:
                 await _update_state(
                     db, workflow_id, WorkflowState.DISCOVERY_RUNNING,
                     "Launching desktop application for UID capture...",
-                    detail=f"Application target: {wf.webpage_url}. Screen/window: {page_name}.",
+                    detail=f"Application target: {workflow_url}. Screen/window: {page_name}.",
                 )
                 desktop_adapter = DesktopDiscoveryAdapter(
                     driver_type="uia3",
@@ -2869,11 +3333,11 @@ async def _run_testcase_generation(workflow_id: str) -> None:
                     max_objects=600,
                 )
                 discovery_result = await desktop_adapter.discover(
-                    app=wf.webpage_url,
+                    app=workflow_url,
                     page_name=page_name,
-                    platform=wf.platform,
+                    platform=workflow_platform,
                     save_mode="preview",
-                    page_id=page.id,
+                    page_id=page_id,
                     db=db,
                     window_title=page_name,
                     step_intents=scrape_step_intents,
@@ -2881,10 +3345,10 @@ async def _run_testcase_generation(workflow_id: str) -> None:
             else:
                 await _update_state(
                     db, workflow_id, WorkflowState.DISCOVERY_RUNNING,
-                    f"{discovery_engine} is scraping raw element candidates...",
+                    f"{discovery_engine} is scraping step-targeted element candidates...",
                     detail=(
-                        "The scrape is running in preview mode. Nothing is saved to the Page "
-                        "Repository until the test steps choose the necessary elements."
+                        "The scrape is running in preview mode with generated test-step intents. Nothing is saved to the Page "
+                        "Repository until the narrowed candidates are selected for those steps."
                     ),
                 )
                 adapter = BrowserDiscoveryAdapter(
@@ -2893,11 +3357,11 @@ async def _run_testcase_generation(workflow_id: str) -> None:
                 )
                 discovery_agent = AppDiscoveryAgent(adapter)
                 discovery_result = await discovery_agent.run(
-                    url=wf.webpage_url,
+                    url=workflow_url,
                     page_name=page_name,
-                    platform=wf.platform,
+                    platform=workflow_platform,
                     save_mode="preview",
-                    page_id=page.id,
+                    page_id=page_id,
                     db=db,
                     step_intents=scrape_step_intents,
                 )
@@ -2908,6 +3372,13 @@ async def _run_testcase_generation(workflow_id: str) -> None:
                 _candidate_from_discovered(element, index)
                 for index, element in enumerate(discovery_result.elements)
             ]
+            raw_candidate_count = len(scraped_candidates)
+            scraped_candidates = _target_scraped_candidates_for_steps(
+                all_test_cases,
+                scraped_candidates,
+            )
+            targeted_candidate_count = len(scraped_candidates)
+            skipped_untargeted_count = max(raw_candidate_count - targeted_candidate_count, 0)
             step_intent_matched = sum(
                 1 for candidate in scraped_candidates
                 if candidate.get("matched_step_intents")
@@ -2915,17 +3386,18 @@ async def _run_testcase_generation(workflow_id: str) -> None:
             if is_desktop:
                 await _update_state(
                     db, workflow_id, WorkflowState.DISCOVERY_RUNNING,
-                    f"Desktop MCP captured {len(scraped_candidates)} UID/UIA object candidates...",
+                    f"Desktop MCP narrowed {raw_candidate_count} UID/UIA candidates to {targeted_candidate_count} step-needed object candidates...",
                     detail=(
                         "Automation IDs, UIA paths, names, classes, parent/child context, "
-                        "nearby labels, and fallback locator bundles are ready for AI binding. "
-                        f"{step_intent_matched} candidate(s) matched generated step intent before saving."
+                        "nearby labels, and fallback locator bundles are filtered by generated test-step intent before AI binding. "
+                        f"{step_intent_matched} candidate(s) had direct generated-step matches; "
+                        f"{skipped_untargeted_count} unrelated object candidate(s) were kept out of the dashboard and Page Repository."
                     ),
                     scraped_candidates=scraped_candidates,
                 )
             await _update_state(
                 db, workflow_id, WorkflowState.DISCOVERY_RUNNING,
-                f"AI is ranking scrape-time locator fallbacks with {wf.ai_provider}/{wf.ai_model}...",
+                f"AI is ranking scrape-time locator fallbacks with {workflow_provider}/{workflow_model}...",
                 detail=(
                     "The model is choosing the strongest desktop selector while preserving "
                     "Automation ID, parent/child UIA context, nearby labels, name, class, "
@@ -2938,23 +3410,24 @@ async def _run_testcase_generation(workflow_id: str) -> None:
             )
             scraped_candidates = await _enhance_scraped_candidates_with_ai(
                 provider,
-                wf.ai_model,
+                workflow_model,
                 scraped_candidates,
             )
             binding_decisions = await _ai_step_binding_decisions(
                 provider,
-                wf.ai_model,
+                workflow_model,
                 test_cases=all_test_cases,
                 candidates=scraped_candidates,
-                platform=wf.platform,
+                platform=workflow_platform,
                 page_name=page_name,
             )
             await _update_state(
                 db, workflow_id, WorkflowState.DISCOVERY_DONE,
-                f"Scraped and AI-ranked {len(scraped_candidates)} raw candidates into the MCP panel",
+                f"MCP filtered {raw_candidate_count} raw candidates to {targeted_candidate_count} step-needed candidates",
                 detail=(
                     f"AI produced {len(binding_decisions)} step binding decision(s). "
-                    "Each decision used testcase and test-step descriptions before Page Repository save."
+                    f"The pre-save filter removed {skipped_untargeted_count} candidate(s) that did not match generated test steps. "
+                    "Only targeted candidates continue toward Page Repository save."
                 ),
                 scraped_candidates=scraped_candidates,
             )
@@ -2972,14 +3445,14 @@ async def _run_testcase_generation(workflow_id: str) -> None:
             await _update_state(
                 db, workflow_id, WorkflowState.LOCATORS_RANKED,
                 (
-                    f"AI + Desktop MCP selected {len(selected_candidates)} UID/UIA elements from {len(scraped_candidates)} scraped candidates"
+                    f"AI + Desktop MCP selected {len(selected_candidates)} UID/UIA elements from {len(scraped_candidates)} step-targeted candidates"
                     if is_desktop else
-                    f"AI selected {len(selected_candidates)} necessary elements from {len(scraped_candidates)} scraped candidates"
+                    f"AI selected {len(selected_candidates)} necessary elements from {len(scraped_candidates)} step-targeted candidates"
                 ),
                 detail=(
                     "AI compared generated desktop test steps with Automation IDs, "
                     "control types, names, parent/child context, nearby labels, and locator candidates, "
-                    "then the MCP safety pass added stable UID/UIA objects for step coverage and healing."
+                    "then a bounded MCP safety pass kept only step-targeted UID/UIA fallbacks for coverage and healing."
                     if is_desktop else
                     "AI compared generated testcase descriptions and test steps with scraped names, "
                     "roles, text, IDs, and locator candidates, then chose elements, actions, "
@@ -2991,14 +3464,14 @@ async def _run_testcase_generation(workflow_id: str) -> None:
 
             written_elements = await _save_selected_candidates(
                 db,
-                page_id=page.id,
+                page_id=page_id,
                 workflow_id=workflow_id,
-                url=wf.webpage_url,
+                url=workflow_url,
                 selected_candidates=selected_candidates,
             )
             saved_elements = await _fetch_saved_candidates_from_page_repository(
                 db,
-                page_id=page.id,
+                page_id=page_id,
                 workflow_id=workflow_id,
                 selected_candidates=selected_candidates,
                 saved_candidates=written_elements,
@@ -3013,11 +3486,11 @@ async def _run_testcase_generation(workflow_id: str) -> None:
                 db, workflow_id, WorkflowState.PAGE_SAVED,
                 f"Saved {len(saved_elements)} necessary elements to '{page_name}'",
                 detail=(
-                    f"Skipped {max(len(scraped_candidates) - len(saved_elements), 0)} desktop UIA candidates "
-                    "because no generated test step needed them. Saved objects were fetched back from the Page Repository before binding."
+                    f"Filtered {skipped_untargeted_count} desktop UIA candidate(s) before AI ranking and saved {len(saved_elements)} step-needed object(s). "
+                    "Saved objects were fetched back from the Page Repository before binding."
                     if is_desktop else
-                    f"Skipped {max(len(scraped_candidates) - len(saved_elements), 0)} scraped candidates "
-                    "because no generated test step needed them. Saved elements were fetched back from the Page Repository before binding."
+                    f"Filtered {skipped_untargeted_count} scraped candidate(s) before AI ranking and saved {len(saved_elements)} step-needed element(s). "
+                    "Saved elements were fetched back from the Page Repository before binding."
                 ),
                 elements_saved=len(saved_elements),
                 low_confidence_locators=low_conf,
@@ -3046,7 +3519,7 @@ async def _run_testcase_generation(workflow_id: str) -> None:
             )
             bound_cases = _bind_cases_with_ai_decisions(
                 all_test_cases,
-                page.id,
+                page_id,
                 saved_elements,
                 binding_decisions,
             )
@@ -3055,21 +3528,33 @@ async def _run_testcase_generation(workflow_id: str) -> None:
                 for element in saved_elements
                 if element.get("element_id")
             }
-            total_steps = sum(len(tc.steps) for tc in bound_cases)
-            unmapped = sum(1 for tc in bound_cases for step in tc.steps if step.needs_review)
             persisted = 0
+            persisted_cases: list[GeneratedTestCase] = []
             for tc in bound_cases:
-                await _persist_test_case(
-                    db,
-                    tc,
-                    module.id,
-                    project.id,
-                    page_name=page_name,
-                    page_url=wf.webpage_url,
-                    element_lookup=saved_element_lookup,
-                    platform=wf.platform,
-                )
+                try:
+                    await _persist_test_case(
+                        db,
+                        tc,
+                        module_id,
+                        project_id,
+                        page_name=page_name,
+                        page_url=workflow_url,
+                        element_lookup=saved_element_lookup,
+                        platform=workflow_platform,
+                    )
+                except Exception as exc:
+                    await db.rollback()
+                    logger.exception(
+                        "Failed to persist test case '%s' for workflow %s; skipping it and continuing with the rest",
+                        tc.title, workflow_id,
+                    )
+                    await _append_error(
+                        db, workflow_id,
+                        f"Test case '{tc.title}' could not be saved: {_format_provider_error(exc)}",
+                    )
+                    continue
                 persisted += 1
+                persisted_cases.append(tc)
                 await _update_state(
                     db, workflow_id, WorkflowState.PAGE_SAVED,
                     (
@@ -3079,12 +3564,25 @@ async def _run_testcase_generation(workflow_id: str) -> None:
                     ),
                     detail=f"{len(tc.steps)} test step(s) stored under '{tc.title}'.",
                     testcases_created=persisted,
-                    teststeps_created=sum(len(case.steps) for case in bound_cases[:persisted]),
+                    teststeps_created=sum(len(case.steps) for case in persisted_cases),
                     unmapped_steps=sum(
-                        1 for case in bound_cases[:persisted]
+                        1 for case in persisted_cases
                         for step in case.steps if step.needs_review
                     ),
                 )
+
+            skipped_case_count = len(bound_cases) - len(persisted_cases)
+            if skipped_case_count:
+                await _update_state(
+                    db, workflow_id, WorkflowState.PAGE_SAVED,
+                    f"{skipped_case_count} test case(s) could not be saved and were skipped",
+                    detail="See workflow errors for details on the skipped test case(s). "
+                    f"Continuing with {persisted}/{len(bound_cases)} saved test case(s).",
+                )
+
+            bound_cases = persisted_cases
+            total_steps = sum(len(tc.steps) for tc in bound_cases)
+            unmapped = sum(1 for tc in bound_cases for step in tc.steps if step.needs_review)
 
             page_elements = [
                 {
@@ -3108,11 +3606,11 @@ async def _run_testcase_generation(workflow_id: str) -> None:
             reviewer = ReviewAndValidationAgent()
             review = reviewer.build_review(
                 workflow_id=workflow_id,
-                project_id=project.id,
-                module_id=module.id,
-                page_id=page.id,
+                project_id=project_id,
+                module_id=module_id,
+                page_id=page_id,
                 elements_saved=len(saved_elements),
-                scenarios_generated=len(wf.scenarios or []),
+                scenarios_generated=len(workflow_scenarios),
                 scenarios_selected=len(selected),
                 test_cases=bound_cases,
                 page_elements=page_elements,
@@ -3124,7 +3622,7 @@ async def _run_testcase_generation(workflow_id: str) -> None:
                 "unmapped_steps": unmapped,
                 "low_confidence_locators": len(review.low_confidence_locators),
                 "elements_saved": len(saved_elements),
-                "page_id": page.id,
+                "page_id": page_id,
                 "selected_elements": saved_elements,
                 "scraped_candidates": scraped_candidates,
                 "review_data": review.model_dump(),
@@ -3147,11 +3645,19 @@ async def _run_testcase_generation(workflow_id: str) -> None:
 
         except Exception as exc:
             logger.exception("Test case generation failed for workflow %s", workflow_id)
-            await _append_error(db, workflow_id, str(exc))
-            await _update_state(
-                db, workflow_id, WorkflowState.FAILED,
-                f"Test case generation failed: {exc}",
-            )
+            await db.rollback()
+            try:
+                await _append_error(db, workflow_id, str(exc))
+                await _update_state(
+                    db, workflow_id, WorkflowState.FAILED,
+                    f"Test case generation failed: {exc}",
+                )
+            except Exception:
+                logger.exception(
+                    "Could not record failure state for workflow %s after test case generation "
+                    "error; workflow may be stuck until manually reset",
+                    workflow_id,
+                )
 
 
 async def _persist_test_case(
@@ -3294,7 +3800,8 @@ class AIWorkflowService:
         await self._db.commit()
         await self._db.refresh(wf)
 
-        asyncio.create_task(_run_workspace_phase(wf.id))
+        run_token = _start_workflow_run(wf.id)
+        asyncio.create_task(_run_with_workflow_token(run_token, _run_workspace_phase(wf.id)))
         return _workflow_to_response(wf)
 
     async def get_workflow(self, workflow_id: str) -> WorkflowStateResponse:
@@ -3317,8 +3824,9 @@ class AIWorkflowService:
             raise ValueError(f"Workflow {workflow_id} not found")
 
         provider, model = _normalize_ai_selection(ai_provider or wf.ai_provider, ai_model or wf.ai_model)
+        run_token = _start_workflow_run(workflow_id)
 
-        asyncio.create_task(_run_scenario_generation(workflow_id, provider, model))
+        asyncio.create_task(_run_with_workflow_token(run_token, _run_scenario_generation(workflow_id, provider, model)))
         return _workflow_to_response(wf)
 
     async def confirm_scenarios(
@@ -3352,7 +3860,47 @@ class AIWorkflowService:
         if not wf:
             raise ValueError(f"Workflow {workflow_id} not found")
 
-        asyncio.create_task(_run_testcase_generation(workflow_id))
+        run_token = _start_workflow_run(workflow_id)
+        asyncio.create_task(_run_with_workflow_token(run_token, _run_testcase_generation(workflow_id)))
+        return _workflow_to_response(wf)
+
+    async def stop_workflow(self, workflow_id: str) -> WorkflowStateResponse:
+        result = await self._db.execute(
+            select(AIWorkflowModel).where(AIWorkflowModel.id == workflow_id)
+        )
+        wf = result.scalar_one_or_none()
+        if not wf:
+            raise ValueError(f"Workflow {workflow_id} not found")
+        if wf.state in {WorkflowState.COMPLETED.value, WorkflowState.REVIEW_READY.value, WorkflowState.STOPPED.value}:
+            return _workflow_to_response(wf)
+        _cancel_workflow_run(workflow_id)
+        await _update_state(
+            self._db,
+            workflow_id,
+            WorkflowState.STOPPED,
+            "Process stopped by user",
+            "The AI workflow process was stopped from the UI.",
+        )
+        return await self.get_workflow(workflow_id)
+
+    async def rollback_workflow(self, workflow_id: str, target_stage: str) -> WorkflowStateResponse:
+        result = await self._db.execute(
+            select(AIWorkflowModel).where(AIWorkflowModel.id == workflow_id)
+        )
+        wf = result.scalar_one_or_none()
+        if not wf:
+            raise ValueError(f"Workflow {workflow_id} not found")
+
+        target_state = _apply_rollback_fields(wf, target_stage)
+        _cancel_workflow_run(workflow_id)
+        _append_workflow_activity(
+            wf,
+            target_state,
+            wf.current_message,
+            "Rollback requested from the workflow timeline. Downstream generated data was cleared.",
+        )
+        await self._db.commit()
+        await self._db.refresh(wf)
         return _workflow_to_response(wf)
 
     async def get_review(self, workflow_id: str) -> ReviewResponse:

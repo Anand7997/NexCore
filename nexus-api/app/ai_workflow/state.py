@@ -18,6 +18,7 @@ class WorkflowState(str, Enum):
     TESTCASES_READY = "TESTCASES_READY"
     REVIEW_READY = "REVIEW_READY"
     COMPLETED = "COMPLETED"
+    STOPPED = "STOPPED"
     FAILED = "FAILED"
 
 
@@ -37,5 +38,6 @@ STATE_PROGRESS: dict[WorkflowState, int] = {
     WorkflowState.TESTCASES_READY: 94,
     WorkflowState.REVIEW_READY: 96,
     WorkflowState.COMPLETED: 100,
+    WorkflowState.STOPPED: 0,
     WorkflowState.FAILED: 0,
 }

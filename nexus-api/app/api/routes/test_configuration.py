@@ -80,6 +80,7 @@ def _to_step_response(step) -> TestStepResponse:
     xpath, path_location = _step_path_location(step)
     return TestStepResponse(
         id=step.id,
+        automation_space=step.automation_space or "web",
         step_order=step.step_order,
         name=step.name,
         description=step.description or "",
@@ -117,6 +118,7 @@ def _to_case_response(test_case) -> TestCaseResponse:
         name=test_case.name,
         description=test_case.description or "",
         status=test_case.status,
+        automation_space=test_case.automation_space or "web",
         test_type=test_case.test_type,
         priority=test_case.priority,
         execution_mode=test_case.execution_mode,
@@ -136,6 +138,7 @@ def _to_module_response(module) -> TestModuleResponse:
         name=module.name,
         description=module.description or "",
         status=module.status,
+        automation_space=module.automation_space or "web",
         tags=module.tags or [],
         created_at=module.created_at,
         updated_at=module.updated_at,
@@ -149,6 +152,7 @@ def _to_project_response(project) -> TestProjectResponse:
         name=project.name,
         description=project.description or "",
         status=project.status,
+        automation_space=project.automation_space or "web",
         tags=project.tags or [],
         created_at=project.created_at,
         updated_at=project.updated_at,
@@ -157,10 +161,14 @@ def _to_project_response(project) -> TestProjectResponse:
 
 
 @router.get("/tree", response_model=TestConfigurationTreeResponse)
-async def get_test_configuration_tree(db: AsyncSession = Depends(get_db)):
+async def get_test_configuration_tree(
+    automation_space: str | None = None,
+    db: AsyncSession = Depends(get_db),
+):
     repo = TestConfigurationRepository(db)
-    projects = await repo.list_projects()
+    projects = await repo.list_projects(automation_space=automation_space)
     return TestConfigurationTreeResponse(
+        automation_space=automation_space,
         projects=[_to_project_response(project) for project in projects],
         tag_catalog=[TagCatalogDimensionResponse(**dimension) for dimension in TAG_CATALOG],
     )
@@ -172,9 +180,13 @@ async def get_tag_catalog():
 
 
 @router.get("/projects/", response_model=list[TestProjectListItem])
-async def list_projects(status: str | None = None, db: AsyncSession = Depends(get_db)):
+async def list_projects(
+    status: str | None = None,
+    automation_space: str | None = None,
+    db: AsyncSession = Depends(get_db),
+):
     repo = TestConfigurationRepository(db)
-    projects = await repo.list_projects(status=status)
+    projects = await repo.list_projects(status=status, automation_space=automation_space)
     items: list[TestProjectListItem] = []
     for project in projects:
         case_count = sum(len(module.test_cases or []) for module in (project.modules or []))
@@ -189,6 +201,7 @@ async def list_projects(status: str | None = None, db: AsyncSession = Depends(ge
                 name=project.name,
                 description=project.description or "",
                 status=project.status,
+                automation_space=project.automation_space or "web",
                 tags=project.tags or [],
                 module_count=len(project.modules or []),
                 case_count=case_count,
@@ -256,6 +269,7 @@ async def create_module(
         name=module.name,
         description=module.description or "",
         status=module.status,
+        automation_space=module.automation_space or "web",
         tags=module.tags or [],
         created_at=module.created_at,
         updated_at=module.updated_at,
@@ -279,6 +293,7 @@ async def update_module(
         name=module.name,
         description=module.description or "",
         status=module.status,
+        automation_space=module.automation_space or "web",
         tags=module.tags or [],
         created_at=module.created_at,
         updated_at=module.updated_at,

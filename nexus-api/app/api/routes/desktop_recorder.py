@@ -17,9 +17,18 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.database.models import DesktopRecordedActionModel, DesktopRecordingSessionModel, WorkflowModel
+from app.database.models import (
+    DesktopRecordedActionModel,
+    DesktopRecordingSessionModel,
+    PageRepositoryModel,
+    WorkflowModel,
+)
 from app.database.session import get_db
-from app.execution.plugins.desktop.recorder import compile_recording, _is_bad_window_title
+from app.execution.plugins.desktop.recorder import (
+    build_object_repository_diff,
+    compile_recording,
+    _is_bad_window_title,
+)
 
 router = APIRouter(prefix="/desktop-recorder", tags=["desktop-recorder"])
 
@@ -128,6 +137,15 @@ class RecorderCompileResponse(BaseModel):
     workflow: dict[str, Any]
     repository_suggestions: list[dict[str, Any]]
     component_suggestions: list[dict[str, Any]] = Field(default_factory=list)
+    checkpoint_suggestions: list[dict[str, Any]] = Field(default_factory=list)
+    parameter_suggestions: list[dict[str, Any]] = Field(default_factory=list)
+    evidence_summary: dict[str, Any] = Field(default_factory=dict)
+    evidence_steps: list[dict[str, Any]] = Field(default_factory=list)
+    semantic_steps: list[dict[str, Any]] = Field(default_factory=list)
+    semantic_analysis: dict[str, Any] = Field(default_factory=dict)
+    quality_report: dict[str, Any] = Field(default_factory=dict)
+    execution_readiness: dict[str, Any] = Field(default_factory=dict)
+    object_repository_diff: dict[str, Any] = Field(default_factory=dict)
     summary: dict[str, Any]
 
 
@@ -869,10 +887,67 @@ async def delete_recorded_action(session_id: str, action_id: str, db: AsyncSessi
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+async def _load_existing_desktop_objects(db: AsyncSession, application: str = "") -> list[dict[str, Any]]:
+    """Load existing desktop repository objects, optionally scoped by application name."""
+    result = await db.execute(
+        select(PageRepositoryModel)
+        .where(PageRepositoryModel.platform.in_(["desktop", "windows"]))
+        .options(selectinload(PageRepositoryModel.elements))
+    )
+    app_norm = str(application or "").strip().lower()
+    objects: list[dict[str, Any]] = []
+    for page in result.scalars():
+        if app_norm and app_norm not in str(page.name or "").lower():
+            continue
+        for elem in page.elements or []:
+            metadata = elem.discovery_metadata or {}
+            objects.append(
+                {
+                    "object_key": str(
+                        metadata.get("object_key")
+                        or metadata.get("repository_key")
+                        or metadata.get("element_key")
+                        or elem.id
+                    ),
+                    "name": elem.name or "",
+                    "automation_id": elem.id_attr or "",
+                    "name_text": elem.name_attr or "",
+                    "class_name": elem.css_selector or "",
+                    "uia_path": elem.xpath or "",
+                    "control_type": elem.element_type or "",
+                    "locator_strategy": elem.locator_strategy or "",
+                    "primary_locator": str(metadata.get("primary_locator") or ""),
+                    "window": str(metadata.get("window") or ""),
+                }
+            )
+    return objects
+
+
+async def _compile_recording_result(
+    session: DesktopRecordingSessionModel,
+    db: AsyncSession,
+) -> dict[str, Any]:
+    result = compile_recording(session, list(session.actions or []))
+    existing_objects = await _load_existing_desktop_objects(db, session.application or "")
+    result["object_repository_diff"] = build_object_repository_diff(
+        result.get("repository_suggestions") or [],
+        existing_objects,
+    )
+    result["summary"]["repository_diff_new"] = result["object_repository_diff"]["summary"]["new"]
+    result["summary"]["repository_diff_changed"] = result["object_repository_diff"]["summary"]["changed"]
+    return result
+
+
 @router.post("/sessions/{session_id}/compile", response_model=RecorderCompileResponse)
 async def compile_recording_session(session_id: str, db: AsyncSession = Depends(get_db)):
     session = await _load_session(session_id, db)
-    return compile_recording(session, list(session.actions or []))
+    return await _compile_recording_result(session, db)
+
+
+@router.post("/sessions/{session_id}/analyze", response_model=RecorderCompileResponse)
+async def analyze_recording_session(session_id: str, db: AsyncSession = Depends(get_db)):
+    session = await _load_session(session_id, db)
+    return await _compile_recording_result(session, db)
 
 
 @router.delete(

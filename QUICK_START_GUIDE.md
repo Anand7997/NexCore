@@ -1,9 +1,9 @@
-# NexCore - Quick Start Deployment Guide
+﻿# NexCore - Quick Start Deployment Guide
 **Last Updated:** May 12, 2026
 
 ---
 
-## 🚀 FASTEST PATH TO PRODUCTION
+## ðŸš€ FASTEST PATH TO PRODUCTION
 
 This guide gets your **fully-implemented** NexCore platform running in under 30 minutes.
 
@@ -26,7 +26,7 @@ Ensure you have installed:
 cd c:\Users\VAnand\Downloads\NexCore
 
 # Install backend dependencies
-cd nexus-backend
+cd nexus-dotnet-backend
 npm install
 cd ..
 
@@ -119,18 +119,18 @@ Start-Sleep -Seconds 30
 
 ## Step 3: Configure Backend (2 minutes)
 
-Update `nexus-backend/.env` (already exists):
+Update `nexus-dotnet-backend/.env` (already exists):
 
 ```env
 NODE_ENV=development
 PORT=3001
-SERVICE_NAME=nexus-backend
+SERVICE_NAME=nexus-dotnet-backend
 
 DATABASE_URL=postgresql://nexus:nexus@localhost:5432/nexus
 
 KEYCLOAK_URL=http://localhost:8080
 KEYCLOAK_REALM=nexus
-KEYCLOAK_CLIENT_ID=nexus-backend
+KEYCLOAK_CLIENT_ID=nexus-dotnet-backend
 AUTH_DISABLED=true  # Enable for local dev
 
 OTEL_ENABLED=false
@@ -146,7 +146,7 @@ TEMPORAL_NAMESPACE=default
 Run database migrations:
 
 ```powershell
-cd nexus-backend
+cd nexus-dotnet-backend
 npm run db:push
 ```
 
@@ -156,23 +156,23 @@ npm run db:push
 
 Open **7 separate PowerShell terminals** and run:
 
-### Terminal 1: NestJS API
+### Terminal 1: .NET Control API
 ```powershell
-cd c:\Users\VAnand\Downloads\NexCore\nexus-backend
+cd c:\Users\VAnand\Downloads\NexCore\nexus-dotnet-backend
 npm run start:dev
 ```
-✅ **Expected:** API listening on http://localhost:3001  
-✅ **Health Check:** http://localhost:3001/health
+âœ… **Expected:** API listening on http://localhost:3001  
+âœ… **Health Check:** http://localhost:3001/health
 
 ---
 
 ### Terminal 2: Temporal Worker
 ```powershell
-cd c:\Users\VAnand\Downloads\NexCore\nexus-backend
-npm run start:worker
+cd c:\Users\VAnand\Downloads\NexCore\nexus-dotnet-backend
+dotnet run
 ```
-✅ **Expected:** Worker connected to Temporal, polling task queue  
-✅ **Temporal UI:** http://localhost:8233
+âœ… **Expected:** Worker connected to Temporal, polling task queue  
+âœ… **Temporal UI:** http://localhost:8233
 
 ---
 
@@ -181,8 +181,8 @@ npm run start:worker
 cd c:\Users\VAnand\Downloads\NexCore\nexus-api
 uvicorn app.main:app --reload --port 8000
 ```
-✅ **Expected:** API listening on http://localhost:8000  
-✅ **Docs:** http://localhost:8000/docs
+âœ… **Expected:** API listening on http://localhost:8000  
+âœ… **Docs:** http://localhost:8000/docs
 
 ---
 
@@ -191,21 +191,21 @@ uvicorn app.main:app --reload --port 8000
 cd c:\Users\VAnand\Downloads\NexCore\nexus-api
 python -m app.intelligence.ai_job_runner
 ```
-✅ **Expected:** AI job runner listening on NATS subject `ai.jobs`
+âœ… **Expected:** AI job runner listening on NATS subject `ai.jobs`
 
 ---
 
 ### Terminal 5: External Runtime Agent
 ```powershell
-cd c:\Users\VAnand\Downloads\NexCore\nexus-backend
+cd c:\Users\VAnand\Downloads\NexCore\nexus-dotnet-backend
 
 # Set agent capabilities
 $env:AGENT_CAPABILITIES='["web","api"]'
 $env:AGENT_NAME="local-web-agent"
 
-npm run start:agent
+dotnet run
 ```
-✅ **Expected:** Agent registered with backend, polling for commands
+âœ… **Expected:** Agent registered with backend, polling for commands
 
 ---
 
@@ -214,18 +214,18 @@ npm run start:agent
 cd c:\Users\VAnand\Downloads\NexCore\nexus-qa
 npm run dev
 ```
-✅ **Expected:** Frontend listening on http://localhost:3000
+âœ… **Expected:** Frontend listening on http://localhost:3000
 
 ---
 
 ### Terminal 7: Optional - Second Runtime Agent (Mobile/Desktop)
 ```powershell
-cd c:\Users\VAnand\Downloads\NexCore\nexus-backend
+cd c:\Users\VAnand\Downloads\NexCore\nexus-dotnet-backend
 
 $env:AGENT_CAPABILITIES='["android","ios","desktop"]'
 $env:AGENT_NAME="local-mobile-agent"
 
-npm run start:agent
+dotnet run
 ```
 
 ---
@@ -260,11 +260,11 @@ curl http://localhost:8222/varz
 1. Open http://localhost:3000/workflows
 2. Click **"Create Workflow"**
 3. Add nodes:
-   - `web.navigate` → `{ "url": "http://localhost:3000/demo" }`
-   - `web.click` → `{ "selector": "#counter-increment" }`
-   - `web.assert_text` → `{ "selector": "#counter-value", "expected": "1" }`
+   - `web.navigate` â†’ `{ "url": "http://localhost:3000/demo" }`
+   - `web.click` â†’ `{ "selector": "#counter-increment" }`
+   - `web.assert_text` â†’ `{ "selector": "#counter-value", "expected": "1" }`
 4. Click **"Save Workflow"**
-5. Click **"Run Workflow"** → Select platform: `web`
+5. Click **"Run Workflow"** â†’ Select platform: `web`
 6. Watch execution in real-time!
 
 #### Via API (curl):
@@ -387,7 +387,7 @@ npx playwright show-report
 
 ---
 
-## 📊 Monitoring & Debugging
+## ðŸ“Š Monitoring & Debugging
 
 ### Temporal Workflows
 - **UI:** http://localhost:8233
@@ -399,14 +399,14 @@ npx playwright show-report
 
 ### Logs
 Each terminal shows real-time logs for its service:
-- NestJS: Pino structured logs
+-  .NET: Pino structured logs
 - Python: Uvicorn + custom logging
 - Temporal Worker: Temporal SDK logs
 - Runtime Agent: Agent lifecycle events
 
 ---
 
-## 🛑 Common Issues & Fixes
+## ðŸ›‘ Common Issues & Fixes
 
 ### Issue: "Port already in use"
 ```powershell
@@ -452,7 +452,7 @@ curl http://localhost:8222/varz
 
 ---
 
-## 🔐 Production Deployment Changes
+## ðŸ” Production Deployment Changes
 
 When deploying to production:
 
@@ -463,7 +463,7 @@ When deploying to production:
 
 2. **Configure Keycloak:**
    - Create `nexus` realm
-   - Create `nexus-backend` client (confidential)
+   - Create `nexus-dotnet-backend` client (confidential)
    - Configure client scopes
    - Add users with roles
 
@@ -486,7 +486,7 @@ When deploying to production:
 
 ---
 
-## 📚 Additional Resources
+## ðŸ“š Additional Resources
 
 - **Temporal Docs:** https://docs.temporal.io
 - **NATS Docs:** https://docs.nats.io
@@ -496,10 +496,10 @@ When deploying to production:
 
 ---
 
-## ✅ Success Checklist
+## âœ… Success Checklist
 
 - [ ] All 7 services running without errors
-- [ ] Health checks passing for NestJS and Python APIs
+- [ ] Health checks passing for  .NET and Python APIs
 - [ ] Temporal UI showing workflows
 - [ ] NATS monitoring showing connections
 - [ ] Frontend accessible at localhost:3000
@@ -510,18 +510,18 @@ When deploying to production:
 
 ---
 
-## 🎉 Congratulations!
+## ðŸŽ‰ Congratulations!
 
 You now have a **fully operational AI-powered execution intelligence platform** running locally!
 
 ### What You Can Do Now:
 
-✅ Create and execute workflows via UI  
-✅ Monitor executions in real-time  
-✅ Get AI-driven failure analysis  
-✅ Compile business intents to platform-specific nodes  
-✅ Run cross-platform tests  
-✅ Scale with external runtime agents  
+âœ… Create and execute workflows via UI  
+âœ… Monitor executions in real-time  
+âœ… Get AI-driven failure analysis  
+âœ… Compile business intents to platform-specific nodes  
+âœ… Run cross-platform tests  
+âœ… Scale with external runtime agents  
 
 ### Next Steps:
 
@@ -534,3 +534,4 @@ You now have a **fully operational AI-powered execution intelligence platform** 
 ---
 
 **Need Help?** Check [IMPLEMENTATION_STATUS_REPORT.md](IMPLEMENTATION_STATUS_REPORT.md) for comprehensive documentation.
+

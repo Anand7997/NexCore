@@ -18,6 +18,7 @@ from app.ai_workflow.schemas import (
     ReviewResponse,
     ScenarioConfirmRequest,
     WorkflowCreateRequest,
+    WorkflowRollbackRequest,
     WorkflowStateResponse,
 )
 from app.ai_workflow.service import AIWorkflowService
@@ -237,6 +238,32 @@ async def generate_testcases(
         return await svc.generate_testcases(workflow_id)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.post("/{workflow_id}/stop", response_model=WorkflowStateResponse)
+async def stop_workflow(
+    workflow_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> WorkflowStateResponse:
+    svc = AIWorkflowService(db)
+    try:
+        return await svc.stop_workflow(workflow_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.post("/{workflow_id}/rollback", response_model=WorkflowStateResponse)
+async def rollback_workflow(
+    workflow_id: str,
+    body: WorkflowRollbackRequest,
+    db: AsyncSession = Depends(get_db),
+) -> WorkflowStateResponse:
+    svc = AIWorkflowService(db)
+    try:
+        return await svc.rollback_workflow(workflow_id, body.target_stage)
+    except ValueError as exc:
+        status_code = status.HTTP_404_NOT_FOUND if "not found" in str(exc).lower() else status.HTTP_400_BAD_REQUEST
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
 
 
 @router.get("/{workflow_id}/review", response_model=ReviewResponse)

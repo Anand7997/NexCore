@@ -293,6 +293,99 @@ async def test_live_agent_actions_compile_to_stable_keyword_workflow(client: Asy
 
 
 @pytest.mark.asyncio
+async def test_compile_returns_object_repository_diff_against_existing_objects(client: AsyncClient):
+    create_object = await client.post(
+        "/api/page-repository/desktop/objects",
+        json={
+            "application": "DiffApp",
+            "object_key": "save_button",
+            "name": "Save",
+            "automation_id": "btnSave",
+            "name_text": "Save",
+            "class_name": "Button",
+            "uia_path": "/Window/Button[1]",
+            "locator_strategy": "accessibility id",
+            "primary_locator": "btnSave",
+            "window": "DiffApp",
+        },
+    )
+    assert create_object.status_code == 201
+
+    create_session = await client.post(
+        "/api/desktop-recorder/sessions",
+        json={"name": "Diff Flow", "application": "DiffApp", "driver_type": "uia3"},
+    )
+    assert create_session.status_code == 201
+    session_id = create_session.json()["id"]
+
+    actions = [
+        {
+            "action_type": "click",
+            "object_key": "save_button",
+            "object_name": "Save",
+            "automation_id": "btnSave",
+            "name_text": "Save",
+            "class_name": "Button",
+            "uia_path": "/Window/Button[1]",
+            "window_title": "DiffApp",
+        },
+        {
+            "action_type": "click",
+            "object_key": "brand_new_button",
+            "object_name": "Brand New",
+            "automation_id": "btnBrandNew",
+            "window_title": "DiffApp",
+        },
+    ]
+    for action in actions:
+        response = await client.post(f"/api/desktop-recorder/sessions/{session_id}/actions", json=action)
+        assert response.status_code == 201
+
+    compile_response = await client.post(f"/api/desktop-recorder/sessions/{session_id}/compile")
+    assert compile_response.status_code == 200
+    diff = compile_response.json()["object_repository_diff"]
+
+    assert diff["summary"]["matched"] == 1
+    assert diff["summary"]["new"] == 1
+    matched_keys = [item["object_key"] for item in diff["matched"]]
+    new_keys = [item["object_key"] for item in diff["new"]]
+    assert "save_button" in matched_keys
+    assert "brand_new_button" in new_keys
+
+
+@pytest.mark.asyncio
+async def test_analyze_recording_session_returns_semantics_and_evidence(client: AsyncClient):
+    create_response = await client.post(
+        "/api/desktop-recorder/sessions",
+        json={"name": "Analyze Flow", "application": "Invoice", "application_path": r"C:\Apps\Invoice.exe", "window_title": "Invoice"},
+    )
+    assert create_response.status_code == 201
+    session_id = create_response.json()["id"]
+
+    action_response = await client.post(
+        f"/api/desktop-recorder/sessions/{session_id}/actions",
+        json={
+            "action_type": "click",
+            "object_key": "save_button",
+            "object_name": "Save",
+            "automation_id": "btnSave",
+            "screenshot_artifact_id": "png-save",
+        },
+    )
+    assert action_response.status_code == 201
+
+    analyze_response = await client.post(f"/api/desktop-recorder/sessions/{session_id}/analyze")
+    assert analyze_response.status_code == 200
+    body = analyze_response.json()
+
+    assert body["semantic_analysis"]["total_steps"] == 1
+    assert body["semantic_steps"][0]["semantic_intent"] == "submit_form"
+    assert body["evidence_summary"]["steps_with_screenshot"] == 1
+    assert body["evidence_steps"][0]["screenshot_artifact_id"] == "png-save"
+    assert body["summary"]["semantic_step_count"] == 1
+
+
+@pytest.mark.asyncio
 async def test_download_recorder_agent_package_contains_launchers(client: AsyncClient):
     response = await client.post(
         "/api/desktop-recorder/agent-package",

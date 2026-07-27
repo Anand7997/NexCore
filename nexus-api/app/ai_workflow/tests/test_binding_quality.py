@@ -17,6 +17,7 @@ from app.ai_workflow.service import (
     _score_candidate,
     _step_binding_decision_prompt,
     _step_configured_input_value,
+    _target_scraped_candidates_for_steps,
     _workflow_action_to_test_config,
 )
 from app.page_discovery.locators import ElementDiscoveryAgent
@@ -169,6 +170,68 @@ def test_build_step_scrape_intents_excludes_navigation_and_keeps_targets():
     assert intents[1]["action_type"] == "click"
     assert "create project" in intents[1]["target_hint"]
 
+
+def test_target_scraped_candidates_for_steps_keeps_step_needed_objects_only():
+    test_case = GeneratedTestCase(
+        title="Create Project",
+        description="Create Project",
+        steps=[
+            GeneratedTestStep(step_number=1, description="Launch IntelliJ", action_type="navigate"),
+            GeneratedTestStep(step_number=2, description="Enter project name", action_type="fill"),
+            GeneratedTestStep(step_number=3, description="Click Create project", action_type="click"),
+        ],
+    )
+    candidates = [
+        {
+            "candidate_id": "project-name",
+            "name": "Project Name",
+            "element_type": "edit",
+            "best_locator": "txtProjectName",
+            "locator_strategy": "accessibility id",
+            "automation_id": "txtProjectName",
+            "id_attr": "txtProjectName",
+            "name_text": "Project Name",
+            "xpath": "/Window/Edit[@AutomationId='txtProjectName']",
+            "confidence_score": 1.0,
+            "locator_quality": 0.95,
+            "tags": ["desktop"],
+        },
+        {
+            "candidate_id": "create-button",
+            "name": "Create",
+            "element_type": "button",
+            "best_locator": "btnCreate",
+            "locator_strategy": "accessibility id",
+            "automation_id": "btnCreate",
+            "id_attr": "btnCreate",
+            "name_text": "Create",
+            "xpath": "/Window/Button[@AutomationId='btnCreate']",
+            "confidence_score": 1.0,
+            "locator_quality": 0.95,
+            "tags": ["desktop"],
+        },
+        {
+            "candidate_id": "help-button",
+            "name": "Help",
+            "element_type": "button",
+            "best_locator": "btnHelp",
+            "locator_strategy": "accessibility id",
+            "automation_id": "btnHelp",
+            "id_attr": "btnHelp",
+            "name_text": "Help",
+            "xpath": "/Window/Button[@AutomationId='btnHelp']",
+            "confidence_score": 1.0,
+            "locator_quality": 0.95,
+            "tags": ["desktop"],
+        },
+    ]
+
+    targeted = _target_scraped_candidates_for_steps([test_case], candidates)
+    targeted_ids = {candidate["candidate_id"] for candidate in targeted}
+
+    assert targeted_ids == {"project-name", "create-button"}
+    assert all("step-targeted-scrape" in candidate["tags"] for candidate in targeted)
+    assert all(candidate["test_data_hints"]["scrape_scope"] == "generated_step_intents" for candidate in targeted)
 
 def test_desktop_binding_preserves_automation_id_and_fallback_bundle():
     step = GeneratedTestStep(
@@ -456,6 +519,130 @@ def test_ai_binding_decision_selects_candidate_and_refines_step_value():
     assert step.input_value == "Asha Rao"
     assert step.confidence == 0.93
 
+
+def test_ai_needs_review_decision_with_saved_candidate_is_still_configured():
+    test_case = GeneratedTestCase(
+        title="Create invoice",
+        description="Create invoice",
+        steps=[
+            GeneratedTestStep(
+                step_number=1,
+                description="Click Submit Invoice",
+                action_type="click",
+            )
+        ],
+    )
+    submit_button = {
+        "candidate_id": "scraped-9",
+        "element_id": "element-9",
+        "name": "Submit Invoice",
+        "element_type": "button",
+        "best_locator": "btnSubmit",
+        "locator_strategy": "accessibility id",
+        "automation_id": "btnSubmit",
+        "confidence_score": 0.94,
+        "locator_quality": 0.9,
+    }
+    decisions = [
+        StepElementBindingDecision(
+            test_case_title="Create invoice",
+            step_number=1,
+            candidate_id="scraped-9",
+            action_type="click",
+            confidence=0.41,
+            needs_review=True,
+            reason="AI selected the button but requested review",
+        )
+    ]
+
+    bound = _bind_cases_with_ai_decisions([test_case], "page-1", [submit_button], decisions)
+
+    step = bound[0].steps[0]
+    assert step.page_element_id == "element-9"
+    assert step.action_type == "click"
+    assert step.needs_review is False
+    assert step.review_reason is None
+
+
+def test_ai_needs_review_decision_falls_back_to_step_targeted_saved_element():
+    test_case = GeneratedTestCase(
+        title="Dashboard navigation",
+        description="Navigate from dashboard",
+        steps=[
+            GeneratedTestStep(
+                step_number=2,
+                description="Click Contacts from the dashboard navigation",
+                action_type="click",
+            )
+        ],
+    )
+    contacts_button = {
+        "candidate_id": "scraped-contacts",
+        "element_id": "element-contacts",
+        "name": "Unrelated button text",
+        "element_type": "button",
+        "best_locator": "contacts-button",
+        "xpath": "//button[@data-nav='contacts']",
+        "confidence_score": 0.1,
+        "locator_quality": 0.1,
+        "test_data_hints": {
+            "targeted_steps": ["Dashboard navigation: step 2"],
+        },
+    }
+    decisions = [
+        StepElementBindingDecision(
+            test_case_title="Dashboard navigation",
+            step_number=2,
+            candidate_id=None,
+            action_type="click",
+            confidence=0.1,
+            needs_review=True,
+            reason="AI could not match this step",
+        )
+    ]
+
+    bound = _bind_cases_with_ai_decisions([test_case], "page-1", [contacts_button], decisions)
+
+    step = bound[0].steps[0]
+    assert step.page_element_id == "element-contacts"
+    assert step.action_type == "click"
+    assert step.needs_review is False
+    assert step.review_reason is None
+    assert step.confidence >= 0.72
+
+def test_ai_needs_review_navigation_step_is_still_configured_without_element():
+    test_case = GeneratedTestCase(
+        title="Open dashboard",
+        description="Open dashboard",
+        steps=[
+            GeneratedTestStep(
+                step_number=1,
+                description="Navigate to the dashboard URL",
+                action_type="navigate",
+                input_value="https://example.test/dashboard",
+            )
+        ],
+    )
+    decisions = [
+        StepElementBindingDecision(
+            test_case_title="Open dashboard",
+            step_number=1,
+            candidate_id=None,
+            action_type="navigate",
+            confidence=0.05,
+            needs_review=True,
+            reason="No UI element is needed for navigation",
+        )
+    ]
+
+    bound = _bind_cases_with_ai_decisions([test_case], "page-1", [], decisions)
+
+    step = bound[0].steps[0]
+    assert step.page_id == "page-1"
+    assert step.page_element_id is None
+    assert step.action_type == "navigate"
+    assert step.needs_review is False
+    assert step.review_reason is None
 
 def test_ai_binding_prompt_includes_testcase_and_step_descriptions():
     test_case = GeneratedTestCase(

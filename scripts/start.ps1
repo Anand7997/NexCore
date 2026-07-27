@@ -1,20 +1,28 @@
-param(
-    [switch] $Reload
+﻿param(
+    [switch] $Reload,
+    [ValidateSet("Advanced", "Old")]
+    [string] $Frontend = "Advanced"
 )
 
 $ErrorActionPreference = "Stop"
 
-$root        = Resolve-Path (Join-Path $PSScriptRoot "..")
-$frontendDir = Join-Path $root "nexus-qa"
-$backendDir  = Join-Path $root "nexus-api"
-$venvPython  = Join-Path $backendDir ".venv\Scripts\python.exe"
+$root = Resolve-Path (Join-Path $PSScriptRoot "..")
+$frontendFolder = if ($Frontend -eq "Old") { "Nexus-old" } else { "Nexus-Advanced" }
+$frontendLabel = if ($Frontend -eq "Old") { "Automation Blocks UI" } else { "Restored Advanced UI" }
+$frontendDir = Join-Path $root $frontendFolder
+$controlBackendDir = Join-Path $root "nexus-dotnet-backend"
+$pythonBackendDir  = Join-Path $root "nexus-api"
+$venvPython  = Join-Path $pythonBackendDir ".venv\Scripts\python.exe"
 $nextCli     = Join-Path $frontendDir "node_modules\next\dist\bin\next"
 $frontendBuildId = Join-Path $frontendDir ".next\BUILD_ID"
 
+if (-not $env:NEXUS_CONTROL_HOST) { $env:NEXUS_CONTROL_HOST = "127.0.0.1" }
+if (-not $env:NEXUS_CONTROL_PORT) { $env:NEXUS_CONTROL_PORT = "3001" }
 if (-not $env:NEXUS_API_HOST) { $env:NEXUS_API_HOST = "127.0.0.1" }
 if (-not $env:NEXUS_API_PORT) { $env:NEXUS_API_PORT = "8000" }
 if (-not $env:NEXUS_QA_PORT)  { $env:NEXUS_QA_PORT  = "3000" }
 
+$controlUrl = "http://$($env:NEXUS_CONTROL_HOST):$($env:NEXUS_CONTROL_PORT)"
 $apiUrl = "http://$($env:NEXUS_API_HOST):$($env:NEXUS_API_PORT)"
 $webUrl = "http://localhost:$($env:NEXUS_QA_PORT)"
 
@@ -62,12 +70,8 @@ function Assert-NexusPortsAvailable {
 
     $details = foreach ($listener in $listeners) {
         $summary = "port $($listener.LocalPort) -> PID $($listener.ProcessId)"
-        if ($listener.ProcessName) {
-            $summary += " ($($listener.ProcessName))"
-        }
-        if ($listener.Path) {
-            $summary += " [$($listener.Path)]"
-        }
+        if ($listener.ProcessName) { $summary += " ($($listener.ProcessName))" }
+        if ($listener.Path) { $summary += " [$($listener.Path)]" }
         $summary
     }
 
@@ -77,9 +81,7 @@ function Assert-NexusPortsAvailable {
 function Stop-NexusProcessId {
     param([Parameter(Mandatory)] [int] $ProcessId)
 
-    if (-not (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue)) {
-        return
-    }
+    if (-not (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue)) { return }
 
     try {
         Stop-Process -Id $ProcessId -Force -ErrorAction Stop
@@ -118,42 +120,42 @@ function Start-NexusProcess {
     return $p
 }
 
-function Wait-ForBackend {
+function Wait-ForService {
     param(
+        [string] $Name,
         [string] $Url,
+        [string] $HealthPath,
         [System.Diagnostics.Process] $Process,
         [int] $MaxSeconds = 90
     )
 
-    $healthUrl = "$Url/api/health"
+    $healthUrl = "$Url$HealthPath"
     $deadline  = (Get-Date).AddSeconds($MaxSeconds)
-    Write-Host "  Waiting for backend at $healthUrl (up to $MaxSeconds s)..."
+    Write-Host "  Waiting for $Name at $healthUrl (up to $MaxSeconds s)..."
     while ((Get-Date) -lt $deadline) {
         if ($Process) {
             try {
                 if ($Process.HasExited) {
-                    throw "Backend exited before becoming healthy (code $($Process.ExitCode))."
+                    throw "$Name exited before becoming healthy (code $($Process.ExitCode))."
                 }
             }
-            catch {
-                throw
-            }
+            catch { throw }
         }
 
         try {
             $r = Invoke-WebRequest -Uri $healthUrl -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop
             if ($r.StatusCode -eq 200) {
-                Write-Host "  Backend is ready."
+                Write-Host "  $Name is ready."
                 return
             }
         } catch { }
         Start-Sleep -Milliseconds 1500
     }
-    throw "Backend did not become healthy within $MaxSeconds seconds."
+    throw "$Name did not become healthy within $MaxSeconds seconds."
 }
 
 function Invoke-NexusFrontendBuild {
-    param([string] $ApiUrl)
+    param([string] $ApiUrl, [string] $ControlUrl)
 
     Write-Host "  Frontend build is missing; running npm run build..."
     $build = Start-NexusProcess `
@@ -161,7 +163,10 @@ function Invoke-NexusFrontendBuild {
         -FileName "cmd.exe" `
         -Arguments "/c npm run build" `
         -WorkingDirectory $frontendDir `
-        -Environment @{ NEXT_PUBLIC_API_URL = "$ApiUrl/api" }
+        -Environment @{
+            NEXT_PUBLIC_API_URL = "$ApiUrl/api"
+            NEXT_PUBLIC_CONTROL_API_URL = "$ControlUrl/api"
+        }
 
     $build.WaitForExit()
     if ($build.ExitCode -ne 0) {
@@ -176,9 +181,7 @@ function Stop-NexusProcessTree {
 
     $processId = $null
     try {
-        if ($Process.HasExited) {
-            return
-        }
+        if ($Process.HasExited) { return }
         $processId = $Process.Id
     } catch {
         $processId = $Process.Id
@@ -195,51 +198,56 @@ function Stop-NexusPortListeners {
     }
 }
 
-$frontend = $null
-$backend  = $null
+$frontendProcess = $null
+$controlBackend = $null
+$pythonBackend = $null
+$ports = @([int]$env:NEXUS_CONTROL_PORT, [int]$env:NEXUS_API_PORT, [int]$env:NEXUS_QA_PORT)
 
 try {
     Write-Host ""
     Write-Host "=== NEXUS QA Workspace ==="
-    Write-Host "  Backend:  $apiUrl"
-    Write-Host "  Frontend: $webUrl"
+    Write-Host "  .NET Control API: $controlUrl"
+    Write-Host "  Python AI API:    $apiUrl"
+    Write-Host "  Frontend:         $webUrl"
+    Write-Host "  UI:               $frontendLabel ($frontendFolder)"
     Write-Host ""
 
-    Assert-NexusPortsAvailable -Ports @([int]$env:NEXUS_API_PORT, [int]$env:NEXUS_QA_PORT)
+    Assert-NexusPortsAvailable -Ports $ports
 
-    # ── Step 1: Start backend (venv python preferred) ─────────────────────────
+    Write-Host "[1/3] .NET Control API"
+    $controlBackend = Start-NexusProcess `
+        -Name ".NET Control API" `
+        -FileName "dotnet" `
+        -Arguments "run" `
+        -WorkingDirectory $controlBackendDir
+
+    Wait-ForService -Name ".NET Control API" -Url $controlUrl -HealthPath "/api/health/live" -Process $controlBackend
+
+    Write-Host ""
+    Write-Host "[2/3] Python AI API"
     $pythonExe = if (Test-Path $venvPython) { $venvPython } else { "python" }
-    Write-Host "[1/2] Backend"
     Write-Host "  Python: $pythonExe"
 
-    $backendArgs = "-m uvicorn app.main:app --host $($env:NEXUS_API_HOST) --port $($env:NEXUS_API_PORT)"
-    if ($Reload) {
-        $backendArgs = "$backendArgs --reload"
-    }
+    $pythonArgs = "-m uvicorn app.main:app --host $($env:NEXUS_API_HOST) --port $($env:NEXUS_API_PORT)"
+    if ($Reload) { $pythonArgs = "$pythonArgs --reload" }
 
-    $backend = Start-NexusProcess `
-        -Name "backend" `
+    $pythonBackend = Start-NexusProcess `
+        -Name "Python AI API" `
         -FileName $pythonExe `
-        -Arguments $backendArgs `
-        -WorkingDirectory $backendDir
+        -Arguments $pythonArgs `
+        -WorkingDirectory $pythonBackendDir
 
-    # Wait until /api/health responds before touching the frontend
-    Wait-ForBackend -Url $apiUrl -Process $backend
+    Wait-ForService -Name "Python AI API" -Url $apiUrl -HealthPath "/api/health" -Process $pythonBackend
 
-    if ($backend.HasExited) {
-        throw "Backend exited early (code $($backend.ExitCode))."
-    }
-
-    # ── Step 2: Start frontend with API URL injected ──────────────────────────
     Write-Host ""
-    Write-Host "[2/2] Frontend"
+    Write-Host "[3/3] Frontend"
 
     if (-not (Test-Path $nextCli)) {
         throw "Next.js CLI was not found. Run npm install inside $frontendDir first."
     }
 
     if (-not (Test-Path $frontendBuildId)) {
-        Invoke-NexusFrontendBuild -ApiUrl $apiUrl
+        Invoke-NexusFrontendBuild -ApiUrl $apiUrl -ControlUrl $controlUrl
     }
 
     $nodeExe = (Get-Command "node.exe" -ErrorAction Stop).Source
@@ -247,29 +255,32 @@ try {
         Write-Host "  Backend reload is enabled. Frontend is using the built Next app because this Windows/Node environment blocks Next dev worker startup."
     }
 
-    $frontend = Start-NexusProcess `
+    $frontendProcess = Start-NexusProcess `
         -Name "frontend" `
         -FileName $nodeExe `
         -Arguments "`"$nextCli`" start --port $($env:NEXUS_QA_PORT)" `
         -WorkingDirectory $frontendDir `
-        -Environment @{ NEXT_PUBLIC_API_URL = "$apiUrl/api" }
+        -Environment @{
+            NEXT_PUBLIC_API_URL = "$apiUrl/api"
+            NEXT_PUBLIC_CONTROL_API_URL = "$controlUrl/api"
+        }
 
     Write-Host ""
-    Write-Host "Both services are running. Press Ctrl+C to stop."
+    Write-Host "All services are running. Press Ctrl+C to stop."
     Write-Host ""
 
     while ($true) {
-        $frontendExited = $frontend.HasExited
-        $backendExited = $backend.HasExited
+        $frontendExited = $frontendProcess.HasExited
+        $controlExited = $controlBackend.HasExited
+        $pythonExited = $pythonBackend.HasExited
 
-        if ($frontendExited -or $backendExited) {
-            $listeners = @(Get-NexusPortListeners -Ports @([int]$env:NEXUS_API_PORT, [int]$env:NEXUS_QA_PORT))
-            if (-not $listeners) {
-                break
-            }
+        if ($frontendExited -or $controlExited -or $pythonExited) {
+            $listeners = @(Get-NexusPortListeners -Ports $ports)
+            if (-not $listeners) { break }
 
-            if ($frontendExited) { throw "Frontend stopped (code $($frontend.ExitCode))." }
-            if ($backendExited)  { throw "Backend stopped (code $($backend.ExitCode))." }
+            if ($frontendExited) { throw "Frontend stopped (code $($frontendProcess.ExitCode))." }
+            if ($controlExited)  { throw ".NET Control API stopped (code $($controlBackend.ExitCode))." }
+            if ($pythonExited)   { throw "Python AI API stopped (code $($pythonBackend.ExitCode))." }
         }
 
         Start-Sleep -Seconds 2
@@ -278,8 +289,8 @@ try {
 finally {
     Write-Host ""
     Write-Host "Stopping NEXUS QA workspace..."
-    foreach ($proc in @($frontend, $backend)) {
+    foreach ($proc in @($frontendProcess, $pythonBackend, $controlBackend)) {
         Stop-NexusProcessTree -Process $proc
     }
-    Stop-NexusPortListeners -Ports @([int]$env:NEXUS_API_PORT, [int]$env:NEXUS_QA_PORT)
+    Stop-NexusPortListeners -Ports $ports
 }

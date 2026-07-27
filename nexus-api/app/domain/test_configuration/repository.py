@@ -39,12 +39,22 @@ from app.domain.test_configuration.schemas import (
 class TestConfigurationError(ValueError):
     """Raised when an entity lookup or update is invalid."""
 
+AUTOMATION_SPACES = {"web", "mobile", "desktop", "api", "unified"}
+
+
+def _normalize_automation_space(value: str | None) -> str:
+    space = (value or "web").strip().lower()
+    return space if space in AUTOMATION_SPACES else "web"
+
+
 
 class TestConfigurationRepository:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
-    async def list_projects(self, status: str | None = None) -> list[TestProjectModel]:
+    async def list_projects(
+        self, status: str | None = None, automation_space: str | None = None
+    ) -> list[TestProjectModel]:
         query = (
             select(TestProjectModel)
             .options(
@@ -61,6 +71,8 @@ class TestConfigurationRepository:
         )
         if status:
             query = query.where(TestProjectModel.status == status)
+        if automation_space:
+            query = query.where(TestProjectModel.automation_space == _normalize_automation_space(automation_space))
         result = await self.db.execute(query)
         return list(result.scalars().all())
 
@@ -86,6 +98,7 @@ class TestConfigurationRepository:
             name=schema.name,
             description=schema.description,
             status=schema.status,
+            automation_space=_normalize_automation_space(schema.automation_space),
             tags=schema.tags,
         )
         self.db.add(project)
@@ -104,6 +117,8 @@ class TestConfigurationRepository:
             project.description = schema.description
         if schema.status is not None:
             project.status = schema.status
+        if schema.automation_space is not None:
+            project.automation_space = _normalize_automation_space(schema.automation_space)
         if schema.tags is not None:
             project.tags = schema.tags
         await self.db.commit()
@@ -130,6 +145,7 @@ class TestConfigurationRepository:
             name=schema.name,
             description=schema.description,
             status=schema.status,
+            automation_space=_normalize_automation_space(schema.automation_space or project.automation_space),
             tags=schema.tags,
         )
         self.db.add(module)
@@ -149,6 +165,8 @@ class TestConfigurationRepository:
             module.description = schema.description
         if schema.status is not None:
             module.status = schema.status
+        if schema.automation_space is not None:
+            module.automation_space = _normalize_automation_space(schema.automation_space)
         if schema.tags is not None:
             module.tags = schema.tags
         await self.db.commit()
@@ -430,6 +448,7 @@ class TestConfigurationRepository:
             name=schema.name,
             description=schema.description,
             status=schema.status,
+            automation_space=_normalize_automation_space(schema.automation_space or module.automation_space),
             test_type=schema.test_type,
             priority=schema.priority,
             execution_mode=schema.execution_mode,
@@ -454,6 +473,8 @@ class TestConfigurationRepository:
             test_case.description = schema.description
         if schema.status is not None:
             test_case.status = schema.status
+        if schema.automation_space is not None:
+            test_case.automation_space = _normalize_automation_space(schema.automation_space)
         if schema.test_type is not None:
             test_case.test_type = schema.test_type
         if schema.priority is not None:
@@ -510,6 +531,7 @@ class TestConfigurationRepository:
             next_order = schema.step_order
         step = TestStepModel(
             test_case_id=case_id,
+            automation_space=_normalize_automation_space(schema.automation_space or test_case.automation_space),
             step_order=next_order,
             name=schema.name,
             description=schema.description,
@@ -547,6 +569,8 @@ class TestConfigurationRepository:
             step.name = schema.name
         if schema.description is not None:
             step.description = schema.description
+        if schema.automation_space is not None:
+            step.automation_space = _normalize_automation_space(schema.automation_space)
         if schema.step_order is not None:
             step.step_order = schema.step_order
         # Normalized fields

@@ -85,18 +85,20 @@ class BrowserDiscoveryAdapter:
                     logger.info("BrowserDiscoveryAdapter: using MCP Playwright at %s", self._mcp_url)
                     raw = await mcp.discover(url, step_intents=step_intents)
                     parsed = MCPPlaywrightAdapter.parse_elements(raw)
-                    if len(parsed) >= _MCP_MIN_ELEMENTS:
+                    min_required = 1 if step_intents else _MCP_MIN_ELEMENTS
+                    if len(parsed) >= min_required:
                         logger.info(
-                            "BrowserDiscoveryAdapter: MCP returned %d elements — skipping Playwright",
+                            "BrowserDiscoveryAdapter: MCP returned %d %selements; skipping Playwright",
                             len(parsed),
+                            "step-targeted " if step_intents else "",
                         )
                         return await self._mcp_elements_to_discovery(
                             parsed, raw, url, page_name, platform, save_mode, page_id, db,
                             step_intents=step_intents,
                         )
                     logger.warning(
-                        "BrowserDiscoveryAdapter: MCP returned only %d elements (need %d) — falling back",
-                        len(parsed), _MCP_MIN_ELEMENTS,
+                        "BrowserDiscoveryAdapter: MCP returned only %d elements (need %d) - falling back",
+                        len(parsed), min_required,
                     )
             except Exception as exc:
                 logger.warning("MCP Playwright failed (%s); falling back to direct Playwright", exc)

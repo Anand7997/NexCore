@@ -4,11 +4,20 @@
   "private": true,
   "scripts": {
     "start": "scripts\\start.bat",
-    "dev": "scripts\\start.bat -Reload",
+    "start:advanced": "scripts\\start.bat -Frontend Advanced",
+    "start:advacned": "scripts\\start.bat -Frontend Advanced",
+    "start:old": "scripts\\start.bat -Frontend Old",
+    "dev": "npm --prefix Nexus-Advanced run dev",
+    "dev:advanced": "npm --prefix Nexus-Advanced run dev",
+    "dev:old": "npm --prefix Nexus-old run dev",
+    "build:advanced": "npm --prefix Nexus-Advanced run build",
+    "build:old": "npm --prefix Nexus-old run build",
+    "dev:full": "scripts\\start.bat -Reload",
     "stop": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File stop-nexus.ps1 -KeepInfra",
     "stop:all": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File stop-nexus.ps1"
   },
   "dependencies": {
-    "framer-motion": "^12.40.0"
+    "framer-motion": "^12.40.0",
+    "motion": "^12.42.0"
   }
 }

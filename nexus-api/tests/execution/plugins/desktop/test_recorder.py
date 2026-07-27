@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from app.execution.plugins.desktop.recorder import compile_recorded_action, compile_recording, normalize_recorded_action
+from app.execution.plugins.desktop.recorder import (
+    build_object_repository_diff,
+    compile_recorded_action,
+    compile_recording,
+    normalize_recorded_action,
+)
 
 
 def _action(**overrides):
@@ -272,6 +277,363 @@ def test_compile_recording_suggests_login_reusable_component():
     assert login["end_step"] == 3
     assert login["suggested_parameters"][0]["name"] == "username"
     assert compiled["summary"]["component_suggestion_count"] >= 1
+
+
+def test_quality_marks_automation_id_action_production_ready():
+    compiled = compile_recorded_action(_action(), 1)
+
+    quality = compiled["quality"]
+    assert quality["grade"] == "production_ready"
+    assert quality["score"] >= 0.85
+    assert quality["risk_flags"] == []
+    # Quality is mirrored onto the keyword, node, and repository suggestion.
+    assert compiled["keyword"]["quality_grade"] == "production_ready"
+    assert compiled["node"]["quality"]["grade"] == "production_ready"
+    assert compiled["repository_suggestion"]["quality"]["grade"] == "production_ready"
+
+
+def test_quality_marks_coordinate_only_action_unstable():
+    compiled = compile_recorded_action(_action(
+        object_key="",
+        object_name="",
+        control_type="",
+        automation_id="",
+        name_text="",
+        class_name="",
+        uia_path="",
+        locator_strategy="coordinate",
+        window_title="",
+        x=12,
+        y=34,
+    ), 1)
+
+    quality = compiled["quality"]
+    assert quality["grade"] == "unstable"
+    assert "coordinate_only" in quality["risk_flags"]
+    assert "missing_automation_id" in quality["risk_flags"]
+    assert quality["fixes"]
+
+
+def test_quality_flags_sensitive_unredacted_value():
+    compiled = compile_recorded_action(_action(
+        action_type="type",
+        object_key="password",
+        object_name="Password",
+        automation_id="txtPassword",
+        name_text="Password",
+        value="hunter2",
+    ), 1)
+
+    assert "sensitive_value" in compiled["quality"]["risk_flags"]
+    assert compiled["quality"]["grade"] != "production_ready"
+
+
+def test_quality_ignores_redacted_sensitive_value():
+    compiled = compile_recorded_action(_action(
+        action_type="type",
+        object_key="password",
+        object_name="Password",
+        automation_id="txtPassword",
+        name_text="Password",
+        value="[REDACTED]",
+    ), 1)
+
+    assert "sensitive_value" not in compiled["quality"]["risk_flags"]
+
+
+def test_compile_recording_includes_quality_report():
+    session = SimpleNamespace(
+        id="session1",
+        name="Mixed quality flow",
+        application_path=r"C:\Apps\Invoice.exe",
+        application="Invoice",
+        driver_type="uia3",
+    )
+    compiled = compile_recording(session, [
+        _action(action_order=1, action_type="click", object_key="new", object_name="New", automation_id="btnNew"),
+        _action(
+            action_order=2,
+            action_type="click",
+            object_key="",
+            object_name="",
+            control_type="",
+            automation_id="",
+            name_text="",
+            class_name="",
+            uia_path="",
+            locator_strategy="coordinate",
+            window_title="",
+            x=12,
+            y=34,
+        ),
+    ])
+
+    report = compiled["quality_report"]
+    assert report["grade"] == "unstable"
+    assert report["production_ready_steps"] == 1
+    assert report["unstable_steps"] == 1
+    assert report["risk_summary"].get("coordinate_only") == 1
+    assert isinstance(report["top_fixes"], list)
+    assert compiled["summary"]["quality_grade"] == "unstable"
+
+
+def test_compile_recording_suggests_checkpoint_after_save():
+    session = SimpleNamespace(
+        id="session1",
+        name="Save flow",
+        application_path=r"C:\Apps\Invoice.exe",
+        application="Invoice",
+        driver_type="uia3",
+    )
+    compiled = compile_recording(session, [
+        _action(action_order=1, action_type="type", object_key="customer_name", object_name="Customer Name", automation_id="txtName", value="Asha"),
+        _action(action_order=2, action_type="click", object_key="save_button", object_name="Save", automation_id="btnSave"),
+    ])
+
+    checkpoints = compiled["checkpoint_suggestions"]
+    save_checkpoint = next((item for item in checkpoints if item["after_step"] == 2), None)
+    assert save_checkpoint is not None
+    assert save_checkpoint["operation"] == "assert_text"
+    assert save_checkpoint["node_type"] == "desktop.assert_text"
+    assert compiled["summary"]["checkpoint_suggestion_count"] >= 1
+
+
+def test_compile_recording_skips_checkpoint_when_assertion_follows():
+    session = SimpleNamespace(id="session1", name="Save flow", application_path=r"C:\Apps\Invoice.exe", driver_type="uia3")
+    compiled = compile_recording(session, [
+        _action(action_order=1, action_type="click", object_key="save_button", object_name="Save", automation_id="btnSave"),
+        _action(action_order=2, action_type="assert_text", object_key="status", object_name="Status", automation_id="lblStatus", expected="Saved"),
+    ])
+
+    assert all(item["after_step"] != 1 for item in compiled["checkpoint_suggestions"])
+
+
+def test_compile_recording_suggests_typed_parameters():
+    session = SimpleNamespace(id="session1", name="Form flow", application_path=r"C:\Apps\Invoice.exe", driver_type="uia3")
+    compiled = compile_recording(session, [
+        _action(action_order=1, action_type="type", object_key="email", object_name="Email", automation_id="txtEmail", value="qa@test.com"),
+        _action(action_order=2, action_type="type", object_key="amount", object_name="Amount", automation_id="txtAmount", value="1200.50"),
+    ])
+
+    params = {item["object"]: item for item in compiled["parameter_suggestions"]}
+    assert params["Email"]["data_type"] == "email"
+    assert params["Amount"]["data_type"] == "amount"
+    assert params["Email"]["suggested_variable"] == "email"
+    assert compiled["summary"]["parameter_suggestion_count"] == 2
+
+
+def test_parameter_suggestion_marks_sensitive_value_as_secret():
+    session = SimpleNamespace(id="session1", name="Login flow", application_path=r"C:\Apps\Invoice.exe", driver_type="uia3")
+    compiled = compile_recording(session, [
+        _action(action_order=1, action_type="type", object_key="password", object_name="Password", automation_id="txtPassword", value="hunter2"),
+    ])
+
+    password_param = next(item for item in compiled["parameter_suggestions"] if item["object"] == "Password")
+    assert password_param["sensitive"] is True
+    assert password_param["data_type"] == "credential"
+    assert password_param["secret_key"]
+    # The raw secret is never echoed back.
+    assert password_param["value"] == ""
+    assert password_param["default_value"] == ""
+
+
+def test_compile_recording_execution_readiness_blocks_on_unstable_step():
+    session = SimpleNamespace(id="session1", name="Mixed flow", application_path=r"C:\Apps\Invoice.exe", driver_type="uia3")
+    compiled = compile_recording(session, [
+        _action(action_order=1, action_type="click", object_key="new", object_name="New", automation_id="btnNew"),
+        _action(
+            action_order=2,
+            action_type="click",
+            object_key="",
+            object_name="",
+            control_type="",
+            automation_id="",
+            name_text="",
+            class_name="",
+            uia_path="",
+            locator_strategy="coordinate",
+            window_title="",
+            x=12,
+            y=34,
+        ),
+    ])
+
+    readiness = compiled["execution_readiness"]
+    assert readiness["can_run_unattended"] is False
+    assert any("unstable" in issue.lower() for issue in readiness["blocking_issues"])
+
+
+def test_compile_recording_execution_readiness_passes_for_clean_flow():
+    session = SimpleNamespace(id="session1", name="Clean flow", application_path=r"C:\Apps\Invoice.exe", driver_type="uia3")
+    compiled = compile_recording(session, [
+        _action(action_order=1, action_type="type", object_key="name", object_name="Name", automation_id="txtName", value="Asha"),
+        _action(action_order=2, action_type="assert_text", object_key="status", object_name="Status", automation_id="lblStatus", expected="Saved"),
+    ])
+
+    readiness = compiled["execution_readiness"]
+    assert readiness["can_run_unattended"] is True
+    assert readiness["blocking_issues"] == []
+
+
+def test_compile_action_includes_evidence_payload():
+    compiled = compile_recorded_action(_action(
+        screenshot_artifact_id="artifact_png_1",
+        ui_tree_artifact_id="artifact_uia_1",
+        duration_ms=85,
+    ), 1)
+
+    evidence = compiled["node"]["evidence"]
+    assert evidence["screenshot_artifact_id"] == "artifact_png_1"
+    assert evidence["ui_tree_artifact_id"] == "artifact_uia_1"
+    assert evidence["has_evidence"] is True
+    assert evidence["selected_locator_reason"]
+    assert compiled["keyword"]["screenshot_artifact_id"] == "artifact_png_1"
+
+
+def test_compile_action_evidence_reason_for_automation_id():
+    compiled = compile_recorded_action(_action(), 1)
+    assert "Automation ID" in compiled["node"]["evidence"]["selected_locator_reason"]
+
+
+def test_compile_recording_includes_evidence_summary():
+    session = SimpleNamespace(id="s1", name="Evidence flow", application_path=r"C:\Apps\Invoice.exe", driver_type="uia3")
+    compiled = compile_recording(session, [
+        _action(action_order=1, object_key="a", object_name="A", automation_id="btnA", screenshot_artifact_id="png1", ui_tree_artifact_id="uia1"),
+        _action(action_order=2, object_key="b", object_name="B", automation_id="btnB"),
+    ])
+
+    summary = compiled["evidence_summary"]
+    assert summary["total_steps"] == 2
+    assert summary["steps_with_screenshot"] == 1
+    assert summary["steps_with_ui_tree"] == 1
+    assert summary["steps_without_evidence"] == 1
+
+
+
+
+def test_compile_action_includes_semantic_payload():
+    compiled = compile_recorded_action(_action(action_type="click", object_key="save_button", object_name="Save"), 1)
+
+    semantic = compiled["semantic"]
+    assert semantic["semantic_intent"] == "submit_form"
+    assert semantic["business_action"] == "Submit form"
+    assert semantic["category"] == "transaction"
+    assert compiled["keyword"]["semantic_intent"] == "submit_form"
+    assert compiled["node"]["semantic"]["semantic_intent"] == "submit_form"
+    assert compiled["repository_suggestion"]["metadata"]["semantic"]["semantic_intent"] == "submit_form"
+
+
+def test_compile_recording_includes_semantic_analysis_and_evidence_steps():
+    session = SimpleNamespace(id="s1", name="Semantic flow", application_path=r"C:\Apps\Invoice.exe", driver_type="uia3")
+    compiled = compile_recording(session, [
+        _action(action_order=1, action_type="type", object_key="customer_name", object_name="Customer Name", automation_id="txtName", value="Asha"),
+        _action(action_order=2, action_type="click", object_key="save_button", object_name="Save", automation_id="btnSave", screenshot_artifact_id="png1"),
+    ])
+
+    assert compiled["semantic_analysis"]["total_steps"] == 2
+    assert compiled["semantic_analysis"]["categories"]["transaction"] == 1
+    assert compiled["semantic_steps"][1]["semantic_intent"] == "submit_form"
+    assert compiled["evidence_steps"][1]["screenshot_artifact_id"] == "png1"
+    assert compiled["evidence_steps"][1]["business_action"] == "Submit form"
+    assert compiled["summary"]["semantic_step_count"] == 2
+    assert compiled["summary"]["evidence_step_count"] == 2
+
+def _repo_object(**overrides):
+    base = {
+        "object_key": "save_button",
+        "name": "Save",
+        "automation_id": "btnSave",
+        "name_text": "Save",
+        "class_name": "Button",
+        "uia_path": "/Window/Button[1]",
+        "control_type": "button",
+        "locator_strategy": "accessibility id",
+        "primary_locator": "btnSave",
+        "window": "Invoice",
+    }
+    base.update(overrides)
+    return base
+
+
+def _repo_suggestion(**overrides):
+    base = {
+        "object_key": "save_button",
+        "name": "Save",
+        "automation_id": "btnSave",
+        "name_text": "Save",
+        "class_name": "Button",
+        "uia_path": "/Window/Button[1]",
+        "control_type": "button",
+        "locator_strategy": "accessibility id",
+        "primary_locator": "btnSave",
+        "window": "Invoice",
+    }
+    base.update(overrides)
+    return base
+
+
+def test_repository_diff_marks_unchanged_exact_match_as_matched():
+    diff = build_object_repository_diff([_repo_suggestion()], [_repo_object()])
+
+    assert diff["summary"]["matched"] == 1
+    assert diff["summary"]["new"] == 0
+    assert diff["matched"][0]["match"] == "exact"
+    assert diff["matched"][0]["recommendation"] == "noop"
+    assert diff["matched"][0]["locator_changed"] is False
+
+
+def test_repository_diff_marks_locator_change_as_changed_update():
+    diff = build_object_repository_diff(
+        [_repo_suggestion(automation_id="btnSaveV2", primary_locator="btnSaveV2")],
+        [_repo_object()],
+    )
+
+    assert diff["summary"]["changed"] == 1
+    entry = diff["changed"][0]
+    assert entry["recommendation"] == "update"
+    assert entry["locator_changed"] is True
+    assert entry["before"]["locator"] == "btnSave"
+    assert entry["after"]["locator"] == "btnSaveV2"
+
+
+def test_repository_diff_marks_unknown_object_as_new():
+    diff = build_object_repository_diff(
+        [_repo_suggestion(object_key="brand_new", name="Brand New", automation_id="btnBrandNew", primary_locator="btnBrandNew", uia_path="", class_name="")],
+        [_repo_object()],
+    )
+
+    assert diff["summary"]["new"] == 1
+    assert diff["new"][0]["match"] == "none"
+    assert diff["new"][0]["recommendation"] == "create"
+
+
+def test_repository_diff_flags_duplicate_automation_id():
+    existing = [
+        _repo_object(object_key="save_button"),
+        _repo_object(object_key="save_button_copy", name="Save Copy"),
+    ]
+    diff = build_object_repository_diff([_repo_suggestion()], existing)
+
+    assert diff["summary"]["duplicate"] == 1
+    assert diff["duplicate"][0]["recommendation"] == "duplicate"
+
+
+def test_repository_diff_reports_stale_unmatched_objects():
+    diff = build_object_repository_diff(
+        [_repo_suggestion()],
+        [_repo_object(), _repo_object(object_key="orphan", name="Orphan", automation_id="btnOrphan", primary_locator="btnOrphan", uia_path="", class_name="")],
+    )
+
+    stale_keys = [item["object_key"] for item in diff["stale"]]
+    assert "orphan" in stale_keys
+    assert diff["summary"]["stale"] == 1
+
+
+def test_repository_diff_empty_repository_is_all_new():
+    diff = build_object_repository_diff([_repo_suggestion()], [])
+
+    assert diff["summary"]["new"] == 1
+    assert diff["summary"]["stale"] == 0
 
 
 def test_compile_recording_suggests_form_and_checkpoint_components():
