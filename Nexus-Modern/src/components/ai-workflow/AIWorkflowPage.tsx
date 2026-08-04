@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import {
   Activity,
   AlertTriangle,
+  ArrowLeft,
   BookOpen,
   Bot,
   CheckCircle2,
@@ -2194,8 +2196,10 @@ function ReviewStep({
 
 export default function AIWorkflowPage({
   initialPlatform = 'web',
+  backHref = '/',
 }: {
   initialPlatform?: WorkflowPlatform;
+  backHref?: string;
 }) {
   const isLight = false;
   const [workflowId, setWorkflowId] = useState<string | null>(null);
@@ -2358,6 +2362,13 @@ export default function AIWorkflowPage({
       />
 
       <div className="relative z-10 w-80 shrink-0 border-r border-[var(--color-line-default)] bg-[var(--color-surface-overlay)] p-4 overflow-y-auto backdrop-blur-xl">
+        <Link
+          to={backHref}
+          className="mb-3 inline-flex items-center gap-2 text-xs font-medium text-(--color-fg-subtle) transition-colors hover:text-(--color-fg-default)"
+        >
+          <ArrowLeft size={14} />
+          Back to Phases
+        </Link>
         <div className="mb-3 rounded-2xl border border-[var(--color-line-default)] bg-[var(--color-surface-1)] p-4">
           <div className="flex items-center justify-between gap-4">
             <div>

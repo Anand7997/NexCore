@@ -229,7 +229,7 @@ const PhaseContent = ({ phaseId, automationId }: { phaseId: PhaseId; automationI
       automationId === 'desktop' || automationId === 'mobile' || automationId === 'api'
         ? automationId
         : 'web';
-    return <AIWorkflowPage initialPlatform={platform} />;
+    return <AIWorkflowPage initialPlatform={platform} backHref={`/automation/${automationId ?? 'web'}`} />;
   }
 
   if (phaseId === 'requirements') {
@@ -330,6 +330,14 @@ const AutomationPhasePage = () => {
 
   const AutomationIcon = automation.icon;
   const PhaseIcon = phase.icon;
+
+  if (phase.id === 'ai-workflow') {
+    return (
+      <div className="h-screen w-full overflow-hidden">
+        <PhaseContent phaseId={phase.id} automationId={automation.id} />
+      </div>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-background p-6 md:p-8">
