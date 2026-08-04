@@ -1,0 +1,407 @@
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --app-zoom: 0.9;
+    --background: 210 33% 99%;
+    --foreground: 222 30% 14%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 30% 14%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 30% 14%;
+
+    --primary: 209 83% 38%;
+    --primary-foreground: 210 40% 98%;
+
+    --secondary: 214 32% 95%;
+    --secondary-foreground: 222 30% 18%;
+
+    --muted: 214 28% 94%;
+    --muted-foreground: 215 17% 42%;
+
+    --accent: 205 68% 93%;
+    --accent-foreground: 210 52% 24%;
+
+    --destructive: 0 72% 47%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 214 23% 88%;
+    --input: 214 23% 88%;
+    --ring: 209 83% 38%;
+
+    --radius: 0.625rem;
+
+    --sidebar-background: 214 28% 97%;
+    --sidebar-foreground: 222 30% 16%;
+    --sidebar-primary: 209 83% 38%;
+    --sidebar-primary-foreground: 210 40% 98%;
+    --sidebar-accent: 209 52% 94%;
+    --sidebar-accent-foreground: 210 52% 24%;
+    --sidebar-border: 214 23% 88%;
+    --sidebar-ring: 209 83% 38%;
+  }
+
+  .dark {
+    --background: 222 35% 8%;
+    --foreground: 212 24% 92%;
+
+    --card: 222 30% 11%;
+    --card-foreground: 212 24% 92%;
+
+    --popover: 222 30% 11%;
+    --popover-foreground: 212 24% 92%;
+
+    --primary: 203 82% 54%;
+    --primary-foreground: 210 40% 98%;
+
+    --secondary: 220 20% 17%;
+    --secondary-foreground: 212 24% 92%;
+
+    --muted: 220 20% 16%;
+    --muted-foreground: 214 14% 68%;
+
+    --accent: 209 40% 18%;
+    --accent-foreground: 202 78% 86%;
+
+    --destructive: 0 63% 50%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 220 18% 22%;
+    --input: 220 18% 22%;
+    --ring: 203 82% 54%;
+
+    --sidebar-background: 221 24% 10%;
+    --sidebar-foreground: 212 24% 88%;
+    --sidebar-primary: 203 82% 54%;
+    --sidebar-primary-foreground: 210 40% 98%;
+    --sidebar-accent: 220 20% 16%;
+    --sidebar-accent-foreground: 212 24% 92%;
+    --sidebar-border: 220 18% 22%;
+    --sidebar-ring: 203 82% 54%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: "Public Sans", "Segoe UI", "Helvetica Neue", sans-serif;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    zoom: var(--app-zoom);
+  }
+}
+
+@layer utilities {
+  .surface-card {
+    @apply rounded-xl border border-border bg-card shadow-sm;
+  }
+
+  .surface-elevated {
+    @apply rounded-xl border border-border bg-card shadow-md;
+  }
+
+  .glass-effect {
+    @apply border border-border/70 bg-background/85 backdrop-blur-md shadow-sm;
+  }
+
+  .app-shell {
+    background:
+      radial-gradient(circle at 0% 0%, hsl(var(--accent) / 0.55), transparent 45%),
+      radial-gradient(circle at 100% 0%, hsl(var(--primary) / 0.06), transparent 42%),
+      hsl(var(--background));
+  }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@layer base {
+  .dark .bg-white {
+    background-color: hsl(var(--card)) !important;
+  }
+
+  .dark .bg-white\/90 {
+    background-color: hsl(var(--card) / 0.9) !important;
+  }
+
+  .dark .bg-gray-50,
+  .dark .bg-gray-100,
+  .dark .bg-slate-50 {
+    background-color: hsl(var(--muted)) !important;
+  }
+
+  .dark .text-gray-900,
+  .dark .text-slate-900,
+  .dark .text-black {
+    color: hsl(var(--foreground)) !important;
+  }
+
+  .dark .text-gray-700,
+  .dark .text-gray-600,
+  .dark .text-gray-500 {
+    color: hsl(var(--muted-foreground)) !important;
+  }
+
+  .dark .border-gray-200,
+  .dark .border-gray-300,
+  .dark .border-slate-200 {
+    border-color: hsl(var(--border)) !important;
+  }
+
+  .dark .hover\:bg-gray-50:hover,
+  .dark .hover\:bg-gray-100:hover,
+  .dark .hover\:bg-white:hover {
+    background-color: hsl(var(--accent)) !important;
+  }
+
+  .dark .hover\:text-gray-900:hover,
+  .dark .hover\:text-black:hover {
+    color: hsl(var(--foreground)) !important;
+  }
+
+  .dark .automation-planning-theme .bg-white,
+  .dark .automation-development-theme .bg-white {
+    background-color: hsl(var(--card)) !important;
+  }
+
+  .dark .automation-planning-theme .bg-white\/90,
+  .dark .automation-development-theme .bg-white\/90 {
+    background-color: hsl(var(--card) / 0.9) !important;
+  }
+
+  .dark .automation-planning-theme .text-gray-900,
+  .dark .automation-development-theme .text-gray-900 {
+    color: hsl(var(--foreground)) !important;
+  }
+
+  .dark .automation-planning-theme .text-gray-700,
+  .dark .automation-planning-theme .text-gray-600,
+  .dark .automation-development-theme .text-gray-700,
+  .dark .automation-development-theme .text-gray-600 {
+    color: hsl(var(--muted-foreground)) !important;
+  }
+
+  .dark .automation-planning-theme .border-gray-200,
+  .dark .automation-planning-theme .border-gray-300,
+  .dark .automation-development-theme .border-gray-200,
+  .dark .automation-development-theme .border-gray-300,
+  .dark .automation-development-theme .border-blue-200,
+  .dark .automation-development-theme .border-green-200,
+  .dark .automation-development-theme .border-red-200 {
+    border-color: hsl(var(--border)) !important;
+  }
+
+  .dark .automation-planning-theme .bg-gray-50,
+  .dark .automation-planning-theme .bg-gray-100,
+  .dark .automation-development-theme .bg-gray-50,
+  .dark .automation-development-theme .bg-gray-100 {
+    background-color: hsl(var(--muted)) !important;
+  }
+
+  .dark .automation-planning-theme .from-blue-50,
+  .dark .automation-planning-theme .from-green-50,
+  .dark .automation-planning-theme .from-purple-50,
+  .dark .automation-development-theme .from-blue-50,
+  .dark .automation-development-theme .from-green-50,
+  .dark .automation-development-theme .from-purple-50,
+  .dark .automation-development-theme .from-cyan-100 {
+    --tw-gradient-from: hsl(var(--card)) var(--tw-gradient-from-position) !important;
+    --tw-gradient-to: hsl(var(--card) / 0) var(--tw-gradient-to-position) !important;
+    --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important;
+  }
+
+  .dark .automation-planning-theme .to-indigo-100,
+  .dark .automation-planning-theme .to-emerald-100,
+  .dark .automation-planning-theme .to-violet-100,
+  .dark .automation-development-theme .to-indigo-100,
+  .dark .automation-development-theme .to-emerald-100,
+  .dark .automation-development-theme .to-blue-50,
+  .dark .automation-development-theme .to-cyan-100 {
+    --tw-gradient-to: hsl(var(--muted)) var(--tw-gradient-to-position) !important;
+  }
+
+  .dark .automation-development-theme .font-mono,
+  .dark .automation-planning-theme .font-mono {
+    color: hsl(var(--foreground)) !important;
+  }
+
+  .dark .automation-development-theme .bg-blue-50,
+  .dark .automation-development-theme .bg-green-50,
+  .dark .automation-development-theme .bg-blue-50,
+  .dark .automation-planning-theme .bg-blue-50,
+  .dark .automation-planning-theme .bg-green-50 {
+    background-color: hsl(var(--accent)) !important;
+  }
+
+  .dark .automation-development-theme table,
+  .dark .automation-planning-theme table {
+    color: hsl(var(--foreground));
+  }
+
+  .dark .automation-development-theme input,
+  .dark .automation-planning-theme input {
+    background-color: hsl(var(--background)) !important;
+    color: hsl(var(--foreground)) !important;
+    border-color: hsl(var(--border)) !important;
+  }
+
+  .dark .test-steps-theme {
+    background-color: hsl(var(--card)) !important;
+    border-color: hsl(var(--border)) !important;
+  }
+
+  .dark .test-steps-theme .text-gray-900,
+  .dark .test-steps-theme .text-gray-700,
+  .dark .test-steps-theme .text-gray-600,
+  .dark .test-steps-theme .text-gray-500 {
+    color: hsl(var(--foreground)) !important;
+  }
+
+  .dark .test-steps-theme .border-gray-200,
+  .dark .test-steps-theme .border-gray-300,
+  .dark .test-steps-theme .border-blue-200 {
+    border-color: hsl(var(--border)) !important;
+  }
+
+  .dark .test-steps-theme .bg-white,
+  .dark .test-steps-theme .bg-gray-50,
+  .dark .test-steps-theme .bg-gray-100,
+  .dark .test-steps-theme .bg-blue-50 {
+    background-color: hsl(var(--muted)) !important;
+  }
+
+  .dark .test-steps-theme table,
+  .dark .test-steps-theme thead,
+  .dark .test-steps-theme tbody,
+  .dark .test-steps-theme tr,
+  .dark .test-steps-theme td,
+  .dark .test-steps-theme th {
+    color: hsl(var(--foreground));
+  }
+
+  .dark .test-steps-theme input,
+  .dark .test-steps-theme textarea,
+  .dark .test-steps-theme select {
+    background-color: hsl(var(--background)) !important;
+    color: hsl(var(--foreground)) !important;
+    border-color: hsl(var(--border)) !important;
+  }
+
+  .dark .test-steps-theme option {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+  }
+
+  .dark .test-steps-theme .hover\:bg-gray-50:hover,
+  .dark .test-steps-theme .hover\:bg-blue-50:hover,
+  .dark .test-steps-theme .hover\:bg-red-50:hover {
+    background-color: hsl(var(--accent)) !important;
+  }
+
+  .dark .project-dashboard-theme .bg-white,
+  .dark .modules-dashboard-theme .bg-white,
+  .dark .testcase-dashboard-theme .bg-white {
+    background-color: hsl(var(--card)) !important;
+  }
+
+  .dark .project-dashboard-theme .hover\:bg-gray-50:hover,
+  .dark .modules-dashboard-theme .hover\:bg-gray-50:hover,
+  .dark .testcase-dashboard-theme .hover\:bg-gray-50:hover {
+    background-color: hsl(var(--accent)) !important;
+  }
+
+  .dark .project-dashboard-theme .border-gray-200,
+  .dark .modules-dashboard-theme .border-gray-200,
+  .dark .modules-dashboard-theme .border-blue-200,
+  .dark .testcase-dashboard-theme .border-gray-200,
+  .dark .testcase-dashboard-theme .border-blue-200,
+  .dark .testcase-dashboard-theme .border-green-200 {
+    border-color: hsl(var(--border)) !important;
+  }
+
+  .dark .project-dashboard-theme .text-gray-900,
+  .dark .project-dashboard-theme .text-gray-600,
+  .dark .project-dashboard-theme .text-gray-500,
+  .dark .modules-dashboard-theme .text-gray-900,
+  .dark .modules-dashboard-theme .text-gray-700,
+  .dark .modules-dashboard-theme .text-gray-600,
+  .dark .modules-dashboard-theme .text-gray-500,
+  .dark .testcase-dashboard-theme .text-gray-900,
+  .dark .testcase-dashboard-theme .text-gray-700,
+  .dark .testcase-dashboard-theme .text-gray-600,
+  .dark .testcase-dashboard-theme .text-gray-500 {
+    color: hsl(var(--foreground)) !important;
+  }
+
+  .dark .modules-dashboard-theme .bg-blue-50,
+  .dark .modules-dashboard-theme .bg-blue-100,
+  .dark .testcase-dashboard-theme .bg-blue-50,
+  .dark .project-dashboard-theme .from-blue-500\/20,
+  .dark .project-dashboard-theme .to-indigo-500\/20 {
+    background-color: hsl(var(--accent)) !important;
+  }
+
+  .dark .testcase-dashboard-theme .bg-green-50,
+  .dark .testcase-dashboard-theme .bg-green-100 {
+    background-color: hsl(145 45% 18%) !important;
+  }
+
+  .dark .modules-dashboard-theme .ring-blue-500,
+  .dark .testcase-dashboard-theme .border-blue-200,
+  .dark .project-dashboard-theme .border-blue-400 {
+    border-color: hsl(217 91% 60%) !important;
+  }
+
+  .dark .modules-dashboard-theme .text-blue-700,
+  .dark .testcase-dashboard-theme .text-blue-900,
+  .dark .testcase-dashboard-theme .text-blue-600 {
+    color: hsl(213 94% 78%) !important;
+  }
+
+  .dark .testcase-dashboard-theme .text-green-600 {
+    color: hsl(142 69% 58%) !important;
+  }
+}
+
+.ai-workflow-scope {
+  --color-bg-base: #031118;
+  --color-surface-1: #071a20;
+  --color-surface-2: #0b242a;
+  --color-surface-3: #10323a;
+  --color-surface-overlay: rgba(3, 17, 24, 0.86);
+
+  --color-fg-default: #ecfeff;
+  --color-fg-muted: #b8d7dc;
+  --color-fg-subtle: #7ea3aa;
+  --color-fg-inverse: #031118;
+
+  --color-line-subtle: rgba(148, 255, 255, 0.055);
+  --color-line-default: rgba(148, 255, 255, 0.09);
+  --color-line-strong: rgba(148, 255, 255, 0.16);
+  --color-line-active: rgba(34, 211, 238, 0.45);
+
+  background: var(--color-bg-base);
+  color: var(--color-fg-default);
+}
