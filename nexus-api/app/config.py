@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://postgres:password@localhost:5432/NexCore"
     database_url_sync: str = "postgresql://postgres:password@localhost:5432/NexCore"
 
-    cors_origins: list[str] = ["http://localhost:3000", "http://localhost:3001"]
+    cors_origins: list[str] = ["http://localhost:3000", "http://localhost:3001", "http://localhost:3002"]
 
     ws_heartbeat_interval: int = 30
 
