@@ -402,6 +402,18 @@
   --color-line-strong: rgba(148, 255, 255, 0.16);
   --color-line-active: rgba(34, 211, 238, 0.45);
 
+  --color-accent-default: #22d3ee;
+  --color-accent-soft: rgba(34, 211, 238, 0.13);
+  --color-accent-hover: #67e8f9;
+  --color-accent-fg: #031118;
+
   background: var(--color-bg-base);
   color: var(--color-fg-default);
+}
+
+.ai-workflow-scope .glass {
+  background: rgba(7, 26, 32, 0.62);
+  backdrop-filter: blur(12px) saturate(150%);
+  -webkit-backdrop-filter: blur(12px) saturate(150%);
+  border: 1px solid var(--color-line-default);
 }
