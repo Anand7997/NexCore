@@ -460,3 +460,9 @@
     transition-duration: 0.001ms !important;
   }
 }
+
+.control-plane-scope a:focus-visible {
+  outline: 2px solid var(--cp-fg);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
