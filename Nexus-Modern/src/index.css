@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -414,4 +415,48 @@
   backdrop-filter: blur(12px) saturate(150%);
   -webkit-backdrop-filter: blur(12px) saturate(150%);
   border: 1px solid var(--color-line-default);
+}
+
+.control-plane-scope {
+  --cp-bg-base: #020617;
+  --cp-surface-1: rgba(15, 23, 42, 0.62);
+  --cp-surface-2: #1a1e2f;
+  --cp-border: rgba(148, 163, 184, 0.12);
+  --cp-border-hover: rgba(148, 163, 184, 0.22);
+  --cp-fg: #f8fafc;
+  --cp-fg-muted: #94a3b8;
+  --cp-fg-subtle: #64748b;
+
+  background: var(--cp-bg-base);
+  color: var(--cp-fg);
+  font-family: 'Fira Sans', 'Public Sans', sans-serif;
+}
+
+.control-plane-scope .cp-mono {
+  font-family: 'Fira Code', 'Courier New', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.control-plane-scope .cp-glass {
+  background: var(--cp-surface-1);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  border: 1px solid var(--cp-border);
+}
+
+.control-plane-scope .cp-glass:hover {
+  border-color: var(--cp-border-hover);
+}
+
+.control-plane-scope .cp-surface {
+  background: var(--cp-surface-2);
+  border: 1px solid var(--cp-border);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .control-plane-scope * {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }
