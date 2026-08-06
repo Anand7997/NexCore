@@ -5,7 +5,7 @@ const TONE_COLOR: Record<StatusTone, string> = {
   active: '#38bdf8',
   warning: '#fbbf24',
   danger: '#f87171',
-  neutral: '#64748b',
+  neutral: '#94a3b8',
 };
 
 const TONE_KEYWORDS: Array<[StatusTone, string[]]> = [

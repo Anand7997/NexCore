@@ -418,7 +418,7 @@ const BackendControlPlane: React.FC<BackendControlPlaneProps> = ({ blockId }) =>
     );
   };
 
-  const primarySignal = getPrimarySignal(blockId, data);
+  const primarySignal = error ? 'unavailable' : loading ? 'pending' : getPrimarySignal(blockId, data);
 
   return (
     <div className="space-y-6">

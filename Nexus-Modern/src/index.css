@@ -425,7 +425,7 @@
   --cp-border-hover: rgba(148, 163, 184, 0.22);
   --cp-fg: #f8fafc;
   --cp-fg-muted: #94a3b8;
-  --cp-fg-subtle: #64748b;
+  --cp-fg-subtle: #8494a8;
 
   background: var(--cp-bg-base);
   color: var(--cp-fg);
@@ -461,7 +461,8 @@
   }
 }
 
-.control-plane-scope a:focus-visible {
+.control-plane-scope a:focus-visible,
+.control-plane-scope button:focus-visible {
   outline: 2px solid var(--cp-fg);
   outline-offset: 2px;
   border-radius: 4px;
