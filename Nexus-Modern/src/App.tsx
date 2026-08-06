@@ -26,6 +26,8 @@ import TestExecutionDashboard from '@/components/TestExecutionDashboard';
 import ReportingDashboard from '@/components/ReportingDashboard';
 import CicdPipelineDashboard from '@/components/CicdPipelineDashboard';
 import AIWorkflowPage from '@/components/ai-workflow';
+import BackendControlPlane, { backendBlocks, type BackendBlockId } from '@/components/BackendControlPlane';
+import { GlassPanel } from '@/components/backend/GlassPanel';
 
 type PhaseId =
   | 'requirements'
@@ -41,7 +43,17 @@ interface AutomationBlock {
   title: string;
   description: string;
   icon: LucideIcon;
-  accent: string;
+  glow: string;
+}
+
+interface DashboardBlock {
+  id: string;
+  title: string;
+  description: string;
+  icon: LucideIcon;
+  glow: string;
+  badgeText: string;
+  href: string;
 }
 
 interface PhaseBlock {
@@ -63,36 +75,57 @@ const automations: AutomationBlock[] = [
     title: 'Web Automation',
     description: 'Browser pages, UI flows, locators, test cases, and execution.',
     icon: Globe,
-    accent: 'border-l-blue-600',
+    glow: '#60a5fa',
   },
   {
     id: 'desktop',
     title: 'Desktop Automation',
     description: 'Native desktop workflows, modules, screens, and execution.',
     icon: Monitor,
-    accent: 'border-l-slate-600',
+    glow: '#94a3b8',
   },
   {
     id: 'mobile',
     title: 'Mobile Automation',
     description: 'Android and iOS pages, gestures, cases, and device runs.',
     icon: Smartphone,
-    accent: 'border-l-emerald-600',
+    glow: '#34d399',
   },
   {
     id: 'api',
     title: 'API Automation',
     description: 'Services, endpoints, validations, payload cases, and runs.',
     icon: Server,
-    accent: 'border-l-amber-600',
+    glow: '#fbbf24',
   },
   {
     id: 'unified',
     title: 'Unified Automation',
     description: 'Web, Desktop, Mobile, and API workflows in one suite.',
     icon: Layers3,
-    accent: 'border-l-violet-600',
+    glow: '#a78bfa',
   },
+];
+
+const dashboardBlocks: DashboardBlock[] = [
+  ...automations.map((automation) => ({
+    id: automation.id,
+    title: automation.title,
+    description: automation.description,
+    icon: automation.icon,
+    glow: automation.glow,
+    badgeText: 'Open phases',
+    href: `/automation/${automation.id}`,
+  })),
+  ...backendBlocks.map((block) => ({
+    id: block.id,
+    title: block.title,
+    description: block.description,
+    icon: block.icon,
+    glow: block.glow,
+    badgeText: 'Backend dashboard',
+    href: `/backend/${block.id}`,
+  })),
 ];
 
 const phases: PhaseBlock[] = [
@@ -183,38 +216,47 @@ const phases: PhaseBlock[] = [
 ];
 
 const Dashboard = () => (
-  <main className="min-h-screen bg-background p-6 md:p-8">
+  <main className="control-plane-scope min-h-screen p-6 md:p-8">
     <div className="mx-auto max-w-7xl space-y-6">
       <div className="space-y-2">
-        <h1 className="text-3xl font-bold tracking-tight text-foreground md:text-4xl">Automation Dashboard</h1>
-        <p className="text-base text-muted-foreground md:text-lg">Web, Desktop, Mobile, API, and Unified Automation</p>
+        <h1 className="text-3xl font-bold tracking-tight md:text-4xl" style={{ color: 'var(--cp-fg)' }}>
+          Automation Dashboard
+        </h1>
+        <p className="text-base md:text-lg" style={{ color: 'var(--cp-fg-muted)' }}>
+          Platform automation and backend control surfaces in a single block grid
+        </p>
       </div>
 
       <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
-        {automations.map((automation) => {
-          const AutomationIcon = automation.icon;
+        {dashboardBlocks.map((block, index) => {
+          const BlockIcon = block.icon;
 
           return (
-            <Link className="block" key={automation.id} to={`/automation/${automation.id}`}>
-              <Card className={`h-full min-h-[158px] rounded-lg border-l-4 ${automation.accent} bg-card transition-all duration-200 hover:border-primary/40 hover:shadow-md`}>
-                <CardHeader className="pb-3">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary">
-                      <AutomationIcon className="h-6 w-6 text-primary-foreground" />
-                    </div>
-                    <div>
-                      <CardTitle className="text-lg text-foreground">{automation.title}</CardTitle>
-                      <p className="mt-1 text-sm text-muted-foreground">{automation.description}</p>
-                    </div>
+            <Link className="block" key={block.id} to={block.href}>
+              <GlassPanel glow={block.glow} delay={index * 0.04} className="h-full min-h-[158px] p-5">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-lg" style={{ backgroundColor: `${block.glow}1f` }}>
+                    <BlockIcon className="h-6 w-6" style={{ color: block.glow }} />
                   </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center justify-between">
-                    <Badge variant="secondary">Open phases</Badge>
-                    <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                  <div>
+                    <h2 className="text-lg font-semibold" style={{ color: 'var(--cp-fg)' }}>
+                      {block.title}
+                    </h2>
+                    <p className="mt-1 text-sm" style={{ color: 'var(--cp-fg-muted)' }}>
+                      {block.description}
+                    </p>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+                <div className="mt-4 flex items-center justify-between">
+                  <span
+                    className="cp-mono rounded-full px-2 py-1 text-[11px]"
+                    style={{ backgroundColor: `${block.glow}1a`, color: block.glow }}
+                  >
+                    {block.badgeText}
+                  </span>
+                  <ArrowRight className="h-4 w-4" style={{ color: 'var(--cp-fg-subtle)' }} />
+                </div>
+              </GlassPanel>
             </Link>
           );
         })}
@@ -222,6 +264,32 @@ const Dashboard = () => (
     </div>
   </main>
 );
+
+const BackendBlockPage = () => {
+  const { backendBlockId } = useParams();
+  const block = backendBlocks.find((item) => item.id === backendBlockId);
+
+  if (!block) {
+    return <Navigate to="/" replace />;
+  }
+
+  return (
+    <main className="control-plane-scope min-h-screen p-6 md:p-8">
+      <div className="mx-auto max-w-7xl space-y-6">
+        <Link
+          className="inline-flex items-center gap-2 text-sm font-medium transition-colors hover:opacity-80"
+          style={{ color: 'var(--cp-fg-muted)' }}
+          to="/"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Main Dashboard
+        </Link>
+
+        <BackendControlPlane blockId={block.id as BackendBlockId} />
+      </div>
+    </main>
+  );
+};
 
 const PhaseContent = ({ phaseId, automationId }: { phaseId: PhaseId; automationId?: string }) => {
   if (phaseId === 'ai-workflow') {
@@ -391,6 +459,7 @@ const App = () => (
   <Router>
     <Routes>
       <Route path="/" element={<Dashboard />} />
+      <Route path="/backend/:backendBlockId" element={<BackendBlockPage />} />
       <Route path="/automation/:automationId" element={<AutomationRoute />} />
       <Route path="/automation/:automationId/:phaseId" element={<AutomationPhaseRoute />} />
       <Route path="*" element={<Navigate to="/" replace />} />
