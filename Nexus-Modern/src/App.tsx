@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { Link, Navigate, Route, BrowserRouter as Router, Routes, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -28,6 +28,8 @@ import CicdPipelineDashboard from '@/components/CicdPipelineDashboard';
 import AIWorkflowPage from '@/components/ai-workflow';
 import BackendControlPlane, { backendBlocks, type BackendBlockId } from '@/components/BackendControlPlane';
 import { GlassPanel } from '@/components/backend/GlassPanel';
+import AdvancedExecutionDashboard from '@/components/advanced/AdvancedExecutionDashboard';
+import AIInspectLabPage from '@/components/advanced/AIInspectLabPage';
 
 type PhaseId =
   | 'requirements'
@@ -56,6 +58,27 @@ interface DashboardBlock {
   href: string;
 }
 
+
+const advancedDashboardBlocks: DashboardBlock[] = [
+  {
+    id: 'advanced-executions',
+    title: 'Execution Monitor',
+    description: 'Advanced live execution results, evidence streaming, and quick-heal actions.',
+    icon: Play,
+    glow: '#22d3ee',
+    badgeText: 'Advanced dashboard',
+    href: '/executions',
+  },
+  {
+    id: 'advanced-ai-inspect',
+    title: 'AI Inspect Lab',
+    description: 'Failed execution diagnosis, provider status, repair plans, and assistant guidance.',
+    icon: Sparkles,
+    glow: '#a78bfa',
+    badgeText: 'Advanced dashboard',
+    href: '/ai-analysis',
+  },
+];
 interface PhaseBlock {
   id: PhaseId;
   title: string;
@@ -126,6 +149,7 @@ const dashboardBlocks: DashboardBlock[] = [
     badgeText: 'Backend dashboard',
     href: `/backend/${block.id}`,
   })),
+  ...advancedDashboardBlocks,
 ];
 
 const phases: PhaseBlock[] = [
@@ -459,6 +483,8 @@ const App = () => (
   <Router>
     <Routes>
       <Route path="/" element={<Dashboard />} />
+      <Route path="/executions" element={<AdvancedExecutionDashboard />} />
+      <Route path="/ai-analysis" element={<AIInspectLabPage />} />
       <Route path="/backend/:backendBlockId" element={<BackendBlockPage />} />
       <Route path="/automation/:automationId" element={<AutomationRoute />} />
       <Route path="/automation/:automationId/:phaseId" element={<AutomationPhaseRoute />} />
@@ -468,3 +494,5 @@ const App = () => (
 );
 
 export default App;
+
+

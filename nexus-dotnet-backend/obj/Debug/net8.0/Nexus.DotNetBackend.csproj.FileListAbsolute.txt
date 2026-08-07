@@ -23,3 +23,6 @@ C:\Users\VAnand\Downloads\NexCore\nexus-dotnet-backend\obj\Debug\net8.0\refint\N
 C:\Users\VAnand\Downloads\NexCore\nexus-dotnet-backend\obj\Debug\net8.0\Nexus.DotNetBackend.pdb
 C:\Users\VAnand\Downloads\NexCore\nexus-dotnet-backend\obj\Debug\net8.0\Nexus.DotNetBackend.genruntimeconfig.cache
 C:\Users\VAnand\Downloads\NexCore\nexus-dotnet-backend\obj\Debug\net8.0\ref\Nexus.DotNetBackend.dll
+C:\Users\VAnand\Downloads\NexCore\nexus-dotnet-backend\bin\Debug\net8.0\Npgsql.dll
+C:\Users\VAnand\Downloads\NexCore\nexus-dotnet-backend\obj\Debug\net8.0\Nexus.DotNetBackend.csproj.AssemblyReference.cache
+C:\Users\VAnand\Downloads\NexCore\nexus-dotnet-backend\obj\Debug\net8.0\Nexus.Do.3BCC65CE.Up2Date

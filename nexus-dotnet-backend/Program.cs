@@ -1,7 +1,10 @@
-﻿using Nexus.DotNetBackend.Contracts;
+using Nexus.DotNetBackend.Contracts;
 using Nexus.DotNetBackend.Services;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole();
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddSingleton<RequestContext>();
@@ -10,6 +13,7 @@ builder.Services.AddSingleton<OrchestrationStore>();
 builder.Services.AddSingleton<TestManagementStore>();
 builder.Services.AddSingleton<AiGatewayStore>();
 builder.Services.AddSingleton<IntentCatalogService>();
+builder.Services.AddSingleton<LegacyModernRepository>();
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy => policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod());
@@ -31,19 +35,22 @@ app.Use(async (context, next) =>
     }
 });
 
+var legacyModernRepository = app.Services.GetRequiredService<LegacyModernRepository>();
+await legacyModernRepository.EnsureSchemaAsync();
+
 var api = app.MapGroup("/api");
 
 api.MapGet("/health/live", () => new HealthResponse("ok", DateTimeOffset.UtcNow));
 api.MapGet("/health", () => new DependencyHealthResponse("ok", DateTimeOffset.UtcNow, new Dictionary<string, string>
 {
-    ["postgres"] = "not_configured",
+    ["postgres"] = "configured",
     ["nats"] = "not_configured",
     ["temporal"] = "not_configured"
 }));
 api.MapGet("/health/ready", () => new DependencyHealthResponse("ok", DateTimeOffset.UtcNow, new Dictionary<string, string>
 {
     ["controlPlane"] = "ready",
-    ["storage"] = "in_memory"
+    ["storage"] = "postgres"
 }));
 
 api.MapGet("/enterprise/readiness", () => Results.Ok(new
@@ -53,7 +60,7 @@ api.MapGet("/enterprise/readiness", () => Results.Ok(new
     audit = "dotnet-schema-pending",
     secrets = "secret-ref-policy-required",
     deployment = "kubernetes-manifests-required",
-    pythonWorkers = "ai-ocr-cv-ml-only",
+    pythonWorkers = "removed-from-modern-stack",
     controlPlane = "dotnet-owned"
 }));
 
@@ -119,6 +126,44 @@ api.MapPost("/test-management/executions/{id}/cancel", (string id, TestManagemen
 api.MapGet("/test-management/executions/{id}/timeline", (string id, TestManagementStore store) => store.GetTimeline(id) is { } items ? Results.Ok(items) : Results.NotFound());
 api.MapPatch("/test-management/executions/{id}/results/{resultId}", (string id, string resultId, UpdateResultCommand command, TestManagementStore store) => store.UpdateResult(id, resultId, command) is { } item ? Results.Ok(new { execution = item.Execution, result = item.Result }) : Results.NotFound());
 
+api.MapGet("/projects", async (LegacyModernRepository repository) => Results.Ok(await repository.ListProjectsAsync()));
+api.MapGet("/projects/{id}", async (string id, LegacyModernRepository repository) => (await repository.GetProjectAsync(id)) is { } project ? Results.Ok(project) : Results.NotFound());
+api.MapPost("/projects", async (LegacyProjectUpsertRequest request, LegacyModernRepository repository) => Results.Ok(await repository.CreateProjectAsync(request)));
+api.MapPut("/projects/{id}", async (string id, LegacyProjectUpsertRequest request, LegacyModernRepository repository) => (await repository.UpdateProjectAsync(id, request)) is { } project ? Results.Ok(project) : Results.NotFound(new { error = "Project not found" }));
+api.MapDelete("/projects/{id}", async (string id, LegacyModernRepository repository) => (await repository.DeleteProjectAsync(id)) is { } response ? Results.Ok(response) : Results.NotFound(new { error = "Project not found" }));
+
+api.MapGet("/modules", async (string project_id, LegacyModernRepository repository) => Results.Ok(new LegacyModuleListResponse(await repository.ListModulesAsync(project_id))));
+api.MapGet("/modules/{id}", async (string id, LegacyModernRepository repository) => (await repository.GetModuleAsync(id)) is { } module ? Results.Ok(module) : Results.NotFound(new { error = "Module not found" }));
+api.MapPost("/modules", async (LegacyModuleCreateRequest request, LegacyModernRepository repository) => Results.Ok(await repository.CreateModuleAsync(request)));
+api.MapPut("/modules/{id}", async (string id, LegacyModuleUpdateRequest request, LegacyModernRepository repository) => (await repository.UpdateModuleAsync(id, request)) is { } module ? Results.Ok(module) : Results.NotFound(new { error = "Module not found" }));
+api.MapDelete("/modules/{id}", async (string id, LegacyModernRepository repository) => (await repository.DeleteModuleAsync(id)) is { } response ? Results.Ok(response) : Results.NotFound(new { error = "Module not found" }));
+
+api.MapGet("/testcases", async (string module_id, string? suite_type, LegacyModernRepository repository) => Results.Ok(new LegacyTestCaseListResponse(await repository.ListTestCasesAsync(module_id))));
+api.MapGet("/testcases/bulk", async (string module_id, string? suite_types, LegacyModernRepository repository) =>
+{
+    var items = await repository.ListTestCasesAsync(module_id);
+    var queried = string.IsNullOrWhiteSpace(suite_types)
+        ? Array.Empty<string>()
+        : suite_types.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    return Results.Ok(new LegacyTestCaseBulkResponse(items, queried, items.Count));
+});
+api.MapGet("/testcases/reusable", async (LegacyModernRepository repository) => Results.Ok(new LegacyTestCaseListResponse(await repository.ListReusableTestCasesAsync())));
+api.MapPost("/testcases", async (LegacyTestCaseUpsertRequest request, LegacyModernRepository repository) => (await repository.CreateTestCaseAsync(request)) is { } testCase ? Results.Ok(testCase) : Results.BadRequest(new { error = "Module not found" }));
+api.MapPut("/testcases/{id}", async (string id, LegacyTestCaseUpsertRequest request, LegacyModernRepository repository) => (await repository.UpdateTestCaseAsync(id, request)) is { } testCase ? Results.Ok(testCase) : Results.NotFound(new { error = "Test case not found" }));
+api.MapDelete("/testcases/{id}", async (string id, LegacyModernRepository repository) => await repository.DeleteTestCaseAsync(id) ? Results.Ok(new { success = true }) : Results.NotFound(new { error = "Test case not found" }));
+
+api.MapGet("/teststeps/{testCaseName}", async (string testCaseName, string? project_name, string? module_name, LegacyModernRepository repository) => Results.Ok(await repository.GetTestStepsAsync(testCaseName, project_name, module_name)));
+api.MapPost("/teststeps/{testCaseName}/bulk", async (string testCaseName, LegacyTestStepBulkSaveRequest request, LegacyModernRepository repository) => Results.Ok(new LegacyTestStepsSaveResponse(await repository.SaveTestStepsAsync(testCaseName, request))));
+
+api.MapGet("/custom-test-suites", async (LegacyModernRepository repository) => Results.Ok(new LegacyCustomTestSuiteListResponse(await repository.ListCustomSuitesAsync())));
+api.MapPost("/custom-test-suites", async (LegacyCustomTestSuiteUpsertRequest request, LegacyModernRepository repository) => Results.Ok(await repository.CreateCustomSuiteAsync(request)));
+api.MapPut("/custom-test-suites/{id}", async (string id, LegacyCustomTestSuiteUpsertRequest request, LegacyModernRepository repository) => (await repository.UpdateCustomSuiteAsync(id, request)) is { } suite ? Results.Ok(suite) : Results.NotFound(new { error = "Suite not found" }));
+api.MapDelete("/custom-test-suites/{id}", async (string id, LegacyModernRepository repository) => await repository.DeleteCustomSuiteAsync(id) ? Results.Ok(new { success = true }) : Results.NotFound(new { error = "Suite not found" }));
+api.MapGet("/custom-test-suites/{id}/test-cases", async (string id, LegacyModernRepository repository) => Results.Ok(new LegacySuiteTestCaseListResponse(await repository.GetCustomSuiteTestCasesAsync(id))));
+api.MapPost("/custom-test-suites/{id}/test-cases", async (string id, LegacyCustomTestSuiteCasesSaveRequest request, LegacyModernRepository repository) => Results.Ok(new { saved_count = await repository.SaveCustomSuiteTestCasesAsync(id, request.TestCases) }));
+
 app.Run();
 
 public sealed record HeartbeatRequest(int Progress);
+
+

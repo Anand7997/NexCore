@@ -79,7 +79,7 @@ Write-Host ""
 
 Write-Host "[1/2] Stopping application services..." -ForegroundColor Yellow
 
-$ports = @(3000, 3001, 8000)  # Frontend, .NET Control API, Python AI Service
+$ports = @(3000, 3001, 3002, 8000)  # Frontend, .NET Control API, Modern UI, Python AI Service
 
 foreach ($port in $ports) {
     $listeners = @(Get-NexusPortListeners -Ports @($port))
