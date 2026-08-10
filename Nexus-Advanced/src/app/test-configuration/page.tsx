@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import type { DragEvent } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowDown, ArrowUp, BookOpen, ChevronDown, ChevronRight, CopyPlus, Eye, EyeOff, FileText,
@@ -815,8 +815,10 @@ function DesktopRepositoryLibraryPanel({
 
 type EditorMode = 'project' | 'module' | 'case';
 
-export default function TestConfigurationPage() {
+function TestConfigurationWorkspace() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const automationSpace = searchParams.get('automation_space') ?? 'web';
   useEffect(() => {
     router.prefetch('/page-repository');
     router.prefetch('/desktop-repository');
@@ -824,7 +826,7 @@ export default function TestConfigurationPage() {
     router.prefetch('/executions');
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const { data, isLoading } = useTestConfigurationTree();
+  const { data, isLoading } = useTestConfigurationTree(automationSpace);
   const projects   = data?.projects    ?? [];
   const tagCatalog = data?.tag_catalog ?? [];
   const { data: pageRepo = [] } = useAllPages();
@@ -1047,13 +1049,13 @@ export default function TestConfigurationPage() {
   function saveEditor() {
     setValidationError(null);
     if (editorMode === 'project' && selProject) {
-      updateProject.mutate({ name: pd.name, description: pd.description, status: pd.status, tags: csvToTags(pd.tags) });
+      updateProject.mutate({ name: pd.name, description: pd.description, status: pd.status, automation_space: automationSpace, tags: csvToTags(pd.tags) });
     } else if (editorMode === 'module' && selModule) {
-      updateModule.mutate({ name: md.name, description: md.description, status: md.status, tags: csvToTags(md.tags) });
+      updateModule.mutate({ name: md.name, description: md.description, status: md.status, automation_space: automationSpace, tags: csvToTags(md.tags) });
     } else if (editorMode === 'case' && selCase) {
       try {
         const vars = JSON.parse(cd.vars);
-        updateCase.mutate({ name: cd.name, description: cd.description, status: cd.status, test_type: cd.testType, priority: cd.priority, execution_mode: cd.executionMode, platforms: cd.platforms, tags: csvToTags(cd.tags), default_variables: vars });
+        updateCase.mutate({ name: cd.name, description: cd.description, status: cd.status, automation_space: automationSpace, test_type: cd.testType, priority: cd.priority, execution_mode: cd.executionMode, platforms: cd.platforms, tags: csvToTags(cd.tags), default_variables: vars });
       } catch { setValidationError('Default variables must be valid JSON.'); }
     }
   }
@@ -1151,21 +1153,21 @@ export default function TestConfigurationPage() {
             <div className="flex items-center gap-1.5 border-l border-[var(--color-line-default)] pl-3">
               <Button variant="glass" size="sm"
                 onClick={() => createProject.mutate(
-                  { name: `Project ${projects.length + 1}`, description: 'Execution-ready test catalog.', status: 'active', tags: ['new'] },
+                  { name: `${automationSpace.toUpperCase()} Project ${projects.length + 1}`, description: `Execution-ready ${automationSpace} test catalog.`, status: 'active', automation_space: automationSpace, tags: ['new', automationSpace] },
                   { onSuccess: (p) => { setSelProjectId(p.id); setExpandedIds((prev) => new Set([...prev, p.id])); setEditorMode('project'); } },
                 )}>
                 <Plus size={11} /> Project
               </Button>
               <Button variant="glass" size="sm" disabled={!selProject}
                 onClick={() => selProject && createModule.mutate(
-                  { name: `Module ${selProject.modules.length + 1}`, description: '', status: 'active', tags: [] },
+                  { name: `Module ${selProject.modules.length + 1}`, description: '', status: 'active', automation_space: automationSpace, tags: [automationSpace] },
                   { onSuccess: (m) => { setSelModuleId(m.id); setEditorMode('module'); } },
                 )}>
                 <Plus size={11} /> Module
               </Button>
               <Button variant="glass" size="sm" disabled={!selModule}
                 onClick={() => selModule && createCase.mutate(
-                  { name: `Test Case ${selModule.test_cases.length + 1}`, description: '', status: 'draft', test_type: 'functional', priority: 'p2', execution_mode: 'automated', platforms: ['web'], tags: ['new'], default_variables: {} },
+                  { name: `Test Case ${selModule.test_cases.length + 1}`, description: '', status: 'draft', automation_space: automationSpace, test_type: 'functional', priority: 'p2', execution_mode: 'automated', platforms: automationSpace === 'unified' ? ['web', 'desktop', 'mobile', 'api'] : [automationSpace], tags: ['new', automationSpace], default_variables: {} },
                   { onSuccess: (c) => { setSelCaseId(c.id); setEditorMode('case'); } },
                 )}>
                 <Plus size={11} /> Case
@@ -1533,5 +1535,13 @@ export default function TestConfigurationPage() {
         </aside>
       </div>
     </div>
+  );
+}
+
+export default function TestConfigurationPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-sm text-[var(--color-fg-muted)]">Loading test configuration...</div>}>
+      <TestConfigurationWorkspace />
+    </Suspense>
   );
 }

@@ -21,9 +21,16 @@ export default defineConfig(({ mode }) => {
       react(),
     ],
     resolve: {
-      alias: {
-        "@": path.resolve(__dirname, "./src"),
-      },
+      alias: [
+        {
+          find: "@/components/ui/Button",
+          replacement: path.resolve(__dirname, "./src/components/ai-workflow/Button.tsx"),
+        },
+        {
+          find: "@",
+          replacement: path.resolve(__dirname, "./src"),
+        },
+      ],
     },
     define: {
       __VITE_API_BASE_URL__: JSON.stringify(env.VITE_API_BASE_URL)

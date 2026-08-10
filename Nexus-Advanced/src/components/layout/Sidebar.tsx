@@ -21,7 +21,6 @@ import {
   Monitor,
   Network,
   Play,
-  Plus,
   Settings2,
   Sparkles,
   Target,
@@ -48,7 +47,7 @@ const GROUPS: NavGroup[] = [
     label: '',
     items: [
       { href: '/', label: 'Workspace', icon: LayoutDashboard },
-      { href: '/workspace/new', label: 'Create Project', icon: Plus },
+      { href: '/main-dashboard', label: 'MainDashboard', icon: Grid3X3 },
     ],
   },
   {

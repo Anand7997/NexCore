@@ -4,6 +4,8 @@ import {
   ArrowLeft,
   ArrowRight,
   BarChart3,
+  Bot,
+  Brain,
   ClipboardList,
   Code2,
   Globe,
@@ -30,6 +32,8 @@ import BackendControlPlane, { backendBlocks, type BackendBlockId } from '@/compo
 import { GlassPanel } from '@/components/backend/GlassPanel';
 import AdvancedExecutionDashboard from '@/components/advanced/AdvancedExecutionDashboard';
 import AIInspectLabPage from '@/components/advanced/AIInspectLabPage';
+import AgentsPage from '@/components/advanced/AgentsPage';
+import AIInvestigationPage from '@/components/advanced/AIInvestigationPage';
 
 type PhaseId =
   | 'requirements'
@@ -77,6 +81,24 @@ const advancedDashboardBlocks: DashboardBlock[] = [
     glow: '#a78bfa',
     badgeText: 'Advanced dashboard',
     href: '/ai-analysis',
+  },
+  {
+    id: 'advanced-agents',
+    title: 'Agent Fleet',
+    description: 'Runtime agents, capacity, capabilities, and heartbeat status in one grid.',
+    icon: Bot,
+    glow: '#22d3ee',
+    badgeText: 'Advanced dashboard',
+    href: '/agents',
+  },
+  {
+    id: 'advanced-ai-investigation',
+    title: 'AI Investigation',
+    description: 'Live failure stream, confidence analysis, root-cause intelligence, and patch terminal.',
+    icon: Brain,
+    glow: '#f59e0b',
+    badgeText: 'Advanced dashboard',
+    href: '/ai-investigation',
   },
 ];
 interface PhaseBlock {
@@ -484,7 +506,9 @@ const App = () => (
     <Routes>
       <Route path="/" element={<Dashboard />} />
       <Route path="/executions" element={<AdvancedExecutionDashboard />} />
+      <Route path="/agents" element={<AgentsPage />} />
       <Route path="/ai-analysis" element={<AIInspectLabPage />} />
+      <Route path="/ai-investigation" element={<AIInvestigationPage />} />
       <Route path="/backend/:backendBlockId" element={<BackendBlockPage />} />
       <Route path="/automation/:automationId" element={<AutomationRoute />} />
       <Route path="/automation/:automationId/:phaseId" element={<AutomationPhaseRoute />} />

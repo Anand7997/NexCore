@@ -22,7 +22,7 @@ import type {
 
 export const testConfigurationKeys = {
   all: ['test-configuration'] as const,
-  tree: ['test-configuration', 'tree'] as const,
+  tree: (automationSpace?: string) => ['test-configuration', 'tree', automationSpace ?? 'all'] as const,
   projects: ['test-configuration', 'projects'] as const,
 };
 
@@ -71,10 +71,11 @@ async function confirmProjectDeleted(projectId: string) {
   return false;
 }
 
-export function useTestConfigurationTree() {
+export function useTestConfigurationTree(automationSpace?: string) {
+  const query = automationSpace ? `?automation_space=${encodeURIComponent(automationSpace)}` : '';
   return useQuery({
-    queryKey: testConfigurationKeys.tree,
-    queryFn: () => api.get<TestConfigurationTree>('/test-configuration/tree'),
+    queryKey: testConfigurationKeys.tree(automationSpace),
+    queryFn: () => api.get<TestConfigurationTree>(`/test-configuration/tree${query}`),
     staleTime: 10_000,
   });
 }
@@ -124,13 +125,13 @@ export function useDeleteTestProject() {
     },
     onMutate: async (projectId: string) => {
       await qc.cancelQueries({ queryKey: testConfigurationKeys.all });
-      const previousTree = qc.getQueryData<TestConfigurationTree>(testConfigurationKeys.tree);
+      const previousTree = qc.getQueryData<TestConfigurationTree>(testConfigurationKeys.tree());
       const previousProjectLists = qc.getQueriesData<TestProjectListItem[]>({
         queryKey: testConfigurationKeys.projects,
       });
 
       qc.setQueryData<TestConfigurationTree>(
-        testConfigurationKeys.tree,
+        testConfigurationKeys.tree(),
         (current) => withoutProject(current, projectId),
       );
       previousProjectLists.forEach(([queryKey]) => {
@@ -144,7 +145,7 @@ export function useDeleteTestProject() {
     },
     onError: (_error, _projectId, context) => {
       if (!context) return;
-      qc.setQueryData(testConfigurationKeys.tree, context.previousTree);
+      qc.setQueryData(testConfigurationKeys.tree(), context.previousTree);
       context.previousProjectLists.forEach(([queryKey, data]) => {
         qc.setQueryData(queryKey, data);
       });

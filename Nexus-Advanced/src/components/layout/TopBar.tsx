@@ -23,7 +23,7 @@ import { cn } from '@/lib/utils';
 
 const WORKSPACE_META: Record<string, { label: string; env: string }> = {
   '/':                   { label: 'Workspace Command Center',   env: 'prod' },
-  '/workspace/new':      { label: 'Project Creation',           env: 'prod' },
+  '/main-dashboard':     { label: 'MainDashboard',              env: 'prod' },
   '/architecture':       { label: 'Architecture Builder',       env: 'build' },
   '/intent-studio':      { label: 'Business Intent Studio',     env: 'build' },
   '/testcases':          { label: 'Testcase Intelligence',      env: 'prod' },

@@ -1124,7 +1124,7 @@ html[data-theme="light"] .xterm-viewport {
   background: var(--color-surface-1) !important;
 }
 
-/* Create Project flow: this page has dense wizard text, so keep it deliberately readable. */
+/* Legacy planning form styles: retained for any archived create-project markup. */
 .create-project-page {
   color: var(--color-fg-default);
 }

@@ -16,7 +16,6 @@ import {
   LayoutDashboard,
   Microscope,
   Network,
-  Plus,
   Search,
   Settings2,
   Sparkles,
@@ -50,7 +49,7 @@ interface Command {
 
 const COMMANDS: Command[] = [
   { href: '/',                  label: 'Workspace Command Center',  hint: 'Main dashboard and overview',                  icon: LayoutDashboard, category: 'Navigation' },
-  { href: '/workspace/new',     label: 'Create Project',            hint: 'Start a new QA project',                       icon: Plus,            category: 'Navigation' },
+  { href: '/main-dashboard',     label: 'MainDashboard',             hint: 'Modern automation blocks and phase launchers',  icon: Grid3X3,         category: 'Navigation' },
   { href: '/architecture',      label: 'Architecture Builder',      hint: 'Design system topology and structure',          icon: Boxes,           category: 'Intelligence' },
   { href: '/intent-studio',     label: 'Business Intent Studio',    hint: 'Capture and refine business intents',           icon: Target,          category: 'Intelligence' },
   { href: '/testcases',         label: 'Testcase Intelligence',     hint: 'AI-generated and curated test cases',           icon: FlaskConical,    category: 'Intelligence' },
@@ -76,6 +75,7 @@ const CATEGORY_COLORS: Record<CommandCategory, string> = {
 
 const COPILOT_SUGGESTIONS: Record<string, string[]> = {
   '/':                  ['Review execution health', 'Check failed test runs', 'Open latest report'],
+  '/main-dashboard':    ['Open Web Automation', 'Open API Automation', 'Review automation phases'],
   '/architecture':      ['Analyze component dependencies', 'Detect orphan nodes', 'Suggest test boundaries'],
   '/intent-studio':     ['Refine ambiguous intents', 'Generate acceptance criteria', 'Map to test scenarios'],
   '/testcases':         ['Generate edge cases with AI', 'Identify coverage gaps', 'Cluster similar tests'],

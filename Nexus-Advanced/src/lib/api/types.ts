@@ -208,6 +208,7 @@ export interface TestStep {
 export interface TestCase {
   id: string;
   module_id: string;
+  automation_space?: string;
   name: string;
   description: string;
   status: string;
@@ -225,6 +226,7 @@ export interface TestCase {
 export interface TestModule {
   id: string;
   project_id: string;
+  automation_space?: string;
   name: string;
   description: string;
   status: string;
@@ -236,6 +238,7 @@ export interface TestModule {
 
 export interface TestProject {
   id: string;
+  automation_space?: string;
   name: string;
   description: string;
   status: string;
@@ -247,6 +250,7 @@ export interface TestProject {
 
 export interface TestProjectListItem {
   id: string;
+  automation_space?: string;
   name: string;
   description: string;
   status: string;
@@ -259,6 +263,7 @@ export interface TestProjectListItem {
 }
 
 export interface TestConfigurationTree {
+  automation_space?: string | null;
   projects: TestProject[];
   tag_catalog: TestTagCatalogDimension[];
 }
@@ -328,6 +333,7 @@ export interface TestProjectCreateInput {
   name: string;
   description?: string;
   status?: string;
+  automation_space?: string;
   tags?: string[];
 }
 
@@ -335,6 +341,7 @@ export interface TestProjectUpdateInput {
   name?: string;
   description?: string;
   status?: string;
+  automation_space?: string;
   tags?: string[];
 }
 
@@ -342,6 +349,7 @@ export interface TestModuleCreateInput {
   name: string;
   description?: string;
   status?: string;
+  automation_space?: string;
   tags?: string[];
 }
 
@@ -349,6 +357,7 @@ export interface TestModuleUpdateInput {
   name?: string;
   description?: string;
   status?: string;
+  automation_space?: string;
   tags?: string[];
 }
 
@@ -356,6 +365,7 @@ export interface TestCaseCreateInput {
   name: string;
   description?: string;
   status?: string;
+  automation_space?: string;
   test_type?: string;
   priority?: string;
   execution_mode?: string;
@@ -368,6 +378,7 @@ export interface TestCaseUpdateInput {
   name?: string;
   description?: string;
   status?: string;
+  automation_space?: string;
   test_type?: string;
   priority?: string;
   execution_mode?: string;

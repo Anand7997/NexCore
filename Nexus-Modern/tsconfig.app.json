@@ -22,6 +22,7 @@
     "noFallthroughCasesInSwitch": false,
 
     "paths": {
+      "@/components/ui/Button": ["./src/components/ai-workflow/Button.tsx"],
       "@/*": ["./src/*"]
     }
   },

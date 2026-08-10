@@ -12,6 +12,7 @@ $frontendLabel = if ($Frontend -eq "Old") { "Automation Blocks UI" } else { "Res
 $frontendDir = Join-Path $root $frontendFolder
 $controlBackendDir = Join-Path $root "nexus-dotnet-backend"
 $pythonBackendDir  = Join-Path $root "nexus-api"
+$legacyApiEnvFile = Join-Path $pythonBackendDir ".env"
 $venvPython  = Join-Path $pythonBackendDir ".venv\Scripts\python.exe"
 $nextCli     = Join-Path $frontendDir "node_modules\next\dist\bin\next"
 $frontendBuildId = Join-Path $frontendDir ".next\BUILD_ID"
@@ -120,6 +121,53 @@ function Start-NexusProcess {
     return $p
 }
 
+function Get-DotEnvSettings {
+    param([string] $Path)
+
+    $settings = @{}
+    if (-not (Test-Path $Path)) {
+        return $settings
+    }
+
+    foreach ($line in Get-Content $Path) {
+        if ([string]::IsNullOrWhiteSpace($line)) { continue }
+        if ($line.TrimStart().StartsWith("#")) { continue }
+
+        $separatorIndex = $line.IndexOf("=")
+        if ($separatorIndex -lt 1) { continue }
+
+        $key = $line.Substring(0, $separatorIndex).Trim()
+        $value = $line.Substring($separatorIndex + 1).Trim()
+        if ($value.Length -ge 2 -and $value.StartsWith('"') -and $value.EndsWith('"')) {
+            $value = $value.Substring(1, $value.Length - 2)
+        }
+
+        $settings[$key] = $value
+    }
+
+    return $settings
+}
+
+function Resolve-ControlBackendDatabaseUrl {
+    param([string] $DotEnvPath)
+
+    foreach ($name in @("NEXCORE_DATABASE_URL", "DATABASE_URL_SYNC", "DATABASE_URL")) {
+        $value = [Environment]::GetEnvironmentVariable($name)
+        if (-not [string]::IsNullOrWhiteSpace($value)) {
+            return $value
+        }
+    }
+
+    $dotEnvSettings = Get-DotEnvSettings -Path $DotEnvPath
+    foreach ($name in @("NEXCORE_DATABASE_URL", "DATABASE_URL_SYNC", "DATABASE_URL")) {
+        if ($dotEnvSettings.ContainsKey($name) -and -not [string]::IsNullOrWhiteSpace($dotEnvSettings[$name])) {
+            return $dotEnvSettings[$name]
+        }
+    }
+
+    return $null
+}
+
 function Wait-ForService {
     param(
         [string] $Name,
@@ -215,11 +263,24 @@ try {
     Assert-NexusPortsAvailable -Ports $ports
 
     Write-Host "[1/3] .NET Control API"
+    $controlBackendEnvironment = @{
+        ASPNETCORE_URLS = $controlUrl
+    }
+
+    $controlBackendDatabaseUrl = Resolve-ControlBackendDatabaseUrl -DotEnvPath $legacyApiEnvFile
+    if (-not [string]::IsNullOrWhiteSpace($controlBackendDatabaseUrl)) {
+        $controlBackendEnvironment["NEXCORE_DATABASE_URL"] = $controlBackendDatabaseUrl
+    } else {
+        Write-Host "  No DATABASE_URL value found in process environment or $legacyApiEnvFile." -ForegroundColor Yellow
+        Write-Host "  .NET Control API will use its internal fallback connection string." -ForegroundColor Yellow
+    }
+
     $controlBackend = Start-NexusProcess `
         -Name ".NET Control API" `
         -FileName "dotnet" `
         -Arguments "run" `
-        -WorkingDirectory $controlBackendDir
+        -WorkingDirectory $controlBackendDir `
+        -Environment $controlBackendEnvironment
 
     Wait-ForService -Name ".NET Control API" -Url $controlUrl -HealthPath "/api/health/live" -Process $controlBackend
 

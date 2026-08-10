@@ -109,6 +109,7 @@ const PROJECTS: ProjectItem[] = [
 
 const MODULE_LIBRARY: RouteTile[] = [
   // ── Build ──────────────────────────────────────────────────────────────────
+  { href: '/main-dashboard',    name: 'MainDashboard',      icon: Grid3X3,         color: '#4dd1e1' },
   { href: '/architecture',       name: 'Architecture',       icon: Globe,           color: '#5b8cff' },
   { href: '/intent-studio',      name: 'Intent Studio',      icon: Target,          color: '#a195ff' },
   { href: '/page-repository',    name: 'Page Repository',    icon: Boxes,           color: '#f0b558' },
@@ -1007,7 +1008,7 @@ export default function CommandCenterPage() {
 
               <div className="mt-5 flex flex-wrap items-center gap-3">
                 <Link
-                  href="/workspace/new"
+                  href="/main-dashboard/automation/web/planning"
                   className={`flex max-w-full items-center gap-2 rounded-xl px-4 py-2.5 text-[14px] font-semibold transition-all hover:-translate-y-0.5 hover:opacity-95 active:scale-95 ${isLight ? 'border border-[var(--color-line-default)]' : ''}`}
                   style={{
                     background: isLight ? 'var(--color-surface-1)' : 'var(--color-accent-default)',
@@ -1016,7 +1017,7 @@ export default function CommandCenterPage() {
                   }}
                 >
                   <Plus size={15} />
-                  <span className="truncate">Create Execution Workspace</span>
+                  <span className="truncate">Open Planning Workspace</span>
                 </Link>
                 <Link
                   href="/executions"
