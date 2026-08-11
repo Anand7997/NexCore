@@ -2167,9 +2167,6 @@ function ReviewStep({
         </div>
       </div>
       <div className="flex flex-wrap gap-4 pt-3 border-t border-(--color-line-subtle)">
-        <a href="/test-configuration">
-          <Button variant="neon" size="sm" className="gap-2"><Settings2 size={13} /> Open Test Configuration</Button>
-        </a>
         <a href="/page-repository">
           <Button variant="glass" size="sm" className="gap-2"><BookOpen size={13} /> Open Page Repository</Button>
         </a>

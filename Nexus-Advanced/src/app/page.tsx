@@ -19,7 +19,6 @@ import {
   Code2,
   Cpu,
   Database,
-  FlaskConical,
   Globe,
   Grid3X3,
   GitBranch,
@@ -115,7 +114,6 @@ const MODULE_LIBRARY: RouteTile[] = [
   { href: '/page-repository',    name: 'Page Repository',    icon: Boxes,           color: '#f0b558' },
   { href: '/master-sheet',       name: 'Master Sheet',       icon: Database,        color: '#45c08a' },
   { href: '/test-designer',      name: 'Test Designer',      icon: Code2,           color: '#a195ff' },
-  { href: '/test-configuration', name: 'Test Config',        icon: FlaskConical,    color: '#45c08a' },
   { href: '/testcases',          name: 'Test Cases',         icon: BookOpen,        color: '#4dd1e1' },
   // ── Run ────────────────────────────────────────────────────────────────────
   { href: '/workflows',          name: 'Workflows',          icon: GitBranch,       color: '#a195ff' },
@@ -1091,7 +1089,7 @@ export default function CommandCenterPage() {
                 Operations Rail
               </h2>
               <Link
-                href="/test-configuration"
+                href="/main-dashboard"
                 className="flex items-center gap-1 text-[13px] font-mono transition-colors hover:text-(--color-accent-default)"
                 style={{ color: 'var(--color-fg-subtle)' }}
               >

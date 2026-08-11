@@ -14,7 +14,6 @@ import {
   ChevronsLeft,
   ChevronsRight,
   FileSpreadsheet,
-  FlaskConical,
   GitBranch,
   Grid3X3,
   LayoutDashboard,
@@ -67,7 +66,6 @@ const GROUPS: NavGroup[] = [
         ],
       },
       { href: '/intent-studio', label: 'Intent Studio', icon: Target },
-      { href: '/test-configuration', label: 'Test Config', icon: FlaskConical },
     ],
   },
   {

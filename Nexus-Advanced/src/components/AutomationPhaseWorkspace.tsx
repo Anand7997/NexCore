@@ -9,13 +9,17 @@ import {
   Boxes,
   CheckCircle2,
   ChevronRight,
+  Edit3,
   FolderPlus,
   Layers3,
   Lightbulb,
   Loader2,
   Plus,
   RefreshCw,
+  Save,
   Target,
+  Trash2,
+  X,
   type LucideIcon,
 } from 'lucide-react';
 import IntentStudioPage from '@/app/intent-studio/page';
@@ -29,7 +33,13 @@ import {
   useCreateTestCase,
   useCreateTestModule,
   useCreateTestProject,
+  useDeleteTestCase,
+  useDeleteTestModule,
+  useDeleteTestProject,
   useTestConfigurationTree,
+  useUpdateTestCase,
+  useUpdateTestModule,
+  useUpdateTestProject,
 } from '@/lib/api/testConfiguration';
 import type { TestCase, TestModule, TestProject } from '@/lib/api/types';
 
@@ -45,6 +55,23 @@ type PlanningCard = {
 };
 
 type PlanningView = 'overview' | 'projects' | 'modules' | 'testcases';
+type PlanningEntity = 'project' | 'module' | 'case';
+type PlanningFormMode = 'create' | 'edit';
+
+type PlanningFormState = {
+  mode: PlanningFormMode;
+  entity: PlanningEntity;
+  id?: string;
+  name: string;
+  description: string;
+  status: string;
+  tags: string;
+  testType: string;
+  priority: string;
+  executionMode: string;
+  platforms: string[];
+  defaultVariables: string;
+};
 
 function PlanningStepCard({ card }: { card: PlanningCard }) {
   const Icon = card.icon;
@@ -91,20 +118,57 @@ function automationPlatforms(automationId: string) {
   return [automationId];
 }
 
+function csvToTags(value: string) {
+  return value
+    .split(',')
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+}
+
+function tagsToCsv(tags?: string[]) {
+  return (tags ?? []).join(', ');
+}
+
+const INPUT_CLASS =
+  'w-full rounded-lg border border-[var(--color-line-default)] bg-[var(--color-surface-2)] px-3 py-2 text-sm text-[var(--color-fg-default)] outline-none transition-colors focus:border-[var(--color-accent-default)] placeholder:text-[var(--color-fg-subtle)]';
+const LABEL_CLASS = 'mb-1.5 block text-[10px] font-mono uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]';
+
 function PlanningWorkspace({ automationId }: { automationId: string }) {
   const [view, setView] = useState<PlanningView>('overview');
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [selectedModuleId, setSelectedModuleId] = useState<string | null>(null);
+  const [form, setForm] = useState<PlanningFormState | null>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
   const { data, isLoading, isError, refetch, isFetching } = useTestConfigurationTree(automationId);
   const createProject = useCreateTestProject();
   const createModule = useCreateTestModule(selectedProjectId ?? '');
   const createCase = useCreateTestCase(selectedModuleId ?? '');
+  const updateProject = useUpdateTestProject(form?.entity === 'project' && form.mode === 'edit' ? form.id ?? '' : '');
+  const updateModule = useUpdateTestModule(form?.entity === 'module' && form.mode === 'edit' ? form.id ?? '' : '');
+  const updateCase = useUpdateTestCase(form?.entity === 'case' && form.mode === 'edit' ? form.id ?? '' : '');
+  const deleteProject = useDeleteTestProject();
+  const deleteModule = useDeleteTestModule();
+  const deleteCase = useDeleteTestCase();
 
   const projects = data?.projects ?? [];
   const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? null;
   const selectedModule = selectedProject?.modules.find((module) => module.id === selectedModuleId) ?? null;
   const totalModules = projects.reduce((sum, project) => sum + project.modules.length, 0);
   const totalCases = projects.reduce((sum, project) => sum + project.modules.reduce((moduleSum, module) => moduleSum + module.test_cases.length, 0), 0);
+  const isSaving =
+    form?.entity === 'project'
+      ? form.mode === 'create'
+        ? createProject.isPending
+        : updateProject.isPending
+      : form?.entity === 'module'
+        ? form.mode === 'create'
+          ? createModule.isPending
+          : updateModule.isPending
+        : form?.entity === 'case'
+          ? form.mode === 'create'
+            ? createCase.isPending
+            : updateCase.isPending
+          : false;
 
   const cards: PlanningCard[] = useMemo(
     () => [
@@ -144,66 +208,218 @@ function PlanningWorkspace({ automationId }: { automationId: string }) {
   const selectProject = (project: TestProject) => {
     setSelectedProjectId(project.id);
     setSelectedModuleId(project.modules[0]?.id ?? null);
+    setForm(null);
+    setValidationError(null);
     setView('modules');
   };
 
   const selectModule = (module: TestModule) => {
     setSelectedModuleId(module.id);
+    setForm(null);
+    setValidationError(null);
     setView('testcases');
   };
 
-  const addProject = () => {
-    createProject.mutate(
-      {
-        name: `${automationId.toUpperCase()} Project ${projects.length + 1}`,
-        description: `Execution-ready ${automationId} automation planning project.`,
-        status: 'active',
-        automation_space: automationId,
-        tags: ['planning', automationId],
-      },
-      {
-        onSuccess: (project) => {
-          setSelectedProjectId(project.id);
-          setSelectedModuleId(project.modules[0]?.id ?? null);
-          setView('modules');
-        },
-      },
-    );
-  };
-
-  const addModule = () => {
-    if (!selectedProject) return;
-    createModule.mutate(
-      {
-        name: `Module ${selectedProject.modules.length + 1}`,
-        description: `Planned ${automationId} automation module.`,
-        status: 'active',
-        automation_space: automationId,
-        tags: ['planning', automationId],
-      },
-      {
-        onSuccess: (module) => {
-          setSelectedModuleId(module.id);
-          setView('testcases');
-        },
-      },
-    );
-  };
-
-  const addCase = () => {
-    if (!selectedModule) return;
-    createCase.mutate({
-      name: `Test Case ${selectedModule.test_cases.length + 1}`,
-      description: 'Planned automation test case.',
-      status: 'draft',
-      automation_space: automationId,
-      test_type: 'functional',
+  const openCreateForm = (entity: PlanningEntity) => {
+    setValidationError(null);
+    setForm({
+      mode: 'create',
+      entity,
+      name: '',
+      description: '',
+      status: entity === 'case' ? 'draft' : 'active',
+      tags: `planning, ${automationId}`,
+      testType: 'functional',
       priority: 'p2',
-      execution_mode: 'automated',
+      executionMode: 'automated',
       platforms: automationPlatforms(automationId),
-      tags: ['planning', automationId],
-      default_variables: {},
+      defaultVariables: '{}',
     });
+  };
+
+  const openEditProject = (project: TestProject) => {
+    setValidationError(null);
+    setSelectedProjectId(project.id);
+    setSelectedModuleId(project.modules[0]?.id ?? null);
+    setView('projects');
+    setForm({
+      mode: 'edit',
+      entity: 'project',
+      id: project.id,
+      name: project.name,
+      description: project.description,
+      status: project.status,
+      tags: tagsToCsv(project.tags),
+      testType: 'functional',
+      priority: 'p2',
+      executionMode: 'automated',
+      platforms: automationPlatforms(automationId),
+      defaultVariables: '{}',
+    });
+  };
+
+  const openEditModule = (module: TestModule) => {
+    setValidationError(null);
+    setSelectedModuleId(module.id);
+    setView('modules');
+    setForm({
+      mode: 'edit',
+      entity: 'module',
+      id: module.id,
+      name: module.name,
+      description: module.description,
+      status: module.status,
+      tags: tagsToCsv(module.tags),
+      testType: 'functional',
+      priority: 'p2',
+      executionMode: 'automated',
+      platforms: automationPlatforms(automationId),
+      defaultVariables: '{}',
+    });
+  };
+
+  const openEditCase = (testCase: TestCase) => {
+    setValidationError(null);
+    setForm({
+      mode: 'edit',
+      entity: 'case',
+      id: testCase.id,
+      name: testCase.name,
+      description: testCase.description,
+      status: testCase.status,
+      tags: tagsToCsv(testCase.tags),
+      testType: testCase.test_type,
+      priority: testCase.priority,
+      executionMode: testCase.execution_mode,
+      platforms: testCase.platforms.length ? testCase.platforms : automationPlatforms(automationId),
+      defaultVariables: JSON.stringify(testCase.default_variables ?? {}, null, 2),
+    });
+  };
+
+  const submitForm = () => {
+    if (!form) return;
+    const name = form.name.trim();
+    if (!name) {
+      setValidationError(`${form.entity === 'case' ? 'Test case' : form.entity} name is required.`);
+      return;
+    }
+
+    setValidationError(null);
+
+    if (form.entity === 'project') {
+      const payload = {
+        name,
+        description: form.description,
+        status: form.status,
+        automation_space: automationId,
+        tags: csvToTags(form.tags),
+      };
+      if (form.mode === 'create') {
+        createProject.mutate(payload, {
+          onSuccess: (project) => {
+            setSelectedProjectId(project.id);
+            setSelectedModuleId(project.modules[0]?.id ?? null);
+            setForm(null);
+          },
+        });
+      } else {
+        updateProject.mutate(payload, { onSuccess: () => setForm(null) });
+      }
+      return;
+    }
+
+    if (form.entity === 'module') {
+      if (!selectedProjectId) {
+        setValidationError('Select a project before saving a module.');
+        return;
+      }
+      const payload = {
+        name,
+        description: form.description,
+        status: form.status,
+        automation_space: automationId,
+        tags: csvToTags(form.tags),
+      };
+      if (form.mode === 'create') {
+        createModule.mutate(payload, {
+          onSuccess: (module) => {
+            setSelectedModuleId(module.id);
+            setForm(null);
+          },
+        });
+      } else {
+        updateModule.mutate(payload, { onSuccess: () => setForm(null) });
+      }
+      return;
+    }
+
+    if (!selectedModuleId && form.mode === 'create') {
+      setValidationError('Select a module before saving a test case.');
+      return;
+    }
+    if (form.platforms.length === 0) {
+      setValidationError('Select at least one platform.');
+      return;
+    }
+
+    let defaultVariables: Record<string, unknown>;
+    try {
+      defaultVariables = JSON.parse(form.defaultVariables || '{}') as Record<string, unknown>;
+    } catch {
+      setValidationError('Default variables must be valid JSON.');
+      return;
+    }
+
+    const payload = {
+      name,
+      description: form.description,
+      status: form.status,
+      automation_space: automationId,
+      test_type: form.testType,
+      priority: form.priority,
+      execution_mode: form.executionMode,
+      platforms: form.platforms,
+      tags: csvToTags(form.tags),
+      default_variables: defaultVariables,
+    };
+
+    if (form.mode === 'create') {
+      createCase.mutate(payload, { onSuccess: () => setForm(null) });
+    } else {
+      updateCase.mutate(payload, { onSuccess: () => setForm(null) });
+    }
+  };
+
+  const deleteProjectCard = (project: TestProject) => {
+    if (!window.confirm(`Delete project "${project.name}" and its modules and test cases?`)) return;
+    const nextProject = projects.find((candidate) => candidate.id !== project.id) ?? null;
+    setValidationError(null);
+    if (selectedProjectId === project.id) {
+      setSelectedProjectId(nextProject?.id ?? null);
+      setSelectedModuleId(nextProject?.modules[0]?.id ?? null);
+      setView(nextProject ? 'projects' : 'projects');
+    }
+    if (form?.id === project.id) setForm(null);
+    deleteProject.mutate(project.id);
+  };
+
+  const deleteModuleCard = (module: TestModule) => {
+    if (!window.confirm(`Delete module "${module.name}" and its test cases?`)) return;
+    const nextModule = selectedProject?.modules.find((candidate) => candidate.id !== module.id) ?? null;
+    setValidationError(null);
+    if (selectedModuleId === module.id) {
+      setSelectedModuleId(nextModule?.id ?? null);
+      setView('modules');
+    }
+    if (form?.id === module.id) setForm(null);
+    deleteModule.mutate(module.id);
+  };
+
+  const deleteCaseCard = (testCase: TestCase) => {
+    if (!window.confirm(`Delete test case "${testCase.name}"?`)) return;
+    setValidationError(null);
+    if (form?.id === testCase.id) setForm(null);
+    deleteCase.mutate(testCase.id);
   };
 
   const renderBreadcrumb = () => (
@@ -236,38 +452,209 @@ function PlanningWorkspace({ automationId }: { automationId: string }) {
     </div>
   );
 
+  const renderPlanningForm = (entity: PlanningEntity) => {
+    if (!form || form.entity !== entity) return null;
+
+    return (
+      <div className="rounded-xl border border-[var(--color-line-default)] bg-[var(--color-surface-1)] p-4">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h4 className="text-base font-semibold text-[var(--color-fg-default)]">
+              {form.mode === 'create' ? 'Create' : 'Edit'} {entity === 'case' ? 'Test Case' : entity[0].toUpperCase() + entity.slice(1)}
+            </h4>
+            <p className="text-xs text-[var(--color-fg-muted)]">Saved under {automationId} automation planning.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setForm(null)} disabled={isSaving}>
+              <X className="h-4 w-4" />
+              Cancel
+            </Button>
+            <Button variant="neon" size="sm" onClick={submitForm} disabled={isSaving}>
+              {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              {form.mode === 'create' ? 'Create' : 'Save'}
+            </Button>
+          </div>
+        </div>
+
+        {validationError && (
+          <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+            {validationError}
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+          <div>
+            <label className={LABEL_CLASS}>Name</label>
+            <input
+              className={INPUT_CLASS}
+              value={form.name}
+              onChange={(event) => setForm((current) => current ? { ...current, name: event.target.value } : current)}
+              placeholder={entity === 'case' ? 'Test case name' : `${entity[0].toUpperCase() + entity.slice(1)} name`}
+            />
+          </div>
+          <div>
+            <label className={LABEL_CLASS}>Status</label>
+            <select
+              className={INPUT_CLASS}
+              value={form.status}
+              onChange={(event) => setForm((current) => current ? { ...current, status: event.target.value } : current)}
+            >
+              {(entity === 'case' ? ['draft', 'active', 'deprecated'] : ['active', 'draft', 'archived']).map((status) => (
+                <option key={status} value={status}>{status}</option>
+              ))}
+            </select>
+          </div>
+
+          {entity === 'case' && (
+            <>
+              <div>
+                <label className={LABEL_CLASS}>Priority</label>
+                <select
+                  className={INPUT_CLASS}
+                  value={form.priority}
+                  onChange={(event) => setForm((current) => current ? { ...current, priority: event.target.value } : current)}
+                >
+                  {['p0', 'p1', 'p2', 'p3'].map((priority) => (
+                    <option key={priority} value={priority}>{priority}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={LABEL_CLASS}>Type</label>
+                <select
+                  className={INPUT_CLASS}
+                  value={form.testType}
+                  onChange={(event) => setForm((current) => current ? { ...current, testType: event.target.value } : current)}
+                >
+                  {['functional', 'smoke', 'regression', 'integration', 'e2e'].map((testType) => (
+                    <option key={testType} value={testType}>{testType}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={LABEL_CLASS}>Execution Mode</label>
+                <select
+                  className={INPUT_CLASS}
+                  value={form.executionMode}
+                  onChange={(event) => setForm((current) => current ? { ...current, executionMode: event.target.value } : current)}
+                >
+                  {['automated', 'manual', 'hybrid'].map((mode) => (
+                    <option key={mode} value={mode}>{mode}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={LABEL_CLASS}>Platforms</label>
+                <div className="flex min-h-10 flex-wrap items-center gap-2">
+                  {['web', 'desktop', 'mobile', 'api'].map((platform) => {
+                    const active = form.platforms.includes(platform);
+                    return (
+                      <button
+                        key={platform}
+                        type="button"
+                        onClick={() => setForm((current) => current
+                          ? {
+                              ...current,
+                              platforms: active
+                                ? current.platforms.filter((item) => item !== platform)
+                                : [...current.platforms, platform],
+                            }
+                          : current)}
+                        className={`rounded-full border px-3 py-1 text-xs font-mono transition-colors ${
+                          active
+                            ? 'border-[rgba(91,140,255,0.55)] bg-[rgba(91,140,255,0.14)] text-[#5b8cff]'
+                            : 'border-[var(--color-line-default)] text-[var(--color-fg-subtle)] hover:text-[var(--color-fg-default)]'
+                        }`}
+                      >
+                        {platform}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          )}
+
+          <div className={entity === 'case' ? '' : 'lg:col-span-2'}>
+            <label className={LABEL_CLASS}>Tags</label>
+            <input
+              className={INPUT_CLASS}
+              value={form.tags}
+              onChange={(event) => setForm((current) => current ? { ...current, tags: event.target.value } : current)}
+              placeholder="planning, smoke"
+            />
+          </div>
+          <div className="lg:col-span-2">
+            <label className={LABEL_CLASS}>Description</label>
+            <textarea
+              className={`${INPUT_CLASS} min-h-24 resize-y`}
+              value={form.description}
+              onChange={(event) => setForm((current) => current ? { ...current, description: event.target.value } : current)}
+              placeholder="Describe the scope and intent"
+            />
+          </div>
+          {entity === 'case' && (
+            <div className="lg:col-span-2">
+              <label className={LABEL_CLASS}>Default Variables JSON</label>
+              <textarea
+                className={`${INPUT_CLASS} min-h-24 resize-y font-mono text-xs`}
+                value={form.defaultVariables}
+                onChange={(event) => setForm((current) => current ? { ...current, defaultVariables: event.target.value } : current)}
+                placeholder='{"baseUrl":"https://example.test"}'
+              />
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   const renderProjects = () => (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-lg font-semibold text-[var(--color-fg-default)]">Projects</h3>
-        <Button variant="neon" size="sm" onClick={addProject} disabled={createProject.isPending}>
-          {createProject.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+        <Button variant="neon" size="sm" onClick={() => openCreateForm('project')} disabled={createProject.isPending}>
+          <Plus className="h-4 w-4" />
           Project
         </Button>
       </div>
+      {renderPlanningForm('project')}
       {projects.length === 0 ? (
         <EmptyState message="No projects yet. Create a project to unlock modules." />
       ) : (
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3">
           {projects.map((project) => (
-            <button
+            <div
               key={project.id}
-              type="button"
-              onClick={() => selectProject(project)}
-              className="rounded-xl border border-[var(--color-line-default)] bg-[var(--color-surface-1)] p-4 text-left transition-all hover:border-[rgba(91,140,255,0.45)] hover:bg-[rgba(91,140,255,0.06)]"
+              className="rounded-xl border border-[var(--color-line-default)] bg-[var(--color-surface-1)] p-4 transition-all hover:border-[rgba(91,140,255,0.45)] hover:bg-[rgba(91,140,255,0.06)]"
             >
               <div className="flex items-start justify-between gap-3">
-                <div>
+                <div className="min-w-0">
                   <h4 className="font-semibold text-[var(--color-fg-default)]">{project.name}</h4>
                   <p className="mt-1 line-clamp-2 text-sm text-[var(--color-fg-muted)]">{project.description || 'No description'}</p>
                 </div>
                 <span className="rounded-full bg-[rgba(91,140,255,0.12)] px-2 py-1 font-mono text-[10px] text-[#5b8cff]">{project.status}</span>
               </div>
-              <div className="mt-4 flex gap-2 text-[11px] text-[var(--color-fg-subtle)]">
+              <div className="mt-4 flex flex-wrap items-center gap-2 text-[11px] text-[var(--color-fg-subtle)]">
                 <span>{project.modules.length} modules</span>
                 <span>{project.modules.reduce((sum, module) => sum + module.test_cases.length, 0)} cases</span>
+                <span className="font-mono">{project.automation_space ?? automationId}</span>
               </div>
-            </button>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Button variant="glass" size="xs" onClick={() => selectProject(project)}>
+                  <ArrowRight className="h-3.5 w-3.5" />
+                  Open
+                </Button>
+                <Button variant="glass" size="xs" onClick={() => openEditProject(project)}>
+                  <Edit3 className="h-3.5 w-3.5" />
+                  Edit
+                </Button>
+                <Button variant="danger" size="xs" onClick={() => deleteProjectCard(project)} disabled={deleteProject.isPending}>
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Delete
+                </Button>
+              </div>
+            </div>
           ))}
         </div>
       )}
@@ -281,11 +668,12 @@ function PlanningWorkspace({ automationId }: { automationId: string }) {
           <h3 className="text-lg font-semibold text-[var(--color-fg-default)]">Modules</h3>
           <p className="text-sm text-[var(--color-fg-muted)]">{selectedProject ? selectedProject.name : 'Select a project to continue'}</p>
         </div>
-        <Button variant="neon" size="sm" onClick={addModule} disabled={!selectedProject || createModule.isPending}>
-          {createModule.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+        <Button variant="neon" size="sm" onClick={() => openCreateForm('module')} disabled={!selectedProject || createModule.isPending}>
+          <Plus className="h-4 w-4" />
           Module
         </Button>
       </div>
+      {renderPlanningForm('module')}
       {!selectedProject ? (
         <EmptyState message="Select a project from Step 1 before creating modules." />
       ) : selectedProject.modules.length === 0 ? (
@@ -293,19 +681,32 @@ function PlanningWorkspace({ automationId }: { automationId: string }) {
       ) : (
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3">
           {selectedProject.modules.map((module) => (
-            <button
+            <div
               key={module.id}
-              type="button"
-              onClick={() => selectModule(module)}
-              className="rounded-xl border border-[var(--color-line-default)] bg-[var(--color-surface-1)] p-4 text-left transition-all hover:border-[rgba(22,163,74,0.45)] hover:bg-[rgba(22,163,74,0.06)]"
+              className="rounded-xl border border-[var(--color-line-default)] bg-[var(--color-surface-1)] p-4 transition-all hover:border-[rgba(22,163,74,0.45)] hover:bg-[rgba(22,163,74,0.06)]"
             >
               <h4 className="font-semibold text-[var(--color-fg-default)]">{module.name}</h4>
               <p className="mt-1 line-clamp-2 text-sm text-[var(--color-fg-muted)]">{module.description || 'No description'}</p>
-              <div className="mt-4 flex gap-2 text-[11px] text-[var(--color-fg-subtle)]">
+              <div className="mt-4 flex flex-wrap gap-2 text-[11px] text-[var(--color-fg-subtle)]">
                 <span>{module.test_cases.length} cases</span>
                 <span>{module.status}</span>
+                <span className="font-mono">{module.automation_space ?? automationId}</span>
               </div>
-            </button>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Button variant="glass" size="xs" onClick={() => selectModule(module)}>
+                  <ArrowRight className="h-3.5 w-3.5" />
+                  Open
+                </Button>
+                <Button variant="glass" size="xs" onClick={() => openEditModule(module)}>
+                  <Edit3 className="h-3.5 w-3.5" />
+                  Edit
+                </Button>
+                <Button variant="danger" size="xs" onClick={() => deleteModuleCard(module)} disabled={deleteModule.isPending}>
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Delete
+                </Button>
+              </div>
+            </div>
           ))}
         </div>
       )}
@@ -319,11 +720,12 @@ function PlanningWorkspace({ automationId }: { automationId: string }) {
           <h3 className="text-lg font-semibold text-[var(--color-fg-default)]">Test Cases</h3>
           <p className="text-sm text-[var(--color-fg-muted)]">{selectedModule ? selectedModule.name : 'Select a module to continue'}</p>
         </div>
-        <Button variant="neon" size="sm" onClick={addCase} disabled={!selectedModule || createCase.isPending}>
-          {createCase.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+        <Button variant="neon" size="sm" onClick={() => openCreateForm('case')} disabled={!selectedModule || createCase.isPending}>
+          <Plus className="h-4 w-4" />
           Case
         </Button>
       </div>
+      {renderPlanningForm('case')}
       {!selectedModule ? (
         <EmptyState message="Select a module from Step 2 before creating test cases." />
       ) : selectedModule.test_cases.length === 0 ? (
@@ -343,6 +745,17 @@ function PlanningWorkspace({ automationId }: { automationId: string }) {
                 <span>{testCase.status}</span>
                 <span>{testCase.test_type}</span>
                 <span>{testCase.test_steps.length} steps</span>
+                <span className="font-mono">{testCase.automation_space ?? automationId}</span>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Button variant="glass" size="xs" onClick={() => openEditCase(testCase)}>
+                  <Edit3 className="h-3.5 w-3.5" />
+                  Edit
+                </Button>
+                <Button variant="danger" size="xs" onClick={() => deleteCaseCard(testCase)} disabled={deleteCase.isPending}>
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Delete
+                </Button>
               </div>
             </div>
           ))}

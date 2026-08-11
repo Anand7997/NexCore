@@ -170,7 +170,7 @@ const AutomationPlanningDashboard: React.FC<AutomationPlanningDashboardProps> = 
             <PhaseStepCard
               icon={FileText}
               title="Test Cases"
-              description="View and manage test cases created by the Automation Development phase."
+              description="Create, edit, and manage test cases for the selected module."
               step="Step 3"
               accent="violet"
               disabled={!selectedModule}
@@ -216,7 +216,7 @@ const AutomationPlanningDashboard: React.FC<AutomationPlanningDashboardProps> = 
               selectedProject={selectedProject}
               selectedModule={selectedModule}
               onBack={() => setCurrentView('modules')}
-              readOnlyMode={true} // This makes it show test cases created by development
+              readOnlyMode={false}
               highlightTestCase={navigationData?.savedTestCase} // Highlight newly synced test case
               onTestCaseSelect={(testCase) => {
                 // Handle test case selection to show test steps
