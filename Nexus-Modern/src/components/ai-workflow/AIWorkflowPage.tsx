@@ -90,7 +90,7 @@ const WORKFLOW_STEPS = [
   { id: 'model', label: 'Model', icon: Bot, desc: 'Select AI' },
   { id: 'scenarios', label: 'Scenarios', icon: ClipboardList, desc: 'Select tests' },
   { id: 'generation', label: 'Test Gen', icon: Wand2, desc: 'Generate' },
-  { id: 'discovery', label: 'Binding', icon: Globe, desc: 'Scrape + pick' },
+  { id: 'discovery', label: 'Binding', icon: Globe, desc: 'Discover + bind' },
   { id: 'review', label: 'Review', icon: CheckCircle2, desc: 'Results' },
 ] as const;
 
@@ -148,8 +148,8 @@ const WEB_PIPELINE_STAGES: PipelineStageConfig[] = [
   { id: 'testcases', no: 4, label: 'Generating Test Cases', icon: FileText, desc: 'Build scenario test coverage' },
   { id: 'teststeps', no: 5, label: 'Generating Test Steps', icon: Play, desc: 'Draft executable step flow' },
   { id: 'page', no: 6, label: 'Creating Page', icon: Globe, desc: 'Create Page Repository entry' },
-  { id: 'mcp', no: 7, label: 'Triggering MCP', icon: Sparkles, desc: 'Start browser scraping' },
-  { id: 'scrape', no: 8, label: 'Step Candidate Panel', icon: Search, desc: 'Show step-needed candidates' },
+  { id: 'mcp', no: 7, label: 'Starting Discovery', icon: Sparkles, desc: 'Analyze the target page' },
+  { id: 'scrape', no: 8, label: 'Element Candidate Panel', icon: Search, desc: 'Show relevant candidates' },
   { id: 'pageConfig', no: 9, label: 'Configuring Page', icon: Target, desc: 'Save useful elements and XPath' },
   { id: 'stepConfig', no: 10, label: 'Configuring Test Steps', icon: Settings2, desc: 'Bind page, element, action' },
 ];
@@ -161,10 +161,10 @@ const DESKTOP_PIPELINE_STAGES: PipelineStageConfig[] = [
   { id: 'testcases', no: 4, label: 'Generating Test Cases', icon: FileText, desc: 'Build scenario test coverage' },
   { id: 'teststeps', no: 5, label: 'Generating Test Steps', icon: Play, desc: 'Draft executable desktop actions' },
   { id: 'page', no: 6, label: 'Creating Screen', icon: Monitor, desc: 'Create Page Repository screen entry' },
-  { id: 'mcp', no: 7, label: 'Triggering Desktop MCP', icon: Sparkles, desc: 'Start UIA scanner session' },
+  { id: 'mcp', no: 7, label: 'Starting Desktop Discovery', icon: Sparkles, desc: 'Analyze the target application' },
   { id: 'appLaunch', no: 8, label: 'Launching Application', icon: Monitor, desc: 'Open target desktop app' },
-  { id: 'scrape', no: 9, label: 'UID Capture Panel', icon: Search, desc: 'Show step-needed objects' },
-  { id: 'pageConfig', no: 10, label: 'Configuring Objects', icon: Target, desc: 'Save useful objects and UIA paths' },
+  { id: 'scrape', no: 9, label: 'Object Candidate Panel', icon: Search, desc: 'Show relevant objects' },
+  { id: 'pageConfig', no: 10, label: 'Configuring Objects', icon: Target, desc: 'Save selected objects and paths' },
   { id: 'stepConfig', no: 11, label: 'Configuring Test Steps', icon: Settings2, desc: 'Bind screen, object, action' },
 ];
 
@@ -209,38 +209,38 @@ type McpPhaseConfig = {
 };
 
 const WEB_MCP_PHASES: McpPhaseConfig[] = [
-  { id: 'trigger', no: '01', label: 'Panel Live', desc: 'Open MCP telemetry', icon: Radio },
-  { id: 'scrape', no: '02', label: 'Scraping', desc: 'Collect raw elements', icon: Activity },
-  { id: 'xpaths', no: '03', label: 'XPath Sweep', desc: 'Extract locator paths', icon: Route },
-  { id: 'rank', no: '04', label: 'Best Pick', desc: 'Match steps to elements', icon: SlidersHorizontal },
-  { id: 'save', no: '05', label: 'Page Config', desc: 'Save useful elements', icon: Database },
-  { id: 'configure', no: '06', label: 'Step Bind', desc: 'Wire actions and XPath', icon: ListChecks },
+  { id: 'trigger', no: '01', label: 'Discovery Ready', desc: 'Prepare analysis telemetry', icon: Radio },
+  { id: 'scrape', no: '02', label: 'Element Discovery', desc: 'Identify relevant elements', icon: Activity },
+  { id: 'xpaths', no: '03', label: 'Locator Analysis', desc: 'Generate locator paths', icon: Route },
+  { id: 'rank', no: '04', label: 'Candidate Ranking', desc: 'Match steps to elements', icon: SlidersHorizontal },
+  { id: 'save', no: '05', label: 'Page Configuration', desc: 'Save selected elements', icon: Database },
+  { id: 'configure', no: '06', label: 'Step Binding', desc: 'Connect actions to locators', icon: ListChecks },
 ];
 
 const DESKTOP_MCP_PHASES: McpPhaseConfig[] = [
-  { id: 'trigger', no: '01', label: 'Desktop MCP', desc: 'Open UIA scanner telemetry', icon: Radio },
+  { id: 'trigger', no: '01', label: 'Desktop Discovery', desc: 'Prepare UIA analysis telemetry', icon: Radio },
   { id: 'launch', no: '02', label: 'Launch App', desc: 'Start target application', icon: Monitor },
-  { id: 'scrape', no: '03', label: 'UID Capture', desc: 'Collect raw desktop objects', icon: Activity },
-  { id: 'xpaths', no: '04', label: 'UIA Paths', desc: 'Extract fallback locator paths', icon: Route },
-  { id: 'rank', no: '05', label: 'Best Object', desc: 'Match steps to objects', icon: SlidersHorizontal },
-  { id: 'save', no: '06', label: 'Page Object', desc: 'Save useful desktop objects', icon: Database },
-  { id: 'configure', no: '07', label: 'Step Bind', desc: 'Wire actions and UIA paths', icon: ListChecks },
+  { id: 'scrape', no: '03', label: 'Object Discovery', desc: 'Identify relevant objects', icon: Activity },
+  { id: 'xpaths', no: '04', label: 'Locator Analysis', desc: 'Generate fallback paths', icon: Route },
+  { id: 'rank', no: '05', label: 'Candidate Ranking', desc: 'Match steps to objects', icon: SlidersHorizontal },
+  { id: 'save', no: '06', label: 'Object Configuration', desc: 'Save selected objects', icon: Database },
+  { id: 'configure', no: '07', label: 'Step Binding', desc: 'Connect actions to locators', icon: ListChecks },
 ];
 
 const MCP_WAITING_SIGNALS = [
-  'Opening MCP browser context and warming the page session',
-  'Reading DOM landmarks, ARIA roles, labels, and visible controls',
-  'Extracting XPath, CSS, IDs, placeholders, and text anchors',
-  'Scoring locator stability before anything reaches Page Repository',
-  'Holding step-needed candidates in preview while final binding runs',
+  'Initializing the browser session and target page',
+  'Analyzing page structure, roles, labels, and visible controls',
+  'Generating XPath, CSS, ID, placeholder, and text locators',
+  'Evaluating locator stability before repository storage',
+  'Holding relevant candidates for final step binding',
 ] as const;
 
 const DESKTOP_MCP_WAITING_SIGNALS = [
-  'Waiting for the desktop app window and UIA tree to stabilize',
-  'Reading Automation IDs, names, control types, and class names',
+  'Waiting for the application window and UIA tree to stabilize',
+  'Analyzing Automation IDs, names, control types, and class names',
   'Capturing parent, child, and nearby object context for fallback healing',
-  'Bundling UIA paths, object keys, OCR hints, and visual anchors',
-  'Holding step-needed desktop objects until final binding runs',
+  'Preparing UIA paths, object keys, OCR hints, and visual anchors',
+  'Holding relevant objects for final step binding',
 ] as const;
 
 const MODEL_CAPABILITIES: Record<string, { speed: number; quality: number; cost: number }> = {
@@ -458,16 +458,16 @@ function pipelineStageDetail(
       return wf.state === 'DISCOVERY_RUNNING'
         ? wf.current_message
         : desktop
-          ? 'Desktop MCP scanner queued'
-          : 'Browser scraping trigger queued';
+          ? 'Desktop discovery queued'
+          : 'Element discovery is queued';
     case 'appLaunch':
       return wf.state === 'DISCOVERY_RUNNING'
         ? wf.current_message
-        : 'Desktop app launch waits for Desktop MCP';
+        : 'Desktop application launch is pending';
     case 'scrape':
       return desktop
-        ? `${wf.scraped_candidates.length} step-needed UID/UIA object candidate(s) in panel`
-        : `${wf.scraped_candidates.length} step-needed scraped candidate(s) in panel`;
+        ? `${wf.scraped_candidates.length} relevant desktop object candidate(s) in panel`
+        : `${wf.scraped_candidates.length} relevant element candidate(s) in panel`;
     case 'pageConfig':
       return wf.elements_saved > 0
         ? desktop
@@ -793,12 +793,12 @@ function buildMcpNarrationRows(
   return [
     {
       id: 'panel-open',
-      label: desktop ? 'Desktop MCP panel opened' : 'MCP panel opened',
+      label: desktop ? 'Desktop discovery panel opened' : 'Element discovery panel opened',
       detail: workflowStateReachedMcpPhase(wf, 'trigger', selectedPlatform)
         ? `Binding telemetry is live for ${pageName}.`
         : desktop
-          ? 'Waiting for screen creation before Desktop MCP starts.'
-          : 'Waiting for page creation before MCP starts.',
+          ? 'Waiting for screen creation before desktop analysis starts.'
+          : 'Waiting for page creation before element analysis starts.',
       status: workflowStateReachedMcpPhase(wf, 'trigger', selectedPlatform) ? 'complete' : 'queued',
       icon: Radio,
     },
@@ -809,7 +809,7 @@ function buildMcpNarrationRows(
         ? wf.current_message
         : raw > 0
           ? 'The app was launched and its UIA tree is available for capture.'
-          : 'Desktop MCP will start the target app before UID capture.',
+          : 'The target application will be analyzed before object selection.',
       status: raw > 0 ? 'complete' : mcpPhaseStatus('launch', wf, selectedPlatform),
       icon: Monitor,
     } as McpNarrationRow] : []),
@@ -821,14 +821,14 @@ function buildMcpNarrationRows(
           : `Narrowed to ${raw} step-needed element candidates`
         : desktop
           ? 'UID capture started'
-          : 'Scraping started',
+          : 'Element discovery started',
       detail: wf?.state === 'DISCOVERY_RUNNING'
         ? waitingSignal
         : raw > 0
           ? desktop
             ? 'Step-needed desktop objects are parked in preview mode until final binding is done.'
             : 'Step-needed candidates are parked in preview mode until final binding is done.'
-          : wf?.current_message || 'MCP trigger is queued.',
+          : wf?.current_message || 'Element discovery is queued.',
       status: raw > 0 ? 'complete' : mcpPhaseStatus('scrape', wf, selectedPlatform),
       icon: Search,
     },
@@ -843,7 +843,7 @@ function buildMcpNarrationRows(
         ? `Strongest visible path: ${compactLocator(topLocator, 96)}`
         : desktop
           ? 'Automation IDs, UIA paths, names, classes, and nearby labels will appear after capture.'
-          : 'XPath and CSS candidates will appear as soon as scraping returns.',
+          : 'XPath and CSS candidates will appear as soon as analysis returns.',
       status: xpathCandidates > 0 ? 'complete' : mcpPhaseStatus('xpaths', wf, selectedPlatform),
       icon: Route,
     },
@@ -876,7 +876,7 @@ function buildMcpNarrationRows(
           ? 'Configuring desktop objects'
           : 'Configuring page now',
       detail: (wf?.elements_saved ?? 0) > 0
-        ? `${Math.max(raw - (wf?.elements_saved ?? 0), 0)} non-selected ${desktop ? 'desktop object' : 'scrape'} candidate(s) skipped.`
+        ? `${Math.max(raw - (wf?.elements_saved ?? 0), 0)} non-selected ${desktop ? 'desktop object' : 'element'} candidate(s) skipped.`
         : desktop
           ? 'Useful desktop objects are being prepared for Page Repository.'
           : 'Useful elements are being prepared for Page Repository.',
@@ -976,7 +976,7 @@ function McpMissionControlPanel({
             <div className="mb-2 flex flex-wrap items-center gap-3">
               <span className="inline-flex items-center gap-2 rounded-full border border-cyan-300/25 bg-cyan-300/10 px-3.5 py-2 font-mono text-xs uppercase tracking-[0.16em] text-cyan-100">
                 <Zap size={11} />
-                {desktop ? 'Desktop MCP Mission Control' : 'MCP Mission Control'}
+                {desktop ? 'Desktop Discovery' : 'Element Discovery'}
               </span>
               <span className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-2 font-mono text-xs ${
                 isLive
@@ -985,7 +985,7 @@ function McpMissionControlPanel({
               }`}>
                 <span className={`h-1.5 w-1.5 rounded-full ${isLive ? 'bg-emerald-300 animate-pulse' : 'bg-white/30'}`} />
                 {isLive
-                  ? desktop ? 'Live object telemetry' : 'Live scrape telemetry'
+                  ? desktop ? 'Live object analysis' : 'Live element analysis'
                   : wf.state === 'FAILED' ? 'Stopped' : 'Telemetry captured'}
               </span>
             </div>
@@ -995,7 +995,7 @@ function McpMissionControlPanel({
               </div>
               <div className="min-w-0">
                 <h2 className="text-lg font-semibold leading-tight text-(--color-fg-default) md:text-xl">
-                  {desktop ? 'Desktop MCP is capturing object paths in public' : 'MCP is doing the boring scrape work in public'}
+                  {desktop ? 'The discovery service is analyzing application objects' : 'The discovery service is identifying page elements'}
                 </h2>
                 <p className="mt-1 text-[12px] leading-relaxed text-(--color-fg-subtle)">
                   {wf.current_message || `Standing by for ${activePhase.label.toLowerCase()}.`}
@@ -1077,7 +1077,7 @@ function McpMissionControlPanel({
             <div className="flex items-center justify-between border-b border-white/[0.06] px-4 py-3">
               <div className="flex items-center gap-3 text-xs font-semibold text-(--color-fg-default)">
                 <Cpu size={13} className="text-cyan-200" />
-                What MCP is doing
+                Discovery Progress
               </div>
               <span className="font-mono text-[10px] text-(--color-fg-subtle)">{activePhase.no} / 06</span>
             </div>
@@ -1133,10 +1133,10 @@ function McpMissionControlPanel({
                     <Search size={18} className={isLive ? 'animate-pulse' : ''} />
                   </div>
                   <div className="text-xs font-semibold text-(--color-fg-default)">
-                    {isLive ? 'MCP scrape is running' : 'Waiting for scrape candidates'}
+                    {isLive ? 'Element discovery is in progress' : 'Waiting for element candidates'}
                   </div>
                   <div className="mx-auto mt-1 max-w-sm text-xs leading-relaxed text-(--color-fg-subtle)">
-                    {isLive ? MCP_WAITING_SIGNALS[pulseIndex % MCP_WAITING_SIGNALS.length] : 'Candidate rows, XPath, confidence, and picked status will land here.'}
+                    {isLive ? MCP_WAITING_SIGNALS[pulseIndex % MCP_WAITING_SIGNALS.length] : 'Candidate rows, locator paths, confidence, and selection status will appear here.'}
                   </div>
                 </div>
               </div>
@@ -1817,7 +1817,7 @@ function ModelSelectionStep({ onSelectModel, isPending }: {
   return (
     <div className="max-w-3xl mx-auto space-y-5">
       <div className="text-sm text-(--color-fg-muted)">
-        Select an LLM provider, then choose the model that will generate scenarios, test cases, and test steps from the BRD. Page scraping will run later and save only the elements needed by those steps.
+        Select an LLM provider, then choose the model that will generate scenarios, test cases, and test steps from the BRD. Element discovery will run later and save only the elements needed by those steps.
       </div>
       {isLoading ? (
         <div className="flex items-center gap-3 text-sm text-(--color-fg-subtle)">
@@ -1922,7 +1922,7 @@ function DiscoveryStep({
           <span className="text-sm text-emerald-300">
             {desktop
               ? `Screen saved with ${wf?.elements_saved} necessary objects selected from the UID capture`
-              : `Page saved with ${wf?.elements_saved} necessary elements selected from the scrape`}
+              : `Page saved with ${wf?.elements_saved} relevant elements selected during discovery`}
           </span>
         </motion.div>
       )}
@@ -2095,7 +2095,7 @@ function ReviewStep({
         <div className="space-y-4">
           <div className="flex items-center gap-3 text-xs font-semibold text-(--color-fg-muted)">
             <Sparkles size={12} className="text-violet-400" />
-            {desktop ? 'Desktop MCP Object Panel' : 'MCP Scrape Panel'}
+            {desktop ? 'Desktop Object Discovery' : 'Element Discovery Panel'}
           </div>
           <McpMissionControlPanel wf={wf} compact selectedPlatform={selectedPlatform} />
         </div>
@@ -2373,7 +2373,7 @@ export default function AIWorkflowPage({
               <div className="mt-1 text-[10px] text-(--color-fg-subtle)">
                 {selectedPlatform === 'desktop'
                   ? 'Project, scenario, app launch, UID paths, configured steps'
-                  : 'Project, scenario, scrape, XPath, configured steps'}
+                  : 'Project, scenario, element discovery, XPath, configured steps'}
               </div>
             </div>
             <div

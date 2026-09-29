@@ -114,9 +114,9 @@ _ROLLBACK_STAGE_LABELS: dict[str, str] = {
     "testcases": "Generating Test Cases",
     "teststeps": "Generating Test Steps",
     "page": "Creating Page",
-    "mcp": "Triggering MCP",
+    "mcp": "Starting Discovery",
     "appLaunch": "Launching Desktop App",
-    "scrape": "Step Candidate Panel",
+    "scrape": "Element Candidate Panel",
     "pageConfig": "Configuring Page",
     "stepConfig": "Configuring Test Steps",
 }
@@ -552,7 +552,7 @@ def _application_learning_profile(
             "Core capabilities: infer from executable/window title, BRD, project name, and page name before creating scenarios.",
             "Likely controls: native buttons, menus, text fields, lists, tabs, dialogs, tree/table rows, and status text.",
             "Generation guidance: create direct desktop workflows; avoid assuming a web login or dashboard pattern.",
-            "Scraping guidance: later desktop scraping should prioritize controls named in the generated steps and collect multiple locator paths for healing.",
+            "Element discovery guidance: later desktop analysis should prioritize controls named in the generated steps and collect multiple locator paths for healing.",
             "Out of scope unless explicitly stated: sign-in, email, password, account, and dashboard flows.",
         ])
     else:
@@ -561,7 +561,7 @@ def _application_learning_profile(
             "Core capabilities: infer business-critical navigation, data entry, validation, state changes, and confirmations from the BRD and target URL.",
             "Likely controls: navigation links, buttons, inputs, dropdowns, tables/lists, dialogs, messages, and confirmation text.",
             "Generation guidance: create business-domain workflows from the BRD and target, not generic steps.",
-            "Scraping guidance: later scraping should prioritize elements referenced by generated steps and collect resilient locator alternatives.",
+            "Element discovery guidance: later analysis should prioritize elements referenced by generated steps and collect resilient locator alternatives.",
         ])
         if not auth_explicit:
             profile.append(
@@ -591,7 +591,7 @@ async def _run_scenario_generation(workflow_id: str, ai_provider: str, ai_model:
                 db, workflow_id, WorkflowState.SCENARIOS_GENERATING,
                 "Analysing BRD and generating scenarios...",
                 detail=(
-                    f"Using {ai_provider}/{ai_model} with the BRD. Page scraping runs after "
+                    f"Using {ai_provider}/{ai_model} with the BRD. Element discovery runs after "
                     "test steps are drafted so only necessary elements are saved."
                 ),
                 ai_provider=ai_provider,
@@ -610,7 +610,7 @@ async def _run_scenario_generation(workflow_id: str, ai_provider: str, ai_model:
             )
 
             elements_summary = (
-                "Page scraping has not run yet. Generate behavior-focused scenarios from the BRD; "
+                "Element discovery has not run yet. Generate behavior-focused scenarios from the BRD; "
                 "locators will be selected after test steps exist."
             )
             page_name = wf.page_name or _extract_page_name(wf.webpage_url, wf.project_name)
@@ -1206,7 +1206,7 @@ def _candidate_locator_paths(candidate: dict[str, Any]) -> list[dict[str, Any]]:
                 fallback_tag,
                 verified=False,
                 score=0.20,
-                reason="Broad element-type fallback for sparse scrape metadata",
+                reason="Broad element-type fallback for sparse discovery metadata",
                 source="healing",
             )
             add(
@@ -1214,7 +1214,7 @@ def _candidate_locator_paths(candidate: dict[str, Any]) -> list[dict[str, Any]]:
                 f"//{fallback_tag}",
                 verified=False,
                 score=0.18,
-                reason="Broad element-type XPath fallback for sparse scrape metadata",
+                reason="Broad element-type XPath fallback for sparse discovery metadata",
                 source="healing",
             )
 
@@ -1326,7 +1326,7 @@ def _locator_enhancement_prompt(candidates: list[dict[str, Any]]) -> str:
         for candidate in candidates[:_AI_LOCATOR_ENHANCEMENT_LIMIT]
     ]
     return (
-        "You are improving automation locators during MCP/UI discovery.\n"
+        "You are improving automation locators during UI element discovery.\n"
         "For each candidate, choose the most stable locator already present in "
         "alternative_locators, xpath, css_selector, or best_locator. Prefer verified "
         "unique locators. For web, prefer test ids, role/name locators, stable CSS, "
@@ -1374,7 +1374,7 @@ def _append_locator_if_missing(
     for item in alternatives:
         if isinstance(item, dict) and _same_locator(item.get("locator"), locator):
             item.setdefault("strategy", strategy)
-            item["reason"] = reason or item.get("reason") or "AI-ranked locator from scrape"
+            item["reason"] = reason or item.get("reason") or "AI-ranked locator from discovery"
             return
     alternatives.append({
         "strategy": strategy or "css",
@@ -1382,7 +1382,7 @@ def _append_locator_if_missing(
         "verified": verified,
         "element_count": 1 if verified else 0,
         "score": 0.72 if verified else 0.38,
-        "reason": reason or "AI-generated scrape-time locator candidate",
+        "reason": reason or "AI-generated discovery locator candidate",
     })
 
 
@@ -1408,7 +1408,7 @@ def _promote_ai_locator(
             strategy,
             locator,
             verified=verified,
-            reason=f"AI scrape-time recommendation: {rationale}"[:220],
+            reason=f"AI discovery recommendation: {rationale}"[:220],
         )
 
     order = {name.lower(): index for index, name in enumerate(locator_order or [])}
@@ -1914,8 +1914,8 @@ def _add_desktop_repository_prefetch(
         selected_by_id[candidate_id] = {
             **candidate,
             "selected": True,
-            "match_reason": f"Desktop MCP prefetch kept stable UID/UIA object with {score:.0%} repository score",
-            "matched_steps": ["Desktop MCP repository prefetch"],
+            "match_reason": f"Desktop discovery prefetch kept a stable UIA object with {score:.0%} repository score",
+            "matched_steps": ["Desktop discovery prefetch"],
             "tags": sorted(set((candidate.get("tags") or []) + ["desktop-prefetch"])),
         }
 
@@ -2115,7 +2115,7 @@ def _target_scraped_candidates_for_steps(
                 test_case=test_case,
                 step=step,
                 score=score,
-                reason=f"Ranked against generated {inferred_action} step before MCP save",
+                reason=f"Ranked against generated {inferred_action} step before repository save",
             ):
                 step_added_ids.add(candidate_id)
 
@@ -2555,6 +2555,7 @@ def _bind_cases_with_ai_decisions(
             if inferred_action in {"navigate", "wait", "scroll"}:
                 update = {
                     "page_id": page_id,
+                    "page_element_id": None,
                     "action_type": inferred_action,
                     "needs_review": False,
                     "review_reason": None,
@@ -2594,6 +2595,7 @@ def _bind_cases_with_ai_decisions(
                     continue
                 bound_steps.append(step.model_copy(update={
                     "page_id": page_id,
+                    "page_element_id": None,
                     "action_type": _coerce_ai_action(decision.action_type or inferred_action, step, None),
                     "input_value": decision.input_value or step.input_value,
                     "assertion_type": decision.assertion_type or step.assertion_type,
@@ -2623,6 +2625,7 @@ def _bind_cases_with_ai_decisions(
             else:
                 bound_steps.append(step.model_copy(update={
                     "page_id": page_id,
+                    "page_element_id": None,
                     "action_type": inferred_action,
                     "needs_review": True,
                     "review_reason": "No saved page element matched this step",
@@ -2674,7 +2677,7 @@ async def _save_selected_candidates(
                 "verified": True,
                 "element_count": 1,
                 "score": candidate.get("confidence_score", 0.0),
-                "reason": "Selected from post-test-step scrape",
+                "reason": "Selected from post-test-step discovery",
             })
         if candidate.get("css_selector") and not any(
             locator.get("strategy") == "css" and locator.get("locator") == candidate["css_selector"]
@@ -2686,7 +2689,7 @@ async def _save_selected_candidates(
                 "verified": True,
                 "element_count": 1,
                 "score": candidate.get("confidence_score", 0.0),
-                "reason": "Selected from post-test-step scrape",
+                "reason": "Selected from post-test-step discovery",
             })
 
         tags = sorted(set((candidate.get("tags") or []) + ["ai-selected", "workflow-required"]))
@@ -2967,6 +2970,7 @@ def _bind_cases_to_saved_elements(
             if inferred_action in {"navigate", "wait", "scroll"}:
                 bound_steps.append(step.model_copy(update={
                     "page_id": page_id,
+                    "page_element_id": None,
                     "action_type": inferred_action,
                 }))
                 continue
@@ -2990,9 +2994,10 @@ def _bind_cases_to_saved_elements(
             else:
                 bound_steps.append(step.model_copy(update={
                     "page_id": page_id,
+                    "page_element_id": None,
                     "action_type": inferred_action,
                     "needs_review": True,
-                    "review_reason": "No necessary scraped element matched this step",
+                    "review_reason": "No necessary discovered element matched this step",
                     "confidence": best_score,
                 }))
         bound_cases.append(test_case.model_copy(update={"steps": bound_steps}))
@@ -3225,7 +3230,7 @@ async def _run_testcase_generation(workflow_id: str) -> None:
             await _update_state(
                 db, workflow_id, WorkflowState.TESTCASES_GENERATING,
                 "Generating test cases and drafting test steps...",
-                detail="Selected scenarios are being converted before page scraping starts.",
+                detail="Selected scenarios are being converted before element discovery starts.",
             )
 
             provider = _build_provider(workflow_provider, workflow_model)
@@ -3244,7 +3249,7 @@ async def _run_testcase_generation(workflow_id: str) -> None:
 
             elements_summary = (
                 "Page elements are intentionally unavailable at this stage. Draft clear "
-                "business-level test steps; locator binding will happen after scraping."
+                "business-level test steps; locator binding will happen after element discovery."
             )
             page_name = wf.page_name or _extract_page_name(workflow_url, workflow_project_name)
             application_profile = _application_learning_profile(
@@ -3326,7 +3331,7 @@ async def _run_testcase_generation(workflow_id: str) -> None:
                 f"Generated {total_generated} test case drafts - generating {total_steps} test step drafts...",
                 detail=(
                     "The workflow is now expanding each case into ordered actions before "
-                    "the page scrape starts."
+                    "element discovery starts."
                 ),
                 testcases_created=total_generated,
                 teststeps_created=total_steps,
@@ -3336,7 +3341,7 @@ async def _run_testcase_generation(workflow_id: str) -> None:
                 f"Created {total_generated} test case drafts and {total_steps} test steps",
                 detail=(
                     f"Prepared {len(scrape_step_intents)} actionable step intent(s); "
-                    "MCP scraping will use these targets before candidates are saved to Pages."
+                    "Element discovery will use these targets before candidates are saved to Pages."
                 ),
                 testcases_created=total_generated,
                 teststeps_created=total_steps,
@@ -3360,7 +3365,7 @@ async def _run_testcase_generation(workflow_id: str) -> None:
                 f"Creating page '{page_name}' after test step draft...",
                 detail=(
                     f"Page Repository entry is created only after {total_steps} drafted steps exist. "
-                    f"{len(scrape_step_intents)} actionable step intent(s) will guide scraping."
+                    f"{len(scrape_step_intents)} actionable step intent(s) will guide element discovery."
                 ),
                 project_id=project_id,
                 module_id=module_id,
@@ -3375,24 +3380,19 @@ async def _run_testcase_generation(workflow_id: str) -> None:
                 WorkflowState.PAGE_CREATED,
                 f"Page '{page_name}' created",
                 detail=(
-                    "Scraping starts now with generated test-step intent context; only step-targeted candidates "
+                    "Element discovery starts now with generated test-step intent context; only relevant candidates "
                     "will stay in the workflow panel first."
                 ),
                 page_id=page_id,
             )
 
             is_desktop = _is_desktop_platform(workflow_platform)
-            discovery_engine = (
-                "Desktop MCP scanner"
-                if is_desktop
-                else "MCP Playwright server" if settings.mcp_playwright_url else "local Playwright"
-            )
             if is_desktop:
                 await _update_state(
                     db, workflow_id, WorkflowState.DISCOVERY_RUNNING,
-                    "Triggering Desktop MCP scanner...",
+                    "Starting desktop element discovery...",
                     detail=(
-                        f"Desktop MCP is preparing the UIA capture session with "
+                        f"Desktop discovery is preparing the UIA capture session with "
                         f"{len(scrape_step_intents)} generated step intent(s). Nothing is saved "
                         "to the Page Repository until generated steps choose the needed objects."
                     ),
@@ -3425,9 +3425,9 @@ async def _run_testcase_generation(workflow_id: str) -> None:
             else:
                 await _update_state(
                     db, workflow_id, WorkflowState.DISCOVERY_RUNNING,
-                    f"{discovery_engine} is scraping step-targeted element candidates...",
+                    "The discovery service is identifying elements required by the generated test steps...",
                     detail=(
-                        "The scrape is running in preview mode with generated test-step intents. Nothing is saved to the Page "
+                        "Element discovery is running in preview mode with generated test-step intents. Nothing is saved to the Page "
                         "Repository until the narrowed candidates are selected for those steps."
                     ),
                 )
@@ -3446,7 +3446,7 @@ async def _run_testcase_generation(workflow_id: str) -> None:
                     step_intents=scrape_step_intents,
                 )
             if discovery_result.summary.has_error:
-                raise RuntimeError(discovery_result.summary.error or "Page scraping failed")
+                raise RuntimeError(discovery_result.summary.error or "Element discovery failed")
 
             scraped_candidates = [
                 _candidate_from_discovered(element, index)
@@ -3466,7 +3466,7 @@ async def _run_testcase_generation(workflow_id: str) -> None:
             if is_desktop:
                 await _update_state(
                     db, workflow_id, WorkflowState.DISCOVERY_RUNNING,
-                    f"Desktop MCP narrowed {raw_candidate_count} UID/UIA candidates to {targeted_candidate_count} step-needed object candidates...",
+                    f"Desktop discovery narrowed {raw_candidate_count} UIA candidates to {targeted_candidate_count} relevant object candidates...",
                     detail=(
                         "Automation IDs, UIA paths, names, classes, parent/child context, "
                         "nearby labels, and fallback locator bundles are filtered by generated test-step intent before AI binding. "
@@ -3477,7 +3477,7 @@ async def _run_testcase_generation(workflow_id: str) -> None:
                 )
             await _update_state(
                 db, workflow_id, WorkflowState.DISCOVERY_RUNNING,
-                f"AI is ranking scrape-time locator fallbacks with {workflow_provider}/{workflow_model}...",
+                f"AI is ranking locator candidates with {workflow_provider}/{workflow_model}...",
                 detail=(
                     "The model is choosing the strongest desktop selector while preserving "
                     "Automation ID, parent/child UIA context, nearby labels, name, class, "
@@ -3503,7 +3503,7 @@ async def _run_testcase_generation(workflow_id: str) -> None:
             )
             await _update_state(
                 db, workflow_id, WorkflowState.DISCOVERY_DONE,
-                f"MCP filtered {raw_candidate_count} raw candidates to {targeted_candidate_count} step-needed candidates",
+                f"Element discovery filtered {raw_candidate_count} candidates to {targeted_candidate_count} relevant candidates",
                 detail=(
                     f"AI produced {len(binding_decisions)} step binding decision(s). "
                     f"The pre-save filter removed {skipped_untargeted_count} candidate(s) that did not match generated test steps. "
@@ -3525,16 +3525,16 @@ async def _run_testcase_generation(workflow_id: str) -> None:
             await _update_state(
                 db, workflow_id, WorkflowState.LOCATORS_RANKED,
                 (
-                    f"AI + Desktop MCP selected {len(selected_candidates)} UID/UIA elements from {len(scraped_candidates)} step-targeted candidates"
+                    f"AI selected {len(selected_candidates)} UIA elements from {len(scraped_candidates)} relevant candidates"
                     if is_desktop else
                     f"AI selected {len(selected_candidates)} necessary elements from {len(scraped_candidates)} step-targeted candidates"
                 ),
                 detail=(
                     "AI compared generated desktop test steps with Automation IDs, "
                     "control types, names, parent/child context, nearby labels, and locator candidates, "
-                    "then a bounded MCP safety pass kept only step-targeted UID/UIA fallbacks for coverage and healing."
+                    "then a bounded validation pass kept only relevant UIA fallbacks for coverage and healing."
                     if is_desktop else
-                    "AI compared generated testcase descriptions and test steps with scraped names, "
+                    "AI compared generated testcase descriptions and test steps with discovered names, "
                     "roles, text, IDs, and locator candidates, then chose elements, actions, "
                     "input values, and locator paths."
                 ),
@@ -3569,7 +3569,7 @@ async def _run_testcase_generation(workflow_id: str) -> None:
                     f"Filtered {skipped_untargeted_count} desktop UIA candidate(s) before AI ranking and saved {len(saved_elements)} step-needed object(s). "
                     "Saved objects were fetched back from the Page Repository before binding."
                     if is_desktop else
-                    f"Filtered {skipped_untargeted_count} scraped candidate(s) before AI ranking and saved {len(saved_elements)} step-needed element(s). "
+                    f"Filtered {skipped_untargeted_count} unrelated candidate(s) before AI ranking and saved {len(saved_elements)} relevant element(s). "
                     "Saved elements were fetched back from the Page Repository before binding."
                 ),
                 elements_saved=len(saved_elements),
@@ -3589,11 +3589,11 @@ async def _run_testcase_generation(workflow_id: str) -> None:
                 ),
                 detail=(
                     "Each generated desktop step is being mapped to the created screen and "
-                    "the best matching saved object from the Desktop MCP scan, with locator paths "
+                    "the best matching saved object from desktop discovery, with locator paths "
                     "written into the step configuration."
                     if is_desktop else
                     "Each generated step is being mapped to the created page and the "
-                    "best matching saved element from the scrape, with locator paths written "
+                    "best matching saved element from discovery, with locator paths written "
                     "into the step configuration."
                 ),
             )
@@ -3771,6 +3771,18 @@ async def _persist_test_case(
             if element_lookup and step.page_element_id
             else None
         )
+        if step.page_element_id and element is None:
+            update: dict[str, Any] = {"page_element_id": None}
+            if _infer_workflow_action(step) not in {"navigate", "wait", "scroll"}:
+                update.update({
+                    "needs_review": True,
+                    "review_reason": (
+                        step.review_reason
+                        or "Referenced page element was not saved; bind this step to a discovered element"
+                    ),
+                })
+            step = step.model_copy(update=update)
+
         configured_action = _workflow_action_to_test_config(step.action_type, element)
         if _is_desktop_platform(platform) and configured_action == "NAVIGATE_TO_URL":
             configured_action = "LAUNCH_APP"
