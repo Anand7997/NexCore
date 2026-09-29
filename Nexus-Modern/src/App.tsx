@@ -337,6 +337,23 @@ const BackendBlockPage = () => {
   );
 };
 
+const MatrixPage = () => (
+  <main className="control-plane-scope min-h-screen p-6 md:p-8">
+    <div className="mx-auto max-w-7xl space-y-6">
+      <Link
+        className="inline-flex items-center gap-2 text-sm font-medium transition-colors hover:opacity-80"
+        style={{ color: 'var(--cp-fg-muted)' }}
+        to="/"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Main Dashboard
+      </Link>
+
+      <BackendControlPlane blockId="intent" />
+    </div>
+  </main>
+);
+
 const PhaseContent = ({ phaseId, automationId }: { phaseId: PhaseId; automationId?: string }) => {
   if (phaseId === 'ai-workflow') {
     const platform =
@@ -509,6 +526,7 @@ const App = () => (
       <Route path="/agents" element={<AgentsPage />} />
       <Route path="/ai-analysis" element={<AIInspectLabPage />} />
       <Route path="/ai-investigation" element={<AIInvestigationPage />} />
+      <Route path="/matrix" element={<MatrixPage />} />
       <Route path="/backend/:backendBlockId" element={<BackendBlockPage />} />
       <Route path="/automation/:automationId" element={<AutomationRoute />} />
       <Route path="/automation/:automationId/:phaseId" element={<AutomationPhaseRoute />} />

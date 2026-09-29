@@ -724,6 +724,42 @@ def _normalise_key_value(value: str) -> str:
     return "+".join(normalized)
 
 
+_VISIBLE_ASSERTIONS = {"visible", "is_visible", "displayed", "is_displayed", "present", "exists"}
+_HIDDEN_ASSERTIONS = {"not_visible", "is_not_visible", "hidden", "is_hidden", "absent", "not_present", "not_exists"}
+_ENABLED_ASSERTIONS = {"enabled", "is_enabled", "clickable", "editable"}
+_DISABLED_ASSERTIONS = {"disabled", "is_disabled", "not_enabled", "readonly", "read_only"}
+_TEXT_MATCH_ASSERTIONS = {
+    "text_equals": "equals",
+    "text_equal": "equals",
+    "equals": "equals",
+    "equal": "equals",
+    "exact": "equals",
+    "text_matches": "regex",
+    "regex": "regex",
+    "matches": "regex",
+}
+
+
+def _assertion_state(step) -> str:
+    """Normalise TestStep.assertion_type into one of the supported assertion kinds.
+
+    Returns "visible", "hidden", "enabled", "disabled", or a text match mode
+    ("contains", "equals", "regex"). Blank or unrecognised values fall back to
+    "contains" so workflows generated before assertion types were honoured keep
+    their existing text-assertion behaviour.
+    """
+    raw = str(getattr(step, "assertion_type", "") or "").strip().lower().replace("-", "_").replace(" ", "_")
+    if raw in _VISIBLE_ASSERTIONS:
+        return "visible"
+    if raw in _HIDDEN_ASSERTIONS:
+        return "hidden"
+    if raw in _ENABLED_ASSERTIONS:
+        return "enabled"
+    if raw in _DISABLED_ASSERTIONS:
+        return "disabled"
+    return _TEXT_MATCH_ASSERTIONS.get(raw, "contains")
+
+
 def _node_type_and_config(
     step,
     master_sheet: DesktopMasterSheet | None = None,
@@ -813,12 +849,22 @@ def _node_type_and_config(
                 return "desktop.select", desktop_config({"value": value})
             return "desktop.click", desktop_config()
         if any(token in normalized_action for token in ("assert", "verify", "validate", "expect", "check")) and desktop_selector:
+            assertion_state = _assertion_state(step)
             if property_name:
-                config = desktop_config({"property": property_name, "expected": expected, "match": "contains"})
+                match = assertion_state if assertion_state in {"equals", "regex"} else "contains"
+                config = desktop_config({"property": property_name, "expected": expected, "match": match})
                 if master_metadata and len(master_metadata) > 1:
                     config["master_sheet"] = master_metadata
                 return "desktop.assert_property", config
-            config = desktop_config({"expected": expected, "match": "contains"})
+            if assertion_state in {"visible", "hidden", "enabled", "disabled"}:
+                # Desktop drivers expose no visibility/enabled property, so the closest
+                # supported check is resolving the element by name. An empty expected
+                # value passes as soon as the locator resolves.
+                config = desktop_config({"property": "name", "expected": "", "match": "contains"})
+                if master_metadata and len(master_metadata) > 1:
+                    config["master_sheet"] = master_metadata
+                return "desktop.assert_property", config
+            config = desktop_config({"expected": expected, "match": assertion_state})
             if master_metadata and len(master_metadata) > 1:
                 config["master_sheet"] = master_metadata
             return "desktop.assert_text", config
@@ -884,7 +930,25 @@ def _node_type_and_config(
             })
         return "web.fill", with_locators({"selector": selector, "value": value, "timeout_ms": 15000})
     if any(token in action for token in ("assert", "verify", "validate", "expect", "check")) and selector:
-        return "web.assert_text", with_locators({"selector": selector, "expected": expected, "match": "contains", "timeout_ms": 15000})
+        assertion_state = _assertion_state(step)
+        if assertion_state in {"visible", "hidden"}:
+            return "web.assert_visible", with_locators({
+                "selector": selector,
+                "state": assertion_state,
+                "timeout_ms": 15000,
+            })
+        if assertion_state in {"enabled", "disabled"}:
+            return "web.assert_enabled", with_locators({
+                "selector": selector,
+                "enabled": assertion_state == "enabled",
+                "timeout_ms": 15000,
+            })
+        return "web.assert_text", with_locators({
+            "selector": selector,
+            "expected": expected,
+            "match": assertion_state,
+            "timeout_ms": 15000,
+        })
     if "upload" in action and selector:
         return "web.upload", with_locators({"selector": selector, "file_path": value, "timeout_ms": 15000})
     if any(token in action for token in ("wait", "pause")):
@@ -916,6 +980,47 @@ def _has_explicit_navigate_step(test_cases: list) -> bool:
             if step.is_enabled and _is_navigate_action((step.action_type or step.intent or step.name or "").lower()):
                 return True
     return False
+
+
+def _unbound_steps(test_cases: list) -> list[dict]:
+    """Enabled steps the binder could not attach to a page element.
+
+    Binding writes its verdict into test_data because TestStep has no
+    needs_review column. Running such a step executes against whatever locator
+    happened to be nearest, which fails later and far from the real cause.
+    """
+    unbound: list[dict] = []
+    for test_case in test_cases:
+        for step in sorted(test_case.test_steps or [], key=lambda item: item.step_order):
+            if not step.is_enabled:
+                continue
+            data = step.test_data if isinstance(step.test_data, dict) else {}
+            if not data.get("needs_review"):
+                continue
+            unbound.append({
+                "test_case": getattr(test_case, "name", ""),
+                "step_order": step.step_order,
+                "step_name": step.name or "",
+                "reason": str(data.get("review_reason") or "Step is not bound to a page element"),
+            })
+    return unbound
+
+
+def _assert_all_steps_bound(test_cases: list) -> None:
+    unbound = _unbound_steps(test_cases)
+    if not unbound:
+        return
+    lines = "; ".join(
+        f"step {item['step_order']} \"{item['step_name']}\" ({item['reason']})"
+        for item in unbound
+    )
+    raise HTTPException(
+        status_code=400,
+        detail=(
+            f"{len(unbound)} step(s) are not bound to a page element and would run against "
+            f"an unrelated locator. Fix the bindings before executing: {lines}"
+        ),
+    )
 
 
 def _workflow_from_test_cases(test_cases: list, schema: TestCaseExecutionTriggerSchema) -> WorkflowCreateSchema:
@@ -1145,6 +1250,8 @@ async def trigger_test_case_execution(
         if not test_case:
             raise HTTPException(status_code=404, detail=f"Test case not found: {case_id}")
         test_cases.append(test_case)
+
+    _assert_all_steps_bound(test_cases)
 
     wf_repo = WorkflowRepository(db)
     workflow = await wf_repo.create(_workflow_from_test_cases(test_cases, schema))

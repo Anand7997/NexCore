@@ -255,6 +255,14 @@ function asList(value: unknown): string[] {
   return text ? [text] : [];
 }
 
+function asFixSuggestions(value: unknown): FixSuggestion[] {
+  return Array.isArray(value) ? (value as FixSuggestion[]) : [];
+}
+
+function asAssistantSources(value: unknown): AssistantSource[] {
+  return Array.isArray(value) ? (value as AssistantSource[]) : [];
+}
+
 function cleanText(value: string, limit = 820): string {
   const text = value
     .replace(/^\s*\[[^\]]+\]\s*/i, '')
@@ -932,6 +940,7 @@ function AssistantRagPlan({ result }: { result: AssistantQueryResponse | null })
   const ragScope = Array.isArray(panels.rag_scope) ? panels.rag_scope.map(asText).filter(Boolean) : [];
   const failedNodes = asRecordArray(panels.failed_nodes);
   const workflowContext = asRecordArray(panels.workflow_context);
+  const resultFixes = asFixSuggestions(result?.fixes);
 
   return (
     <div className="space-y-3">
@@ -946,7 +955,7 @@ function AssistantRagPlan({ result }: { result: AssistantQueryResponse | null })
         </div>
         <div className="rounded-xl border border-emerald-300/15 bg-emerald-400/5 p-3">
           <p className="text-[10px] uppercase tracking-[0.18em] text-emerald-200/70">Fixes</p>
-          <p className="mt-2 font-mono text-sm text-emerald-100">{result?.fixes.length ?? 0}</p>
+          <p className="mt-2 font-mono text-sm text-emerald-100">{resultFixes.length}</p>
         </div>
         <div className="rounded-xl border border-amber-300/15 bg-amber-400/5 p-3">
           <p className="text-[10px] uppercase tracking-[0.18em] text-amber-200/70">Answer</p>
@@ -1158,11 +1167,12 @@ function ClopAgentConsole({
       text: 'Ask anything. I will answer general testing questions like a senior test engineer, and fix questions will return ranked OpenAI 5.5 and Claude repair candidates.',
     },
   ]);
-  const recommendedFix = lastResult?.fixes.find((item) => item.id === lastResult.recommended_fix_id)
-    ?? lastResult?.fixes[0]
+  const resultFixes = asFixSuggestions(lastResult?.fixes);
+  const recommendedFix = resultFixes.find((item) => item.id === lastResult?.recommended_fix_id)
+    ?? resultFixes[0]
     ?? fix;
   const modelFixes = buildModelFixCandidates(recommendedFix);
-  const latestSources = lastResult?.sources ?? [];
+  const latestSources = asAssistantSources(lastResult?.sources);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1243,7 +1253,7 @@ function ClopAgentConsole({
             <div className="mt-3 space-y-2 font-mono text-[11px] text-slate-400">
               <p>intent: {lastResult?.intent ?? 'idle'}</p>
               <p>sources: {latestSources.length}</p>
-              <p>fixes: {lastResult?.fixes.length ?? (fix ? 1 : 0)}</p>
+              <p>fixes: {lastResult ? resultFixes.length : (fix ? 1 : 0)}</p>
               <p>answer: {lastResult?.answer_source ?? 'waiting'}</p>
               <p>model: {lastResult?.provider ? `${lastResult.provider}/${lastResult.model ?? 'default'}` : 'OpenAI 5.5 + Claude'}</p>
             </div>
@@ -1268,9 +1278,9 @@ function ClopAgentConsole({
                   >
                     <span className="mr-2 text-slate-500">{message.role === 'user' ? 'you >' : message.role === 'system' ? 'sys >' : 'clop >'}</span>
                     {message.text}
-                    {message.result?.sources?.length ? (
+                    {asAssistantSources(message.result?.sources).length ? (
                       <div className="mt-2 flex flex-wrap gap-1">
-                        {message.result.sources.slice(0, 4).map((source) => (
+                        {asAssistantSources(message.result?.sources).slice(0, 4).map((source) => (
                           <span key={`${source.type}-${source.label}`} className="rounded-md border border-cyan-300/15 bg-cyan-400/10 px-2 py-0.5 text-[10px] text-cyan-100">
                             {source.label}
                           </span>

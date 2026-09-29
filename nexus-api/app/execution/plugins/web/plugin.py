@@ -355,6 +355,34 @@ class WebExecutionPlugin(ExecutionPlugin):
                 },
             ),
             PluginNodeSpec(
+                type="web.assert_visible",
+                plugin="web",
+                label="Assert Visible",
+                category="Web Automation",
+                description="Assert an element is visible (or hidden) on the page.",
+                icon="eye",
+                color="#16a34a",
+                config_schema={
+                    **sel,
+                    "state": {"type": "string", "enum": ["visible", "hidden"], "default": "visible"},
+                    **timeout,
+                },
+            ),
+            PluginNodeSpec(
+                type="web.assert_enabled",
+                plugin="web",
+                label="Assert Enabled",
+                category="Web Automation",
+                description="Assert an element is enabled (or disabled).",
+                icon="toggle-right",
+                color="#16a34a",
+                config_schema={
+                    **sel,
+                    "enabled": {"type": "boolean", "default": True},
+                    **timeout,
+                },
+            ),
+            PluginNodeSpec(
                 type="web.extract_text",
                 plugin="web",
                 label="Extract Text",
@@ -498,7 +526,7 @@ class WebExecutionPlugin(ExecutionPlugin):
             nt in {
                 "web.click", "web.double_click", "web.right_click", "web.hover", "web.check",
                 "web.fill", "web.select", "web.assert_text", "web.extract_text", "web.upload",
-                "web.drag_and_drop",
+                "web.drag_and_drop", "web.assert_visible", "web.assert_enabled",
             }
             and require("selector")
             and not (cfg.get("locators") or cfg.get("alternative_locators") or cfg.get("locator_candidates"))
@@ -603,6 +631,8 @@ class WebExecutionPlugin(ExecutionPlugin):
             "web.drag_and_drop": WebExecutionPlugin._do_drag_and_drop,
             "web.wait":          WebExecutionPlugin._do_wait,
             "web.assert_text":   WebExecutionPlugin._do_assert_text,
+            "web.assert_visible": WebExecutionPlugin._do_assert_visible,
+            "web.assert_enabled": WebExecutionPlugin._do_assert_enabled,
             "web.extract_text":  WebExecutionPlugin._do_extract_text,
             "web.screenshot":    WebExecutionPlugin._do_screenshot,
             "web.upload":        WebExecutionPlugin._do_upload,
@@ -1016,15 +1046,7 @@ class WebExecutionPlugin(ExecutionPlugin):
             ok = expected in actual
 
         if not ok:
-            # Capture DOM snapshot so the AI failure pipeline can later replay.
-            try:
-                dom = await page.content()
-                await envelope.artifacts.record_text(
-                    ArtifactKind.DOM_SNAPSHOT, "dom.html", dom,
-                    content_type="text/html",
-                )
-            except Exception:
-                pass
+            await self._record_failure_dom(envelope, page)
             raise AssertionError(
                 f"text assertion failed at {sel!r}: expected {match} {expected!r}, "
                 f"got {_truncate(actual, 200)!r}"
@@ -1032,6 +1054,67 @@ class WebExecutionPlugin(ExecutionPlugin):
         await self._emit_action(envelope, "assert_text", selector=sel,
                                 metadata={"locator_attempts": attempts})
         return {"selector": sel, "actual": _truncate(actual, 500), "match": match, "locator_attempts": attempts}
+
+    async def _do_assert_visible(self, envelope, page, cfg) -> dict[str, Any]:
+        state = "hidden" if str(cfg.get("state", "visible")).lower() == "hidden" else "visible"
+
+        async def reach_state(locator, timeout):
+            await locator.wait_for(state=state, timeout=timeout)
+            return True
+
+        try:
+            sel, _, attempts = await self._with_locator_healing(
+                envelope, page, cfg, "assert_visible", reach_state
+            )
+        except Exception as exc:
+            await self._record_failure_dom(envelope, page)
+            raise AssertionError(
+                f"visibility assertion failed at {cfg.get('selector')!r}: "
+                f"expected state {state!r} ({_truncate(str(exc), 200)})"
+            ) from exc
+
+        await self._emit_action(envelope, "assert_visible", selector=sel,
+                                metadata={"state": state, "locator_attempts": attempts})
+        return {"selector": sel, "state": state, "locator_attempts": attempts}
+
+    async def _do_assert_enabled(self, envelope, page, cfg) -> dict[str, Any]:
+        expected = cfg.get("enabled", True)
+        expected = expected if isinstance(expected, bool) else str(expected).lower() not in {"false", "0", "no"}
+
+        async def read_enabled(locator, timeout):
+            await locator.wait_for(state="visible", timeout=timeout)
+            return await locator.is_enabled(timeout=timeout)
+
+        try:
+            sel, actual, attempts = await self._with_locator_healing(
+                envelope, page, cfg, "assert_enabled", read_enabled
+            )
+        except Exception as exc:
+            await self._record_failure_dom(envelope, page)
+            raise AssertionError(
+                f"enabled assertion failed at {cfg.get('selector')!r}: "
+                f"element could not be resolved ({_truncate(str(exc), 200)})"
+            ) from exc
+
+        if bool(actual) is not expected:
+            await self._record_failure_dom(envelope, page)
+            raise AssertionError(
+                f"enabled assertion failed at {sel!r}: expected enabled={expected}, got {bool(actual)}"
+            )
+        await self._emit_action(envelope, "assert_enabled", selector=sel,
+                                metadata={"enabled": expected, "locator_attempts": attempts})
+        return {"selector": sel, "enabled": expected, "actual": bool(actual), "locator_attempts": attempts}
+
+    async def _record_failure_dom(self, envelope, page) -> None:
+        """Capture a DOM snapshot so the AI failure pipeline can replay the failure."""
+        try:
+            dom = await page.content()
+            await envelope.artifacts.record_text(
+                ArtifactKind.DOM_SNAPSHOT, "dom.html", dom,
+                content_type="text/html",
+            )
+        except Exception:
+            pass
 
     async def _do_extract_text(self, envelope, page, cfg) -> dict[str, Any]:
         variable = cfg["variable"]

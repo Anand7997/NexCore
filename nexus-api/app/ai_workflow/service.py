@@ -2401,6 +2401,80 @@ def _best_saved_element_for_step(
     return best, best_score
 
 
+_ELEMENT_MATCH_MIN_SCORE = 0.34
+
+_DEFAULT_REVIEW_REASON = "Step is not bound to a page element"
+
+
+def _binding_review_metadata(step: GeneratedTestStep) -> dict[str, Any]:
+    """Review flags to persist on a test step's test_data.
+
+    TestStep has no needs_review column, so the binding verdict rides along in
+    test_data. Without it the flag is lost at save time and an unbound step looks
+    identical to a correctly bound one when the step is later executed.
+    """
+    needs_review = bool(getattr(step, "needs_review", False))
+    reason = str(getattr(step, "review_reason", "") or "")
+    return {
+        "needs_review": needs_review,
+        "review_reason": (reason or _DEFAULT_REVIEW_REASON) if needs_review else "",
+    }
+
+_MATCH_STOPWORDS = frozenset({
+    "a", "an", "and", "as", "at", "by", "for", "from", "if", "in", "into", "is", "it", "not",
+    "of", "on", "or", "the", "then", "that", "this", "to", "with", "when", "where", "which",
+    # generic UI nouns that carry no identifying signal on their own
+    "box", "button", "checkbox", "control", "controls", "element", "field", "form", "icon",
+    "input", "item", "label", "link", "list", "menu", "option", "options", "page", "panel",
+    "screen", "section", "select", "tab", "text", "value", "window",
+    # generic step verbs
+    "check", "choose", "click", "confirm", "enter", "fill", "open", "set", "type", "validate",
+    "verify", "view", "wait",
+})
+
+
+def _match_tokens(text: str) -> set[str]:
+    """Distinctive lowercase word tokens, punctuation-split, stopwords removed."""
+    return {
+        token
+        for token in _re.split(r"[^a-z0-9]+", str(text or "").lower())
+        if token and token not in _MATCH_STOPWORDS
+    }
+
+
+def _is_acceptable_element_match(
+    step: GeneratedTestStep,
+    element: dict[str, Any] | None,
+    score: float,
+    *,
+    explicitly_targeted: bool = False,
+) -> bool:
+    """Whether a scored candidate is a real match for the step, or scoring noise.
+
+    Similarity scoring alone cannot separate the two: on a page whose repository is
+    dominated by unrelated links, an unrelated candidate can outscore a correct one.
+    A genuine match additionally shares at least one distinctive word with the
+    element's own name, so unrelated elements are rejected and the step is left
+    unbound for review instead of silently pointing at the wrong node.
+    """
+    if not element:
+        return False
+    if score < _ELEMENT_MATCH_MIN_SCORE:
+        return False
+    if explicitly_targeted:
+        return True
+    name_tokens = _match_tokens(element.get("name") or element.get("name_attr") or "")
+    if not name_tokens:
+        return False
+    step_tokens = _match_tokens(" ".join(part for part in (
+        step.description,
+        step.action_type,
+        step.input_value or "",
+        step.expected_result or "",
+    ) if part))
+    return bool(name_tokens & step_tokens)
+
+
 def _saved_element_targets_step(
     element: dict[str, Any],
     test_case: GeneratedTestCase,
@@ -2497,7 +2571,10 @@ def _bind_cases_with_ai_decisions(
 
             if decision and decision.needs_review:
                 fallback, fallback_score = _best_saved_element_for_step(step, saved_elements, test_case)
-                if fallback and fallback_score >= 0.34:
+                if _is_acceptable_element_match(
+                    step, fallback, fallback_score,
+                    explicitly_targeted=bool(fallback and _saved_element_targets_step(fallback, test_case, step)),
+                ):
                     final_action = _coerce_ai_action(decision.action_type or inferred_action, step, fallback)
                     input_value = decision.input_value or _fallback_input_value_for_step(step, fallback, final_action)
                     bound_steps.append(step.model_copy(update={
@@ -2528,7 +2605,10 @@ def _bind_cases_with_ai_decisions(
                 continue
 
             fallback, fallback_score = _best_saved_element_for_step(step, saved_elements, test_case)
-            if fallback and fallback_score >= 0.34:
+            if _is_acceptable_element_match(
+                step, fallback, fallback_score,
+                explicitly_targeted=bool(fallback and _saved_element_targets_step(fallback, test_case, step)),
+            ):
                 final_action = _infer_workflow_action(step, str(fallback.get("element_type") or ""))
                 input_value = _fallback_input_value_for_step(step, fallback, final_action)
                 bound_steps.append(step.model_copy(update={
@@ -2899,7 +2979,7 @@ def _bind_cases_to_saved_elements(
                     best = element
                     best_score = score
 
-            if best and best_score >= 0.34:
+            if _is_acceptable_element_match(step, best, best_score):
                 final_action = _infer_workflow_action(step, str(best.get("element_type") or ""))
                 bound_steps.append(step.model_copy(update={
                     "page_id": page_id,
@@ -3739,6 +3819,7 @@ async def _persist_test_case(
             "locator_paths": platform_binding.get("locator_paths") or platform_binding.get("alternative_locators") or [],
             "locator_quality": platform_binding.get("locator_quality") or "",
             "binding_confidence": step.confidence,
+            **_binding_review_metadata(step),
         }
         if _is_desktop_platform(platform):
             test_data["driver_type"] = str(platform_binding.get("driver_type") or "uia3")

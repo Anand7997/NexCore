@@ -296,3 +296,113 @@ def test_desktop_page_repository_element_maps_to_automation_id_locator():
         "locator": "btnSubmitInvoice",
         "source": "desktop_page_element",
     }
+
+
+def _assertion_step(**overrides):
+    defaults = {
+        "action_type": "ASSERTION",
+        "assertion_type": "",
+        "name": "Verify that the flight search form is visible",
+        "expected_result": "Flight search form with route, departure date, travellers, class, and search controls is visible.",
+        "bindings": {"web": {"selector": 'role=button[name="Search"]', "element_type": "button"}},
+    }
+    defaults.update(overrides)
+    return _step(**defaults)
+
+
+def test_visible_assertion_does_not_compile_to_text_assertion():
+    node_type, config = _node_type_and_config(_assertion_step(assertion_type="visible"))
+
+    assert node_type == "web.assert_visible"
+    assert config["state"] == "visible"
+    assert "expected" not in config
+
+
+def test_hidden_assertion_compiles_to_hidden_state():
+    node_type, config = _node_type_and_config(_assertion_step(assertion_type="not_visible"))
+
+    assert node_type == "web.assert_visible"
+    assert config["state"] == "hidden"
+
+
+def test_enabled_assertion_compiles_to_assert_enabled():
+    node_type, config = _node_type_and_config(_assertion_step(
+        assertion_type="enabled",
+        expected_result="Search button is enabled.",
+    ))
+
+    assert node_type == "web.assert_enabled"
+    assert config["enabled"] is True
+
+
+def test_disabled_assertion_compiles_to_assert_enabled_false():
+    node_type, config = _node_type_and_config(_assertion_step(assertion_type="disabled"))
+
+    assert node_type == "web.assert_enabled"
+    assert config["enabled"] is False
+
+
+def test_text_contains_assertion_keeps_text_assertion():
+    node_type, config = _node_type_and_config(_assertion_step(
+        assertion_type="text_contains",
+        expected_result="1 Traveller",
+    ))
+
+    assert node_type == "web.assert_text"
+    assert config["expected"] == "1 Traveller"
+    assert config["match"] == "contains"
+
+
+def test_text_equals_assertion_uses_equals_match():
+    node_type, config = _node_type_and_config(_assertion_step(
+        assertion_type="text_equals",
+        expected_result="Search",
+    ))
+
+    assert node_type == "web.assert_text"
+    assert config["match"] == "equals"
+
+
+def test_unknown_assertion_type_falls_back_to_contains_text_assertion():
+    node_type, config = _node_type_and_config(_assertion_step(assertion_type=""))
+
+    assert node_type == "web.assert_text"
+    assert config["match"] == "contains"
+
+
+def _desktop_assertion_step(**overrides):
+    defaults = {
+        "action_type": "ASSERTION",
+        "assertion_type": "",
+        "name": "Verify the settings dialog is shown",
+        "expected_result": "The settings dialog with all tabs is shown.",
+        "test_data": {"platform": "desktop", "automation_id": "dlgSettings"},
+        "bindings": {},
+    }
+    defaults.update(overrides)
+    return _step(**defaults)
+
+
+def test_desktop_visible_assertion_checks_existence_not_prose():
+    node_type, config = _node_type_and_config(_desktop_assertion_step(assertion_type="visible"))
+
+    assert node_type == "desktop.assert_property"
+    assert config["property"] == "name"
+    assert config["expected"] == ""
+
+
+def test_desktop_text_equals_assertion_uses_equals_match():
+    node_type, config = _node_type_and_config(_desktop_assertion_step(
+        assertion_type="text_equals",
+        expected_result="Settings",
+    ))
+
+    assert node_type == "desktop.assert_text"
+    assert config["match"] == "equals"
+
+
+def test_desktop_unknown_assertion_type_keeps_contains_text_assertion():
+    node_type, config = _node_type_and_config(_desktop_assertion_step(assertion_type=""))
+
+    assert node_type == "desktop.assert_text"
+    assert config["match"] == "contains"
