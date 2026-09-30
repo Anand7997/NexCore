@@ -27,8 +27,11 @@ async def get_auth_context(
     x_tenant_id: str | None = Header(default=None),
     x_user_email: str | None = Header(default=None),
     x_roles: str | None = Header(default=None),
+    x_user_roles: str | None = Header(default=None),
 ) -> AuthContext:
-    roles = tuple(role.strip() for role in (x_roles or "admin").split(",") if role.strip())
+    # x-user-roles is the .NET control-plane header name; x-roles is kept for existing clients.
+    raw_roles = x_roles or x_user_roles or "admin"
+    roles = tuple(role.strip() for role in raw_roles.split(",") if role.strip())
     return AuthContext(
         user_id=x_user_id or "local-admin",
         tenant_id=x_tenant_id,

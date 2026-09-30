@@ -40,7 +40,7 @@ from app.execution.plugin import (
     ExecutionEnvelope, PluginResult, PluginValidationError,
 )
 from app.execution.registry import get_plugin_for, list_plugins
-from app.distributed.scheduler import DistributedScheduler
+from app.control_plane import get_control_plane
 from app.orchestration.context import ExecutionContext
 from app.orchestration.conditions import evaluate_condition, evaluate_expression
 from app.orchestration.dag import DAGGraph, DAGNode, DAGEdge
@@ -59,8 +59,9 @@ class ExecutionEngine:
     One instance per execution — created and discarded.
     """
 
-    def __init__(self, execution_id: str) -> None:
+    def __init__(self, execution_id: str, tenant_id: str | None = None) -> None:
         self.execution_id = execution_id
+        self.tenant_id = tenant_id
         self._simulator = NodeSimulator()
         self._cancel_event = asyncio.Event()
         self._active_tasks: dict[str, asyncio.Task] = {}
@@ -74,11 +75,13 @@ class ExecutionEngine:
             execution = await self._load_execution(db)
             if not execution:
                 logger.error("Execution %s not found", self.execution_id)
+                await self._finish_queue("failed")
                 return
 
             workflow = await db.get(WorkflowModel, execution.workflow_id)
             if not workflow:
                 logger.error("Workflow %s not found", execution.workflow_id)
+                await self._finish_queue("failed")
                 return
 
             dag = await self._build_dag(db, workflow.id)
@@ -817,12 +820,17 @@ class ExecutionEngine:
                 await db.commit()
 
     async def _mark_queue_running(self) -> None:
-        async with AsyncSessionLocal() as db:
-            await DistributedScheduler(db).mark_execution_running(self.execution_id)
+        try:
+            await get_control_plane().mark_running(self.execution_id, tenant_id=self.tenant_id)
+        except Exception as exc:
+            logger.warning("Control plane running report failed for %s: %s", self.execution_id, exc)
 
     async def _finish_queue(self, final_status: str) -> None:
-        async with AsyncSessionLocal() as db:
-            await DistributedScheduler(db).finish_execution(self.execution_id, final_status)
+        # Releases the lease so the control plane can dispatch more work to this agent.
+        try:
+            await get_control_plane().finish_execution(self.execution_id, final_status, tenant_id=self.tenant_id)
+        except Exception as exc:
+            logger.warning("Control plane finish report failed for %s: %s", self.execution_id, exc)
 
     async def _set_node_status(
         self,
@@ -936,9 +944,13 @@ def get_active_engine(execution_id: str) -> ExecutionEngine | None:
     return _active_engines.get(execution_id)
 
 
-async def launch_execution(execution_id: str) -> None:
+def active_execution_count() -> int:
+    return len(_active_engines)
+
+
+async def launch_execution(execution_id: str, tenant_id: str | None = None) -> None:
     """Create an engine, register it, and run it in a background task."""
-    engine = ExecutionEngine(execution_id)
+    engine = ExecutionEngine(execution_id, tenant_id=tenant_id)
     _active_engines[execution_id] = engine
 
     async def _run_and_cleanup():

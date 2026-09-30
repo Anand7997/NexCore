@@ -1,4 +1,7 @@
-const REQUEST_BASE_URL = import.meta.env.VITE_NEXUS_API_BASE_URL || 'http://localhost:8000/api';
+const configuredBaseUrl = import.meta.env.VITE_NEXUS_API_BASE_URL || import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+const REQUEST_BASE_URL = configuredBaseUrl.replace(/\/$/, '').endsWith('/api')
+  ? configuredBaseUrl.replace(/\/$/, '')
+  : `${configuredBaseUrl.replace(/\/$/, '')}/api`;
 const WEBSOCKET_URL = import.meta.env.VITE_NEXUS_WS_URL;
 
 export class ApiError extends Error {
@@ -32,7 +35,7 @@ export function getAdvancedWebSocketUrl(): string {
     return `${runtimeBase.replace('http://', 'ws://')}/ws`;
   }
 
-  return 'ws://localhost:8000/ws';
+  return 'ws://localhost:3001/ws';
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {

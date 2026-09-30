@@ -1,12 +1,32 @@
 {
   "version": 2,
-  "dgSpecHash": "tfPUKNZM0XE=",
+  "dgSpecHash": "ENgv4iSDjvg=",
   "success": true,
   "projectFilePath": "C:\\Users\\VAnand\\Downloads\\NexCore\\nexus-dotnet-backend\\Nexus.DotNetBackend.csproj",
   "expectedPackageFiles": [
+    "C:\\Users\\VAnand\\.nuget\\packages\\microsoft.extensions.configuration.abstractions\\8.0.0\\microsoft.extensions.configuration.abstractions.8.0.0.nupkg.sha512",
     "C:\\Users\\VAnand\\.nuget\\packages\\microsoft.extensions.dependencyinjection.abstractions\\8.0.0\\microsoft.extensions.dependencyinjection.abstractions.8.0.0.nupkg.sha512",
+    "C:\\Users\\VAnand\\.nuget\\packages\\microsoft.extensions.diagnostics.abstractions\\8.0.0\\microsoft.extensions.diagnostics.abstractions.8.0.0.nupkg.sha512",
+    "C:\\Users\\VAnand\\.nuget\\packages\\microsoft.extensions.fileproviders.abstractions\\8.0.0\\microsoft.extensions.fileproviders.abstractions.8.0.0.nupkg.sha512",
+    "C:\\Users\\VAnand\\.nuget\\packages\\microsoft.extensions.hosting.abstractions\\8.0.0\\microsoft.extensions.hosting.abstractions.8.0.0.nupkg.sha512",
     "C:\\Users\\VAnand\\.nuget\\packages\\microsoft.extensions.logging.abstractions\\8.0.0\\microsoft.extensions.logging.abstractions.8.0.0.nupkg.sha512",
-    "C:\\Users\\VAnand\\.nuget\\packages\\npgsql\\8.0.4\\npgsql.8.0.4.nupkg.sha512"
+    "C:\\Users\\VAnand\\.nuget\\packages\\microsoft.extensions.options\\8.0.0\\microsoft.extensions.options.8.0.0.nupkg.sha512",
+    "C:\\Users\\VAnand\\.nuget\\packages\\microsoft.extensions.primitives\\8.0.0\\microsoft.extensions.primitives.8.0.0.nupkg.sha512",
+    "C:\\Users\\VAnand\\.nuget\\packages\\nats.client.core\\2.5.5\\nats.client.core.2.5.5.nupkg.sha512",
+    "C:\\Users\\VAnand\\.nuget\\packages\\nats.client.hosting\\2.5.5\\nats.client.hosting.2.5.5.nupkg.sha512",
+    "C:\\Users\\VAnand\\.nuget\\packages\\nats.client.jetstream\\2.5.5\\nats.client.jetstream.2.5.5.nupkg.sha512",
+    "C:\\Users\\VAnand\\.nuget\\packages\\nats.client.keyvaluestore\\2.5.5\\nats.client.keyvaluestore.2.5.5.nupkg.sha512",
+    "C:\\Users\\VAnand\\.nuget\\packages\\nats.client.objectstore\\2.5.5\\nats.client.objectstore.2.5.5.nupkg.sha512",
+    "C:\\Users\\VAnand\\.nuget\\packages\\nats.client.serializers.json\\2.5.5\\nats.client.serializers.json.2.5.5.nupkg.sha512",
+    "C:\\Users\\VAnand\\.nuget\\packages\\nats.client.services\\2.5.5\\nats.client.services.2.5.5.nupkg.sha512",
+    "C:\\Users\\VAnand\\.nuget\\packages\\nats.client.simplified\\2.5.5\\nats.client.simplified.2.5.5.nupkg.sha512",
+    "C:\\Users\\VAnand\\.nuget\\packages\\nats.net\\2.5.5\\nats.net.2.5.5.nupkg.sha512",
+    "C:\\Users\\VAnand\\.nuget\\packages\\npgsql\\8.0.4\\npgsql.8.0.4.nupkg.sha512",
+    "C:\\Users\\VAnand\\.nuget\\packages\\system.diagnostics.diagnosticsource\\8.0.0\\system.diagnostics.diagnosticsource.8.0.0.nupkg.sha512",
+    "C:\\Users\\VAnand\\.nuget\\packages\\system.io.hashing\\8.0.0\\system.io.hashing.8.0.0.nupkg.sha512",
+    "C:\\Users\\VAnand\\.nuget\\packages\\system.io.pipelines\\8.0.0\\system.io.pipelines.8.0.0.nupkg.sha512",
+    "C:\\Users\\VAnand\\.nuget\\packages\\system.text.json\\8.0.5\\system.text.json.8.0.5.nupkg.sha512",
+    "C:\\Users\\VAnand\\.nuget\\packages\\yarp.reverseproxy\\2.2.0\\yarp.reverseproxy.2.2.0.nupkg.sha512"
   ],
   "logs": []
 }

@@ -1,4 +1,7 @@
-const REQUEST_BASE_URL = import.meta.env.VITE_NEXUS_API_BASE_URL || 'http://localhost:8000/api';
+const configuredBaseUrl = import.meta.env.VITE_NEXUS_API_BASE_URL || import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+const REQUEST_BASE_URL = configuredBaseUrl.replace(/\/$/, '').endsWith('/api')
+  ? configuredBaseUrl.replace(/\/$/, '')
+  : `${configuredBaseUrl.replace(/\/$/, '')}/api`;
 
 class ApiError extends Error {
   constructor(public status: number, message: string) {

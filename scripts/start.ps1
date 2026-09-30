@@ -16,6 +16,8 @@ $legacyApiEnvFile = Join-Path $pythonBackendDir ".env"
 $venvPython  = Join-Path $pythonBackendDir ".venv\Scripts\python.exe"
 $nextCli     = Join-Path $frontendDir "node_modules\next\dist\bin\next"
 $frontendBuildId = Join-Path $frontendDir ".next\BUILD_ID"
+# NEXT_PUBLIC_* values are baked in at build time; rebuild when the API target changes.
+$frontendBuildStamp = Join-Path $frontendDir ".next\nexus-api-target.txt"
 
 if (-not $env:NEXUS_CONTROL_HOST) { $env:NEXUS_CONTROL_HOST = "127.0.0.1" }
 if (-not $env:NEXUS_CONTROL_PORT) { $env:NEXUS_CONTROL_PORT = "3001" }
@@ -202,24 +204,34 @@ function Wait-ForService {
     throw "$Name did not become healthy within $MaxSeconds seconds."
 }
 
-function Invoke-NexusFrontendBuild {
-    param([string] $ApiUrl, [string] $ControlUrl)
+function Get-NexusFrontendEnvironment {
+    param([string] $ControlUrl)
 
-    Write-Host "  Frontend build is missing; running npm run build..."
+    # The dashboard talks only to the .NET control plane; it proxies AI/execution
+    # routes and the WebSocket to FastAPI.
+    return @{
+        NEXT_PUBLIC_API_URL = "$ControlUrl/api"
+        NEXT_PUBLIC_CONTROL_API_URL = "$ControlUrl/api"
+        NEXT_PUBLIC_WS_URL = "$($ControlUrl -replace '^http', 'ws')/ws"
+    }
+}
+
+function Invoke-NexusFrontendBuild {
+    param([string] $ControlUrl)
+
+    Write-Host "  Building frontend against control plane $ControlUrl (npm run build)..."
     $build = Start-NexusProcess `
         -Name "frontend build" `
         -FileName "cmd.exe" `
         -Arguments "/c npm run build" `
         -WorkingDirectory $frontendDir `
-        -Environment @{
-            NEXT_PUBLIC_API_URL = "$ApiUrl/api"
-            NEXT_PUBLIC_CONTROL_API_URL = "$ControlUrl/api"
-        }
+        -Environment (Get-NexusFrontendEnvironment -ControlUrl $ControlUrl)
 
     $build.WaitForExit()
     if ($build.ExitCode -ne 0) {
         throw "Frontend build failed (code $($build.ExitCode))."
     }
+    Set-Content -Path $frontendBuildStamp -Value $ControlUrl -Encoding utf8
 }
 
 function Stop-NexusProcessTree {
@@ -254,8 +266,8 @@ $ports = @([int]$env:NEXUS_CONTROL_PORT, [int]$env:NEXUS_API_PORT, [int]$env:NEX
 try {
     Write-Host ""
     Write-Host "=== NEXUS QA Workspace ==="
-    Write-Host "  .NET Control API: $controlUrl"
-    Write-Host "  Python AI API:    $apiUrl"
+    Write-Host "  .NET Control API: $controlUrl  (frontend entry point, runtime agent registry)"
+    Write-Host "  Python AI API:    $apiUrl  (AI + execution workers, internal)"
     Write-Host "  Frontend:         $webUrl"
     Write-Host "  UI:               $frontendLabel ($frontendFolder)"
     Write-Host ""
@@ -265,6 +277,7 @@ try {
     Write-Host "[1/3] .NET Control API"
     $controlBackendEnvironment = @{
         ASPNETCORE_URLS = $controlUrl
+        FASTAPI_URL = $apiUrl
     }
 
     $controlBackendDatabaseUrl = Resolve-ControlBackendDatabaseUrl -DotEnvPath $legacyApiEnvFile
@@ -296,7 +309,8 @@ try {
         -Name "Python AI API" `
         -FileName $pythonExe `
         -Arguments $pythonArgs `
-        -WorkingDirectory $pythonBackendDir
+        -WorkingDirectory $pythonBackendDir `
+        -Environment @{ CONTROL_PLANE_URL = $controlUrl }
 
     Wait-ForService -Name "Python AI API" -Url $apiUrl -HealthPath "/api/health" -Process $pythonBackend
 
@@ -307,8 +321,9 @@ try {
         throw "Next.js CLI was not found. Run npm install inside $frontendDir first."
     }
 
-    if (-not (Test-Path $frontendBuildId)) {
-        Invoke-NexusFrontendBuild -ApiUrl $apiUrl -ControlUrl $controlUrl
+    $builtTarget = if (Test-Path $frontendBuildStamp) { (Get-Content $frontendBuildStamp -Raw).Trim() } else { "" }
+    if (-not (Test-Path $frontendBuildId) -or $builtTarget -ne $controlUrl) {
+        Invoke-NexusFrontendBuild -ControlUrl $controlUrl
     }
 
     $nodeExe = (Get-Command "node.exe" -ErrorAction Stop).Source
@@ -321,10 +336,7 @@ try {
         -FileName $nodeExe `
         -Arguments "`"$nextCli`" start --port $($env:NEXUS_QA_PORT)" `
         -WorkingDirectory $frontendDir `
-        -Environment @{
-            NEXT_PUBLIC_API_URL = "$apiUrl/api"
-            NEXT_PUBLIC_CONTROL_API_URL = "$controlUrl/api"
-        }
+        -Environment (Get-NexusFrontendEnvironment -ControlUrl $controlUrl)
 
     Write-Host ""
     Write-Host "All services are running. Press Ctrl+C to stop."

@@ -1,6 +1,6 @@
 'use client';
 
-const DIRECT_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000/api';
+const DIRECT_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api';
 const REQUEST_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? '/api/proxy';
 
 class ApiError extends Error {

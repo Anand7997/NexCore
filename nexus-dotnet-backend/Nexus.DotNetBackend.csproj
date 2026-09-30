@@ -6,6 +6,8 @@
     <RootNamespace>Nexus.DotNetBackend</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="NATS.Net" Version="2.5.5" />
     <PackageReference Include="Npgsql" Version="8.0.4" />
+    <PackageReference Include="Yarp.ReverseProxy" Version="2.2.0" />
   </ItemGroup>
 </Project>

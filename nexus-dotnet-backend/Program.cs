@@ -1,5 +1,8 @@
 using Nexus.DotNetBackend.Contracts;
 using Nexus.DotNetBackend.Services;
+using Npgsql;
+using Yarp.ReverseProxy.Configuration;
+using Yarp.ReverseProxy.Transforms;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -8,7 +11,14 @@ builder.Logging.AddConsole();
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddSingleton<RequestContext>();
+builder.Services.AddSingleton(_ => NpgsqlDataSource.Create(PostgresConnection.Resolve(builder.Configuration)));
+builder.Services.AddSingleton<NatsMessageBus>();
+builder.Services.AddSingleton<IMessageBus>(sp => sp.GetRequiredService<NatsMessageBus>());
+builder.Services.AddHostedService(sp => sp.GetRequiredService<NatsMessageBus>());
 builder.Services.AddSingleton<RuntimeScheduler>();
+builder.Services.AddHostedService<RuntimeReaper>();
+builder.Services.AddHostedService<AiResultConsumer>();
+builder.Services.AddHostedService<AiJobPublisher>();
 builder.Services.AddSingleton<OrchestrationStore>();
 builder.Services.AddSingleton<TestManagementStore>();
 builder.Services.AddSingleton<AiGatewayStore>();
@@ -19,6 +29,46 @@ builder.Services.AddCors(options =>
     options.AddDefaultPolicy(policy => policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod());
 });
 
+// .NET is the frontend-facing entry point. Everything it does not own is forwarded to
+// the FastAPI AI/execution service, including the realtime WebSocket.
+var fastApiUrl = builder.Configuration["Nexus:FastApiUrl"] ?? Environment.GetEnvironmentVariable("FASTAPI_URL") ?? "http://localhost:8000";
+builder.Services.AddReverseProxy()
+    .LoadFromMemory(
+        [
+            new RouteConfig { RouteId = "fastapi-api", ClusterId = "fastapi", Order = 1000, Match = new RouteMatch { Path = "/api/{**catch-all}" } },
+            new RouteConfig { RouteId = "fastapi-ws", ClusterId = "fastapi", Order = 1000, Match = new RouteMatch { Path = "/ws/{**catch-all}" } },
+        ],
+        [
+            new ClusterConfig
+            {
+                ClusterId = "fastapi",
+                Destinations = new Dictionary<string, DestinationConfig> { ["primary"] = new() { Address = fastApiUrl } },
+                HttpRequest = new Yarp.ReverseProxy.Forwarder.ForwarderRequestConfig { ActivityTimeout = TimeSpan.FromMinutes(10) },
+            },
+        ])
+    .AddTransforms(context =>
+    {
+        context.AddRequestTransform(transform =>
+        {
+            // FastAPI reads roles from x-roles; the control plane uses x-user-roles.
+            var headers = transform.HttpContext.Request.Headers;
+            if (headers.TryGetValue(RequestContext.RolesHeader, out var roles) && !headers.ContainsKey("x-roles"))
+            {
+                transform.ProxyRequest.Headers.TryAddWithoutValidation("x-roles", roles.ToString());
+            }
+            return ValueTask.CompletedTask;
+        });
+        context.AddResponseTransform(transform =>
+        {
+            // CORS is applied once by the control plane; drop FastAPI's copies to avoid duplicate headers.
+            foreach (var header in transform.HttpContext.Response.Headers.Keys.Where(key => key.StartsWith("Access-Control-", StringComparison.OrdinalIgnoreCase)).ToArray())
+            {
+                transform.HttpContext.Response.Headers.Remove(header);
+            }
+            return ValueTask.CompletedTask;
+        });
+    });
+
 var app = builder.Build();
 
 app.UseCors();
@@ -28,8 +78,19 @@ app.Use(async (context, next) =>
     {
         await next();
     }
-    catch (Exception)
+    catch (ArgumentException exception) when (!context.Response.HasStarted)
     {
+        context.Response.StatusCode = StatusCodes.Status400BadRequest;
+        await context.Response.WriteAsJsonAsync(new { error = exception.Message });
+    }
+    catch (RuntimeConflictException exception) when (!context.Response.HasStarted)
+    {
+        context.Response.StatusCode = StatusCodes.Status409Conflict;
+        await context.Response.WriteAsJsonAsync(new { error = exception.Message });
+    }
+    catch (Exception exception) when (!context.Response.HasStarted)
+    {
+        app.Logger.LogError(exception, "Unhandled request failure");
         context.Response.StatusCode = StatusCodes.Status500InternalServerError;
         await context.Response.WriteAsJsonAsync(new ApiError("internal_server_error", context.TraceIdentifier));
     }
@@ -37,15 +98,17 @@ app.Use(async (context, next) =>
 
 var legacyModernRepository = app.Services.GetRequiredService<LegacyModernRepository>();
 await legacyModernRepository.EnsureSchemaAsync();
+await RuntimeSchema.EnsureAsync(app.Services.GetRequiredService<NpgsqlDataSource>());
 
 var api = app.MapGroup("/api");
 
 api.MapGet("/health/live", () => new HealthResponse("ok", DateTimeOffset.UtcNow));
-api.MapGet("/health", () => new DependencyHealthResponse("ok", DateTimeOffset.UtcNow, new Dictionary<string, string>
+api.MapGet("/health", (IMessageBus bus) => new DependencyHealthResponse("ok", DateTimeOffset.UtcNow, new Dictionary<string, string>
 {
     ["postgres"] = "configured",
-    ["nats"] = "not_configured",
-    ["temporal"] = "not_configured"
+    ["nats"] = bus.State,
+    ["temporal"] = "not_configured",
+    ["fastapi"] = fastApiUrl
 }));
 api.MapGet("/health/ready", () => new DependencyHealthResponse("ok", DateTimeOffset.UtcNow, new Dictionary<string, string>
 {
@@ -57,17 +120,17 @@ api.MapGet("/enterprise/readiness", () => Results.Ok(new
 {
     rbac = "development-principal-enabled",
     tenantIsolation = "tenant-context-middleware-enabled",
-    audit = "dotnet-schema-pending",
+    audit = "dotnet-runtime-audit-enabled",
     secrets = "secret-ref-policy-required",
     deployment = "kubernetes-manifests-required",
     pythonWorkers = "removed-from-modern-stack",
     controlPlane = "dotnet-owned"
 }));
 
-api.MapPost("/ai/jobs", (CreateAiJobRequest request, AiGatewayStore store) => Results.Ok(store.Create(request)));
-api.MapGet("/ai/jobs", (AiGatewayStore store) => Results.Ok(store.List()));
-api.MapGet("/ai/jobs/{id}", (string id, AiGatewayStore store) => store.Get(id) is { } job ? Results.Ok(job) : Results.NotFound());
-api.MapPost("/ai/results", (AiWorkerResult result, AiGatewayStore store) => store.Ingest(result) is { } job ? Results.Ok(job) : Results.NotFound());
+api.MapPost("/ai/jobs", async (CreateAiJobRequest request, AiGatewayStore store, CancellationToken ct) => Results.Ok(await store.CreateAsync(request, ct)));
+api.MapGet("/ai/jobs", async (AiGatewayStore store, CancellationToken ct) => Results.Ok(await store.ListAsync(ct)));
+api.MapGet("/ai/jobs/{id}", async (string id, AiGatewayStore store, CancellationToken ct) => await store.GetAsync(id, ct) is { } job ? Results.Ok(job) : Results.NotFound());
+api.MapPost("/ai/results", async (AiWorkerResult result, AiGatewayStore store, CancellationToken ct) => await store.IngestAsync(result, ct) is { } job ? Results.Ok(job) : Results.NotFound());
 
 api.MapGet("/intent/catalog", (IntentCatalogService service) => Results.Ok(service.Catalog()));
 api.MapGet("/intent/capability-matrix", (IntentCatalogService service) => Results.Ok(service.CapabilityMatrix()));
@@ -88,14 +151,29 @@ api.MapGet("/orchestration/executions/{id}/status", (string id, OrchestrationSto
 api.MapPost("/orchestration/executions/{id}/cancel", (string id, CancelExecutionCommand command, OrchestrationStore store) => store.Cancel(id, command) is { } run ? Results.Accepted(value: run) : Results.NotFound());
 api.MapPost("/orchestration/executions/{id}/heartbeat", (string id, HeartbeatRequest request, OrchestrationStore store) => store.Heartbeat(id, request.Progress) is { } run ? Results.Accepted(value: run) : Results.NotFound());
 
-api.MapPost("/runtime/agents", (RuntimeAgentRegistration command, RuntimeScheduler scheduler) => Results.Ok(scheduler.Register(command)));
-api.MapPost("/runtime/agents/{agentId}/heartbeat", (string agentId, RuntimeScheduler scheduler) => scheduler.Heartbeat(agentId) is { } agent ? Results.Ok(agent) : Results.NotFound());
-api.MapPost("/runtime/agents/{agentId}/renew", (string agentId, RuntimeScheduler scheduler) => scheduler.Heartbeat(agentId) is { } agent ? Results.Ok(agent) : Results.NotFound());
-api.MapGet("/runtime/agents/{agentId}/commands", (string agentId, RuntimeScheduler scheduler) => Results.Ok(scheduler.GetPendingCommands(agentId)));
-api.MapPost("/runtime/agents/{agentId}/events", (string agentId, RuntimeAgentEvent @event, RuntimeScheduler scheduler) => Results.Ok(scheduler.PublishEvent(agentId, @event)));
-api.MapGet("/runtime/agents", (RuntimeScheduler scheduler) => Results.Ok(scheduler.ListAgents()));
-api.MapPost("/runtime/queue", (RuntimeQueueCommand command, RuntimeScheduler scheduler) => Results.Ok(scheduler.Enqueue(command)));
-api.MapGet("/runtime/queue", (RuntimeScheduler scheduler) => Results.Ok(scheduler.ListQueue()));
+var runtime = api.MapGroup("/runtime");
+runtime.MapPost("/agents", async (RuntimeAgentRegistration registration, RuntimeScheduler scheduler, CancellationToken ct) =>
+{
+    var agent = await scheduler.RegisterAsync(registration, ct);
+    return Results.Created($"/api/runtime/agents/{agent.Id}", agent);
+});
+runtime.MapGet("/agents", async (string? status, RuntimeScheduler scheduler, CancellationToken ct) => Results.Ok(await scheduler.ListAgentsAsync(status, ct)));
+runtime.MapGet("/agents/{agentId}", async (string agentId, RuntimeScheduler scheduler, CancellationToken ct) => await scheduler.GetAgentAsync(agentId, ct) is { } agent ? Results.Ok(agent) : Results.NotFound(new { error = "Runtime agent not found" }));
+runtime.MapDelete("/agents/{agentId}", async (string agentId, RuntimeScheduler scheduler, CancellationToken ct) => await scheduler.DeregisterAsync(agentId, ct) is { } agent ? Results.Ok(agent) : Results.NotFound(new { error = "Runtime agent not found" }));
+runtime.MapPost("/agents/{agentId}/heartbeat", async (string agentId, RuntimeAgentHeartbeat? heartbeat, RuntimeScheduler scheduler, CancellationToken ct) => await scheduler.HeartbeatAsync(agentId, heartbeat, ct) is { } agent ? Results.Ok(agent) : Results.NotFound(new { error = "Runtime agent not found" }));
+runtime.MapPost("/agents/{agentId}/renew", async (string agentId, RuntimeAgentHeartbeat? heartbeat, RuntimeScheduler scheduler, CancellationToken ct) => await scheduler.HeartbeatAsync(agentId, heartbeat, ct) is { } agent ? Results.Ok(agent) : Results.NotFound(new { error = "Runtime agent not found" }));
+runtime.MapGet("/agents/{agentId}/commands", async (string agentId, int? limit, RuntimeScheduler scheduler, CancellationToken ct) => await scheduler.ClaimCommandsAsync(agentId, limit ?? 10, ct) is { } commands ? Results.Ok(commands) : Results.NotFound(new { error = "Runtime agent not found" }));
+runtime.MapPost("/agents/{agentId}/commands/{commandId}/ack", async (string agentId, string commandId, RuntimeCommandAck ack, RuntimeScheduler scheduler, CancellationToken ct) => await scheduler.AckCommandAsync(agentId, commandId, ack, ct) is { } command ? Results.Ok(command) : Results.NotFound(new { error = "Command not found" }));
+runtime.MapPost("/agents/{agentId}/events", async (string agentId, RuntimeAgentEvent agentEvent, RuntimeScheduler scheduler, CancellationToken ct) => await scheduler.RecordEventAsync(agentId, agentEvent, ct) is { } accepted ? Results.Ok(accepted) : Results.NotFound(new { error = "Runtime agent not found" }));
+runtime.MapGet("/queue", async (string? status, RuntimeScheduler scheduler, CancellationToken ct) => Results.Ok(await scheduler.ListQueueAsync(status, ct)));
+runtime.MapPost("/queue", async (RuntimeScheduleRequest request, RuntimeScheduler scheduler, CancellationToken ct) => Results.Ok(await scheduler.ScheduleExecutionAsync(request.ExecutionId ?? string.Empty, request, ct)));
+runtime.MapPost("/queue/schedule", async (RuntimeScheduler scheduler, CancellationToken ct) => Results.Ok(new { assigned = await scheduler.ScheduleQueuedAsync(ct) }));
+runtime.MapGet("/leases", async (string? agent_id, string? status, RuntimeScheduler scheduler, CancellationToken ct) => Results.Ok(await scheduler.ListLeasesAsync(agent_id, status, ct)));
+runtime.MapGet("/executions/{executionId}", async (string executionId, RuntimeScheduler scheduler, CancellationToken ct) => await scheduler.GetQueueItemAsync(executionId, ct) is { } item ? Results.Ok(item) : Results.NotFound(new { error = "Execution is not queued" }));
+runtime.MapPost("/executions/{executionId}/schedule", async (string executionId, RuntimeScheduleRequest request, RuntimeScheduler scheduler, CancellationToken ct) => Results.Ok(await scheduler.ScheduleExecutionAsync(executionId, request, ct)));
+runtime.MapPost("/executions/{executionId}/running", async (string executionId, RuntimeScheduler scheduler, CancellationToken ct) => await scheduler.MarkRunningAsync(executionId, ct) is { } item ? Results.Ok(item) : Results.NotFound(new { error = "Execution is not queued" }));
+runtime.MapPost("/executions/{executionId}/finish", async (string executionId, RuntimeFinishRequest request, RuntimeScheduler scheduler, CancellationToken ct) => await scheduler.FinishAsync(executionId, request.Status, ct) is { } item ? Results.Ok(item) : Results.NotFound(new { error = "Execution is not queued" }));
+runtime.MapPost("/executions/{executionId}/cancel", async (string executionId, RuntimeScheduler scheduler, CancellationToken ct) => await scheduler.CancelAsync(executionId, ct) is { } result ? Results.Ok(result) : Results.NotFound(new { error = "Execution is not queued" }));
 
 api.MapPost("/test-management/projects", (CreateProjectDto dto, TestManagementStore store) => Results.Ok(store.CreateProject(dto)));
 api.MapGet("/test-management/projects", (TestManagementStore store) => Results.Ok(store.ListProjects()));
@@ -162,8 +240,12 @@ api.MapDelete("/custom-test-suites/{id}", async (string id, LegacyModernReposito
 api.MapGet("/custom-test-suites/{id}/test-cases", async (string id, LegacyModernRepository repository) => Results.Ok(new LegacySuiteTestCaseListResponse(await repository.GetCustomSuiteTestCasesAsync(id))));
 api.MapPost("/custom-test-suites/{id}/test-cases", async (string id, LegacyCustomTestSuiteCasesSaveRequest request, LegacyModernRepository repository) => Results.Ok(new { saved_count = await repository.SaveCustomSuiteTestCasesAsync(id, request.TestCases) }));
 
+app.MapReverseProxy();
+
 app.Run();
 
 public sealed record HeartbeatRequest(int Progress);
 
 
+
+public partial class Program;

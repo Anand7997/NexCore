@@ -14,9 +14,52 @@ public sealed class IntentCatalogService
     public object PlatformsResponse() => new { platforms = Platforms };
     public object SchemaManifest() => new { schemaVersion = SchemaVersion, minClientSchemaVersion = "1.0.0", compatibility = "backward-compatible" };
     public object MigrationGuide() => new { migrations = Array.Empty<object>() };
-    public object CapabilityMatrix() => new { platforms = Platforms, intents = Intents, coverage = Platforms.ToDictionary(p => p, _ => Intents) };
+    // Legacy fields (platforms/intents/coverage, totalIntents/supportedPlatforms/coveragePercent) are kept for Nexus-Modern;
+    // capabilities / platformCoverage etc. are the shape Nexus-Advanced's matrix page consumes.
+    public object CapabilityMatrix() => new
+    {
+        schemaVersion = SchemaVersion,
+        platforms = Platforms,
+        intents = Intents,
+        coverage = Platforms.ToDictionary(p => p, _ => Intents),
+        capabilities = Intents.Select(intent => new Dictionary<string, object>
+        {
+            ["intent"] = intent,
+            ["feature"] = intent,
+            ["category"] = "core",
+            ["description"] = "",
+            ["web"] = SupportStatus("web"),
+            ["android"] = SupportStatus("android"),
+            ["ios"] = SupportStatus("ios"),
+            ["desktop"] = SupportStatus("desktop"),
+            ["api"] = SupportStatus("api"),
+            ["db"] = SupportStatus("db"),
+        })
+    };
     public object ParityReport() => new { schemaVersion = SchemaVersion, platforms = Platforms, intents = Intents, gaps = Array.Empty<object>() };
-    public object ParitySummary() => new { totalIntents = Intents.Length, supportedPlatforms = Platforms.Length, coveragePercent = 100 };
+    public object ParitySummary() => new
+    {
+        totalIntents = Intents.Length,
+        supportedPlatforms = Platforms.Length,
+        coveragePercent = 100,
+        overallCoveragePct = 100,
+        universalIntents = Intents,
+        gapIntents = Array.Empty<string>(),
+        webApiOnly = Array.Empty<string>(),
+        generatedAt = DateTime.UtcNow,
+        platformCoverage = Platforms.Select(platform => new
+        {
+            platform,
+            total = Intents.Length,
+            supported = Intents.Length,
+            partial = 0,
+            unsupported = 0,
+            coveragePct = 100,
+            adapter = $"{platform}-adapter"
+        })
+    };
+
+    private static string SupportStatus(string platform) => Platforms.Contains(platform) ? "supported" : "unsupported";
 
     public object Compile(CompileIntentPlanRequest request)
     {

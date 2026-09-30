@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from './client';
 import type { Artifact } from './types';
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000/api';
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api';
 
 export const artifactKeys = {
   forExecution: (id: string) => ['artifacts', 'execution', id] as const,

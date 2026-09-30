@@ -5,11 +5,17 @@ Startup sequence:
 1. Initialize database (create tables)
 2. Initialize event bus (in-memory broker)
 3. Wire event bus → WebSocket gateway (broadcast all events)
-4. Mount API routers
+4. Bridge NATS control-plane/worker events → WebSocket gateway (optional)
+5. Start the embedded runtime worker (registers with the .NET control plane)
+6. Mount API routers
+
+Runtime agents, the execution queue and leases live in the .NET control plane
+(settings.control_plane_url); this service never keeps its own registry.
 """
 from __future__ import annotations
 import asyncio
 import logging
+import uuid
 from contextlib import asynccontextmanager
 from typing import Any
 from urllib.parse import urlparse
@@ -18,6 +24,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
+from app.control_plane.nats_bridge import connect_nats, start_gateway_bridge, subscribe_agent_wakeups
 from app.database.session import init_db
 from app.events.brokers.memory import InMemoryBroker
 from app.events.bus import init_event_bus
@@ -25,6 +32,8 @@ from app.events.types import BaseEvent
 from app.execution.artifacts import init_artifact_store
 from app.execution.registry import register_plugin, list_plugins
 from app.realtime.gateway import get_gateway
+from app.worker_runtime.agent_worker import stable_agent_id
+from app.worker_runtime.factory import build_embedded_worker
 from app.ai_workflow import router as ai_workflow_router
 from app.api.routes import (
     workflows,
@@ -35,7 +44,6 @@ from app.api.routes import (
     intelligence,
     intents,
     adapters,
-    runtime,
     enterprise,
     test_configuration,
     desktop_repository,
@@ -155,6 +163,40 @@ async def _start_nats_bridge(bus: Any) -> None:
         logger.info("NATS bridge skipped: %s", exc)
 
 
+_PROCESS_ORIGIN = f"fastapi-{uuid.uuid4()}"
+
+
+async def _fail_lost_execution(execution_id: str) -> None:
+    """The control plane lost the agent running this execution: close it out."""
+    from datetime import datetime
+
+    from app.database.models import ExecutionModel
+    from app.database.session import AsyncSessionLocal
+    from app.orchestration.state_machine import ExecutionStatus
+
+    async with AsyncSessionLocal() as db:
+        execution = await db.get(ExecutionModel, execution_id)
+        if execution and execution.status == ExecutionStatus.RUNNING.value:
+            execution.status = ExecutionStatus.FAILED.value
+            execution.completed_at = datetime.utcnow()
+            await db.commit()
+            logger.warning("Execution %s failed: its runtime agent went offline", execution_id)
+
+
+async def _run_ai_job_runner_forever() -> None:
+    """Consume ai.jobs from NATS; reconnect when NATS comes up later."""
+    from app.intelligence.ai_job_runner import run_ai_job_loop
+
+    while True:
+        try:
+            await run_ai_job_loop()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.debug("AI job runner idle (NATS unavailable): %s", exc)
+        await asyncio.sleep(30)
+
+
 def _register_execution_plugins() -> None:
     """
     Register all execution plugins. Failures here are non-fatal — a missing
@@ -222,11 +264,39 @@ async def lifespan(app: FastAPI):
     await _init_intelligence()
     await _start_nats_bridge(bus)
 
+    # ── .NET control plane integration ────────────────────────────────────────
+    background: list[asyncio.Task] = []
+    nc = await connect_nats(settings.nats_url, name="nexus-fastapi")
+    if nc is not None:
+        await start_gateway_bridge(nc, gateway.broadcast, origin=_PROCESS_ORIGIN, on_agent_lost=_fail_lost_execution)
+
+    worker = None
+    if settings.embedded_worker_enabled:
+        worker = build_embedded_worker()
+        if nc is not None:
+            await subscribe_agent_wakeups(nc, stable_agent_id(worker.config.agent_id), worker.wake)
+        background.append(asyncio.create_task(worker.run(), name="embedded-runtime-worker"))
+        logger.info(
+            "Embedded runtime worker registering with control plane %s (capabilities: %s)",
+            settings.control_plane_url, ",".join(worker.config.capabilities),
+        )
+
+    if settings.ai_job_runner_enabled:
+        background.append(asyncio.create_task(_run_ai_job_runner_forever(), name="ai-job-runner"))
+
     logger.info("NEXUS QA API ready.")
 
     yield
 
     # ── Shutdown ──
+    if worker is not None:
+        worker.stop()
+    for task in background:
+        if task.get_name() != "embedded-runtime-worker":
+            task.cancel()
+    await asyncio.gather(*background, return_exceptions=True)
+    if nc is not None:
+        await nc.drain()
     await bus.stop()
     logger.info("NEXUS QA API shut down.")
 
@@ -256,7 +326,6 @@ app.include_router(plugins.router, prefix="/api")
 app.include_router(intelligence.router, prefix="/api")
 app.include_router(intents.router, prefix="/api")
 app.include_router(adapters.router, prefix="/api")
-app.include_router(runtime.router, prefix="/api")
 app.include_router(enterprise.router, prefix="/api")
 app.include_router(test_configuration.router, prefix="/api")
 app.include_router(desktop_repository.router, prefix="/api")

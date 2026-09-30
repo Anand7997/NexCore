@@ -371,7 +371,7 @@ export default function DesktopRecorderPage() {
     }
     agentCommandMutation.mutate(
       {
-        api_url: 'http://localhost:8000/api',
+        api_url: 'http://localhost:3001/api',
         session_id: sessionId ?? '',
         name: selected?.name ?? draftSession.name,
         application: selected?.application || draftSession.application,
@@ -398,7 +398,7 @@ export default function DesktopRecorderPage() {
     }
     mcpCommandMutation.mutate(
       {
-        api_url: 'http://localhost:8000/api',
+        api_url: 'http://localhost:3001/api',
         session_id: sessionId ?? '',
         name: selected?.name ?? draftSession.name,
         application: selected?.application || draftSession.application,
@@ -427,7 +427,7 @@ export default function DesktopRecorderPage() {
     setAgentPackageStatus('Packaging...');
     try {
       const result = await downloadDesktopRecorderAgentPackage({
-        api_url: 'http://localhost:8000/api',
+        api_url: 'http://localhost:3001/api',
         session_id: sessionId ?? '',
         name: selected?.name ?? draftSession.name,
         application: selected?.application || draftSession.application,
@@ -458,7 +458,7 @@ export default function DesktopRecorderPage() {
     setMcpPackageStatus('Packaging...');
     try {
       const result = await downloadDesktopMcpPackage({
-        api_url: 'http://localhost:8000/api',
+        api_url: 'http://localhost:3001/api',
         session_id: sessionId ?? '',
         name: selected?.name ?? draftSession.name,
         application: selected?.application || draftSession.application,

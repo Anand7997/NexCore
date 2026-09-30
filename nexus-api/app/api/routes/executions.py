@@ -1,8 +1,11 @@
 """Execution trigger, monitoring, and control routes."""
 from __future__ import annotations
+import logging
 from copy import deepcopy
+from datetime import datetime
 from types import SimpleNamespace
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from typing import Any
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -26,11 +29,15 @@ from app.database.models import (
     WorkflowModel,
     WorkflowNodeModel,
 )
-from app.distributed.scheduler import DistributedScheduler
+from app.config import settings
+from app.control_plane import ControlPlaneUnavailable, get_control_plane
 from app.enterprise.audit import record_audit
 from app.enterprise.auth import AuthContext, get_auth_context
 from app.execution.master_sheet import DesktopMasterSheet, MasterSheetError
-from app.orchestration.engine import launch_execution, cancel_execution
+from app.orchestration.engine import cancel_execution
+from app.orchestration.state_machine import ExecutionStatus
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/executions", tags=["executions"])
 
@@ -1195,10 +1202,35 @@ def _node_to_response(n) -> ExecutionNodeResponse:
     )
 
 
+async def _queue_on_control_plane(
+    db: AsyncSession,
+    execution: Any,
+    platform: str,
+    variables: dict[str, Any],
+    ctx: AuthContext,
+) -> None:
+    """Queue the execution on the .NET control plane; fail it if the control plane is down."""
+    try:
+        await get_control_plane().schedule_execution(
+            execution.id,
+            platform=platform,
+            priority=int(variables.get("_priority", 100)),
+            required_capabilities=variables.get("_required_capabilities", []),
+            tenant_id=ctx.tenant_id,
+        )
+    except ControlPlaneUnavailable as exc:
+        execution.status = ExecutionStatus.FAILED
+        execution.completed_at = datetime.utcnow()
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Execution control plane unavailable (CONTROL_PLANE_URL={settings.control_plane_url}): {exc}",
+        ) from exc
+
+
 @router.post("/", status_code=status.HTTP_202_ACCEPTED)
 async def trigger_execution(
     schema: ExecutionTriggerSchema,
-    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     ctx: AuthContext = Depends(get_auth_context),
 ):
@@ -1210,13 +1242,7 @@ async def trigger_execution(
 
     repo = ExecutionRepository(db)
     execution = await repo.create(schema)
-    scheduler = DistributedScheduler(db)
-    await scheduler.enqueue_execution(
-        execution.id,
-        platform=schema.platform,
-        priority=int(schema.variables.get("_priority", 100)),
-        required_capabilities=schema.variables.get("_required_capabilities", []),
-    )
+    await _queue_on_control_plane(db, execution, schema.platform, schema.variables, ctx)
     await record_audit(
         db,
         ctx,
@@ -1226,16 +1252,13 @@ async def trigger_execution(
         metadata={"workflow_id": schema.workflow_id, "platform": schema.platform},
     )
 
-    # Launch orchestration engine as background task
-    background_tasks.add_task(launch_execution, execution.id)
-
+    # The control plane dispatches the execution to a runtime worker.
     return {"execution_id": execution.id, "status": "queued"}
 
 
 @router.post("/test-cases", status_code=status.HTTP_202_ACCEPTED)
 async def trigger_test_case_execution(
     schema: TestCaseExecutionTriggerSchema,
-    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     ctx: AuthContext = Depends(get_auth_context),
 ):
@@ -1274,13 +1297,7 @@ async def trigger_test_case_execution(
 
     repo = ExecutionRepository(db)
     execution = await repo.create(execution_schema)
-    scheduler = DistributedScheduler(db)
-    await scheduler.enqueue_execution(
-        execution.id,
-        platform=schema.platform,
-        priority=int(schema.variables.get("_priority", 100)),
-        required_capabilities=schema.variables.get("_required_capabilities", []),
-    )
+    await _queue_on_control_plane(db, execution, schema.platform, schema.variables, ctx)
     await record_audit(
         db,
         ctx,
@@ -1290,7 +1307,6 @@ async def trigger_test_case_execution(
         metadata={"workflow_id": workflow.id, "test_case_ids": case_ids, "platform": schema.platform},
     )
 
-    background_tasks.add_task(launch_execution, execution.id)
     return {"execution_id": execution.id, "workflow_id": workflow.id, "status": "queued"}
 
 
@@ -1377,9 +1393,12 @@ async def cancel_execution_route(
     execution = await repo.cancel(execution_id)
     if not execution:
         raise HTTPException(status_code=404, detail="Execution not found")
-    if not cancelled:
-        scheduler = DistributedScheduler(db)
-        await scheduler.finish_execution(execution_id, "cancelled")
+    try:
+        # Releases queued work, or sends cancel_execution to the worker holding the lease.
+        await get_control_plane().cancel_execution(execution_id, tenant_id=ctx.tenant_id)
+    except ControlPlaneUnavailable as exc:
+        if not cancelled:
+            logger.warning("Control plane cancel failed for %s: %s", execution_id, exc)
     await record_audit(
         db,
         ctx,

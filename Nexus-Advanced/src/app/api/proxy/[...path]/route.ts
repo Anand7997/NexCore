@@ -5,7 +5,9 @@ async function forwardRequest(
   path: string[],
 ): Promise<NextResponse> {
   const backendBase =
-    process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000/api';
+    process.env.NEXT_PUBLIC_CONTROL_API_URL ??
+    process.env.NEXT_PUBLIC_API_URL ??
+    'http://localhost:3001/api';
   const upstreamUrl = new URL(`${backendBase.replace(/\/$/, '')}/${path.join('/')}`);
   upstreamUrl.search = request.nextUrl.search;
   const timeoutMs = request.method === 'GET' || request.method === 'HEAD' ? 30_000 : 180_000;

@@ -1,10 +1,15 @@
-"""NATS transport layer — connects the Python AI worker to the NestJS AI gateway.
+"""NATS transport layer — connects the Python AI worker to the .NET AI gateway.
 
 Subjects
 --------
-ai.jobs         — NestJS publishes job payloads here; Python subscribes
-ai.results      — Python publishes completed results here; NestJS subscribes
+ai.jobs         — .NET control plane publishes job payloads here; Python subscribes
+ai.results      — Python publishes completed results here; .NET subscribes
 ai.progress     — Python publishes incremental progress events for streaming
+
+The .NET control plane stores these subjects in the ``NEXUS_AI`` JetStream
+stream. Jobs are consumed through the durable ``ai-workers`` consumer, so jobs
+published while no worker is running are delivered once one starts. Without
+JetStream the transport falls back to a plain core-NATS subscription.
 
 The transport is optional: when NATS is unavailable the worker can still be
 called directly via the REST fallback in the AI gateway.
@@ -24,10 +29,12 @@ ResultHandler = Callable[[dict[str, Any]], Coroutine[Any, Any, None]]
 SUBJECT_JOBS = "ai.jobs"
 SUBJECT_RESULTS = "ai.results"
 SUBJECT_PROGRESS = "ai.progress"
+AI_STREAM = "NEXUS_AI"
+AI_WORKERS_DURABLE = "ai-workers"
 
 
 class NATSAITransport:
-    """Bridges the Python AI worker with the NestJS AI gateway over NATS."""
+    """Bridges the Python AI worker with the .NET AI gateway over NATS."""
 
     def __init__(self, nats_url: str = "nats://localhost:4222") -> None:
         self._nats_url = nats_url
@@ -67,26 +74,55 @@ class NATSAITransport:
     # ── Subscription ─────────────────────────────────────────────────────────
 
     async def subscribe_jobs(self, handler: ResultHandler) -> None:
-        """Subscribe to AI job requests published by NestJS."""
+        """Subscribe to AI job requests published by the .NET control plane."""
         if self._nc is None:
             raise RuntimeError("Not connected — call connect() first")
+
+        durable = False
 
         async def _on_message(msg: Any) -> None:
             try:
                 data = json.loads(msg.data.decode())
-                await handler(data)
             except json.JSONDecodeError:
                 logger.error("Received non-JSON NATS message on %s", SUBJECT_JOBS)
+                data = None
+            if data is None:
+                if durable:
+                    await msg.ack()
+                return
+            try:
+                # Acknowledge only after the handler returns. The handler owns the
+                # full long-running job, so a worker crash causes JetStream to
+                # redeliver it instead of losing it after receipt.
+                await handler(data)
+                if durable:
+                    await msg.ack()
             except Exception as exc:
                 logger.exception("Error handling NATS job: %s", exc)
 
-        self._sub = await self._nc.subscribe(SUBJECT_JOBS, cb=_on_message)
-        logger.info("Subscribed to NATS subject: %s", SUBJECT_JOBS)
+        try:
+            js = self._nc.jetstream()
+            await js.stream_info(AI_STREAM)
+            durable = True
+            self._sub = await js.subscribe(
+                SUBJECT_JOBS,
+                durable=AI_WORKERS_DURABLE,
+                queue=AI_WORKERS_DURABLE,
+                stream=AI_STREAM,
+                cb=_on_message,
+                manual_ack=True,
+            )
+            logger.info("Subscribed to JetStream %s (durable %s)", SUBJECT_JOBS, AI_WORKERS_DURABLE)
+        except Exception as exc:
+            durable = False
+            logger.info("JetStream stream %s unavailable (%s); using core NATS subscription", AI_STREAM, exc)
+            self._sub = await self._nc.subscribe(SUBJECT_JOBS, cb=_on_message)
+            logger.info("Subscribed to NATS subject: %s", SUBJECT_JOBS)
 
     # ── Publishing ────────────────────────────────────────────────────────────
 
     async def publish_result(self, result: dict[str, Any]) -> None:
-        """Publish a completed AI job result to NestJS."""
+        """Publish a completed AI job result to the .NET AI gateway."""
         if self._nc is None:
             logger.warning("NATS not connected — skipping result publish for job %s", result.get("jobId"))
             return

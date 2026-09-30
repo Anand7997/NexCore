@@ -190,7 +190,9 @@ export default function PlatformParityReport({ data: propData }: Props) {
     );
   }
 
-  if ((isError || !summary) && !propData) {
+  const isMalformed = !!summary && (!Array.isArray(summary.platformCoverage) || !Array.isArray(summary.universalIntents));
+
+  if ((isError || !summary || isMalformed) && !propData) {
     return (
       <div className="rounded-xl border border-border-default bg-surface-1 p-8 text-center space-y-2">
         <AlertTriangle size={20} className="text-state-warning mx-auto" />
@@ -248,7 +250,7 @@ export default function PlatformParityReport({ data: propData }: Props) {
           icon={Layers}
           iconClass="text-state-warning"
           bg="bg-amber-500/10 border-amber-500/20"
-          value={summary.gapIntents.length}
+          value={summary.gapIntents?.length ?? 0}
           label="Gap intents"
           delay={0.12}
         />
@@ -256,7 +258,7 @@ export default function PlatformParityReport({ data: propData }: Props) {
           icon={Zap}
           iconClass="text-orange-400"
           bg="bg-orange-500/10 border-orange-500/20"
-          value={summary.webApiOnly.length}
+          value={summary.webApiOnly?.length ?? 0}
           label="Web / API only"
           delay={0.18}
         />

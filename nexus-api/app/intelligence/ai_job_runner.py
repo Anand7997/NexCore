@@ -84,7 +84,10 @@ async def run_ai_job_loop() -> None:
     await transport.connect()
 
     async def handler(job_data: dict[str, Any]) -> None:
-        asyncio.create_task(_dispatch(job_data, transport, worker))
+        # Keep the JetStream message unacknowledged until the complete job has
+        # published its result. This gives the durable consumer at-least-once
+        # delivery across worker crashes.
+        await _dispatch(job_data, transport, worker)
 
     await transport.subscribe_jobs(handler)
     logger.info("AI job runner active — listening on NATS subject 'ai.jobs'")

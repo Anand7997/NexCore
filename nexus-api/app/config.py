@@ -44,7 +44,19 @@ class Settings(BaseSettings):
     web_plugin_live_screenshots: bool = True
     discovery_allow_private_network: bool = False
     api_plugin_default_timeout: float = 30.0
+    # .NET control plane: single source of truth for runtime agents, leases,
+    # execution queue and agent commands.
     control_plane_url: str = "http://localhost:3001"
+    control_plane_timeout_seconds: float = 10.0
+    # Embedded runtime worker: this FastAPI process registers with the control
+    # plane and executes work dispatched to it (no separate worker needed in dev).
+    embedded_worker_enabled: bool = True
+    runtime_agent_id: str = ""
+    runtime_agent_max_concurrency: int = 4
+    runtime_agent_heartbeat_seconds: float = 10.0
+    runtime_agent_poll_seconds: float = 2.0
+    # Consume NATS ai.jobs in this process (durable JetStream consumer when available).
+    ai_job_runner_enabled: bool = True
     appium_server_url: str = "http://127.0.0.1:4723"
     winappdriver_url: str = "http://127.0.0.1:4723"
     keycloak_issuer_url: str = ""
@@ -61,7 +73,7 @@ class Settings(BaseSettings):
     playwright_fallback: bool = True
 
     # ── Phase 6: AI Intelligence ──────────────────────────────────────────────
-    # NATS transport (Python worker ↔ NestJS AI gateway)
+    # NATS JetStream (Python workers ↔ .NET control plane)
     nats_url: str = "nats://localhost:4222"
 
     # Qdrant vector store

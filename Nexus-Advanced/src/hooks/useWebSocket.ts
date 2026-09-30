@@ -6,7 +6,7 @@ import { useUIStore } from '@/lib/stores/uiStore';
 import { useExecutionStreamStore } from '@/lib/stores/executionStreamStore';
 import type { RealtimeEvent, RealtimeEventType, LogEntry } from '@/types';
 
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL ?? 'ws://localhost:8000/ws';
+const WS_URL = process.env.NEXT_PUBLIC_WS_URL ?? 'ws://localhost:3001/ws';
 const SOCKET_CLOSE_GRACE_MS = 1_500;
 
 let clientId: string | null = null;
